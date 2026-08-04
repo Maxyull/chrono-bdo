@@ -86,16 +86,25 @@ ligne de classement. Aucune table de traduction n'est écrite à la main.
 |---|---|
 | Référentiel des quêtes, deux langues | ✅ fonctionne, testé |
 | Reconstitution des chaînes | ✅ 267 chaînes sur 349 complètes |
-| Capture et lecture des bandeaux | ✅ écrit et testé sur captures réelles |
-| Chronométrage et journal d'événements | ✅ écrit et testé |
-| Calibration en conditions de jeu | ⚠️ **en cours**, voir ci-dessous |
+| Capture et lecture des bandeaux | ✅ fonctionne en jeu |
+| Chronométrage et journal d'événements | ✅ fonctionne en jeu |
+| Suivi de quête, pour lever les ambiguïtés de noms | ⬜ à écrire |
 | Envoi au serveur et classement | ⬜ à écrire |
 
-> ⚠️ **La zone du bandeau est calibrée sur des captures fixes et ne se
-> déclenche pas encore de façon fiable pendant une partie.** Sur des captures à
-> l'arrêt, la reconnaissance de présence vaut 0,99 ; en quarante secondes de jeu
-> réel, elle n'a jamais dépassé 0,47. C'est le point sur lequel porte le travail
-> en cours.
+Première mesure en conditions réelles, le 5 août 2026 :
+
+```
+5 min 48 s   [Calpheon] Discuter avec Enrique
+```
+
+Soit la quête 21139/46, quarante-sixième d'une chaîne de quatre-vingt-quinze.
+
+Quatre défauts ont été trouvés en une seule session de jeu, et **aucun n'était
+visible sur des captures fixes** : l'icône du bandeau se déplace de 150 pixels
+selon la longueur du nom, la corrélation plafonne à 0,90 au lieu de 0,99 parce
+que le décor bouge derrière, la reconnaissance avale des espaces, et un bandeau
+d'objectif porte une ligne de description qu'on prendrait pour la suite du nom.
+Chacun suffisait à lui seul pour qu'aucune quête ne soit jamais mesurée.
 
 Voir l'état du référentiel :
 
