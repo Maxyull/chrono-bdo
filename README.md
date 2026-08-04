@@ -105,6 +105,14 @@ lancement et ne les redistribue pas.
 Black Desert Online est une marque de Pearl Abyss. Ce projet n'est ni affilié à
 Pearl Abyss, ni approuvé par eux.
 
+## Documentation
+
+| Fichier | Ce qu'il contient |
+|---|---|
+| [CHANGELOG.md](CHANGELOG.md) | ce qui a changé, version par version |
+| [docs/versionnage.md](docs/versionnage.md) | les trois choses qui versionnent séparément, et pourquoi les confondre serait une erreur |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | langue du projet, politique de tests, ce que Chrono ne fera jamais |
+
 ## Licence
 
 MIT, voir [LICENSE](LICENSE).
