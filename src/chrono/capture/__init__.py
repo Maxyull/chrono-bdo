@@ -8,11 +8,21 @@ vérifiable sans écran :
 3. `screen` capture ce rectangle en niveaux de gris.
 """
 
+from .banner import (
+    ICON_BOX,
+    PRESENCE_THRESHOLD,
+    banner_score,
+    correlation,
+    has_banner,
+    icon_template,
+)
 from .region import REFERENCE_SIZE, Rect, banner_region
 from .screen import Grabber, GrayFrame, ScreenCapture
 from .window import TITLE_FRAGMENTS, find_game_window
 
 __all__ = [
+    "ICON_BOX",
+    "PRESENCE_THRESHOLD",
     "REFERENCE_SIZE",
     "TITLE_FRAGMENTS",
     "Grabber",
@@ -20,5 +30,9 @@ __all__ = [
     "Rect",
     "ScreenCapture",
     "banner_region",
+    "banner_score",
+    "correlation",
     "find_game_window",
+    "has_banner",
+    "icon_template",
 ]
