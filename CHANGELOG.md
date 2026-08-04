@@ -23,13 +23,28 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
   une fin manquée par la position dans la chaîne.
 - **Commande `chrono suivre`** : chronomètre les quêtes pendant une session.
 
-### Connu
+### Corrigé
 
-- **La zone du bandeau est calibrée sur des captures fixes et ne se déclenche
-  pas de façon fiable en jeu.** En quarante secondes de jeu réel, la
-  reconnaissance de présence n'a jamais dépassé 0,47, là où elle vaut 0,99 sur
-  les mêmes bandeaux capturés à l'arrêt. Sous investigation : soit la zone est
-  mal placée, soit aucun bandeau n'était affiché pendant la mesure.
+Quatre défauts trouvés en une session de jeu, dont aucun n'était visible sur
+des captures fixes, et dont chacun suffisait à lui seul pour qu'aucune quête ne
+soit jamais mesurée :
+
+- **L'icône du bandeau n'est pas à une place fixe.** La barre s'adapte à la
+  longueur du nom et reste ancrée à droite : l'icône se déplace sur 150 pixels.
+  Elle est désormais cherchée par glissement horizontal.
+- **Le seuil de présence était calé sur des captures fixes.** En jeu la
+  corrélation plafonne à 0,90 et non 0,99, le décor bougeant derrière un bandeau
+  semi-transparent. Abaissé de 0,80 à 0,70.
+- **La reconnaissance avale des espaces.** « Ce qui s'est passé » est rendu
+  « Cequi s'estpasse ». Les noms sont désormais comparés sans espaces ni
+  ponctuation, ce qui ne coûte aucune ambiguïté supplémentaire.
+- **Un bandeau d'objectif porte une ligne de description** que rien ne distingue
+  d'une suite de nom. Les recollages sont essayés du plus long au plus court.
+
+### Mesuré en conditions réelles
+
+Première quête chronométrée le 5 août 2026 : `[Calpheon] Discuter avec Enrique`,
+soit 21139/46, en 5 min 48 s, mesure exacte.
 
 ## [0.1.0] - 2026-08-04
 
