@@ -7,7 +7,7 @@ c'est la partie qui doit être vérifiable sans rien installer.
 """
 
 from .models import BannerKind, BannerReading
-from .ocr import UPSCALE, RapidOcrReader, TextReader, upscale
+from .ocr import UPSCALE, RapidOcrReader, TextReader, stretch_contrast, upscale
 from .parsing import (
     MIN_LINE_SCORE,
     MIN_READING_SCORE,
@@ -29,5 +29,6 @@ __all__ = [
     "is_known_title",
     "known_titles",
     "parse_banner",
+    "stretch_contrast",
     "upscale",
 ]

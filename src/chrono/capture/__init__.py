@@ -19,7 +19,7 @@ from .banner import (
     icon_template,
     locate_icon,
 )
-from .region import REFERENCE_SIZE, Rect, banner_region
+from .region import REFERENCE_SIZE, Rect, banner_region, tracker_region
 from .screen import Grabber, GrayFrame, ScreenCapture
 from .window import TITLE_FRAGMENTS, find_game_window
 
@@ -41,4 +41,5 @@ __all__ = [
     "has_banner",
     "icon_template",
     "locate_icon",
+    "tracker_region",
 ]
