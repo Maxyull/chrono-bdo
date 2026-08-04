@@ -27,7 +27,10 @@ jobs:
           cache: pip
 
       - name: Installer le projet
-        run: python -m pip install -e ".[dev]"
+        # `capture` est inclus : sans numpy, la vérification de types ne peut
+        # pas analyser le module de capture et le signale comme introuvable.
+        # Les tests, eux, n'ont jamais besoin d'un écran.
+        run: python -m pip install -e ".[capture,dev]"
 
       - name: Style
         run: ruff check .

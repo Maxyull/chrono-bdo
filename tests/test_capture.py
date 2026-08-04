@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import sys
-
 import numpy as np
 import pytest
 
@@ -113,8 +111,9 @@ class TestScreenCapture:
 
 
 class TestFindGameWindow:
-    def test_renvoie_rien_hors_windows(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # L'intégration continue tourne sur Linux : la recherche doit y rendre
-        # None sans erreur, plutôt que de faire échouer l'import du module.
-        monkeypatch.setattr(sys, "platform", "linux")
-        assert find_game_window() is None
+    def test_ne_trouve_rien_pour_un_titre_absent(self) -> None:
+        # Vérifiable partout : sur Linux la recherche rend None sans erreur,
+        # sur Windows aucune fenêtre ne porte ce titre. Le cas important est
+        # qu'une absence se traduise par None et non par une exception, sans
+        # quoi le logiciel s'arrêterait dès que le jeu n'est pas lancé.
+        assert find_game_window(("fenetre qui n'existe pas 4f3c9a",)) is None
