@@ -32,6 +32,37 @@ class TextReader(Protocol):
         ...
 
 
+#: Bornes de l'étirement de contraste, en centiles. Écarter les extrêmes évite
+#: qu'un unique pixel très clair, un reflet ou une icône, n'écrase tout le
+#: reste de l'échelle.
+STRETCH_PERCENTILES: tuple[float, float] = (2.0, 98.0)
+
+
+def stretch_contrast(
+    frame: GrayFrame, percentiles: tuple[float, float] = STRETCH_PERCENTILES
+) -> GrayFrame:
+    """Étale la luminance de l'image sur toute la plage disponible.
+
+    Sans cela, rien n'est lisible dans les scènes sombres. Le panneau de suivi
+    de quête n'a aucun fond opaque derrière son texte, contrairement au bandeau
+    qui repose sur une barre : sa lisibilité dépend entièrement du décor.
+    Mesuré en jeu de nuit, la zone entière plafonnait à 19 sur 255, et la
+    reconnaissance n'y trouvait **aucune** ligne. Après étirement, neuf.
+
+    L'opération est sans effet notable sur une image déjà contrastée, elle ne
+    coûte donc rien de la faire toujours.
+
+    Une image uniforme est rendue telle quelle : il n'y a rien à étaler, et
+    diviser par son amplitude nulle n'aurait pas de sens.
+    """
+    low, high = np.percentile(frame, percentiles)
+    if high <= low:
+        return frame
+    stretched = (frame.astype(np.float32) - low) * (255.0 / (high - low))
+    clipped: GrayFrame = np.clip(stretched, 0, 255).astype(np.uint8)
+    return clipped
+
+
 def upscale(frame: GrayFrame, factor: int = UPSCALE) -> GrayFrame:
     """Agrandit par répétition de pixels.
 
@@ -63,7 +94,10 @@ class RapidOcrReader:
 
     def read(self, image: GrayFrame) -> list[tuple[str, float]]:
         engine = self._ensure_engine()
-        enlarged = upscale(image, self._factor)
+        # L'étirement d'abord, l'agrandissement ensuite : étaler la luminance
+        # sur une image déjà agrandie donnerait le même résultat pour quatre
+        # fois plus de pixels à parcourir.
+        enlarged = upscale(stretch_contrast(image), self._factor)
         # Le moteur attend trois canaux ; la zone est en niveaux de gris depuis
         # la capture, on la réempile plutôt que de la recapturer en couleur.
         rgb = np.stack([enlarged] * 3, axis=-1)

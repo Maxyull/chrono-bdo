@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from chrono.reading import BannerKind, is_known_title, parse_banner, upscale
+from chrono.reading.ocr import stretch_contrast
 
 #: Sorties **réelles** du moteur de reconnaissance sur les captures du jeu,
 #: recopiées telles quelles, défauts compris. Ce ne sont pas des exemples
@@ -161,3 +162,41 @@ class TestUpscale:
         # reconnaissance utilise, pour un coût plus élevé.
         agrandie = upscale(np.array([[0, 255]], dtype=np.uint8), 2)
         assert set(np.unique(agrandie)) == {0, 255}
+
+
+class TestStretchContrast:
+    def test_etale_une_image_sombre_sur_toute_la_plage(self) -> None:
+        """Régression : le panneau de suivi est illisible de nuit.
+
+        Contrairement au bandeau, qui repose sur une barre, le panneau n'a
+        aucun fond opaque derrière son texte : sa lisibilité dépend entièrement
+        du décor. Mesuré en jeu de nuit, la zone entière plafonnait à 19 sur
+        255 et la reconnaissance n'y trouvait aucune ligne. Après étirement,
+        neuf.
+        """
+        sombre = np.linspace(0, 19, 100, dtype=np.uint8).reshape(10, 10)
+        etiree = stretch_contrast(sombre)
+        assert etiree.max() > 240
+        assert etiree.min() < 15
+
+    def test_ne_change_presque_rien_a_une_image_deja_contrastee(self) -> None:
+        # C'est ce qui permet de l'appliquer toujours, sans se demander si
+        # l'image en a besoin.
+        contrastee = np.linspace(0, 255, 100, dtype=np.uint8).reshape(10, 10)
+        assert np.abs(stretch_contrast(contrastee).astype(int) - contrastee.astype(int)).max() < 20
+
+    def test_rend_une_image_uniforme_telle_quelle(self) -> None:
+        # Il n'y a rien à étaler, et diviser par une amplitude nulle n'aurait
+        # pas de sens.
+        plate = np.full((8, 8), 42, dtype=np.uint8)
+        assert np.array_equal(stretch_contrast(plate), plate)
+
+    def test_resiste_a_un_pixel_aberrant(self) -> None:
+        # Un reflet ou un bord d'icône ne doit pas écraser toute l'échelle,
+        # d'où les bornes en centiles plutôt que le minimum et le maximum.
+        # Sans elles, ce seul pixel à 255 laisserait le texte sombre inchangé.
+        image = np.linspace(0, 20, 400, dtype=np.uint8).reshape(20, 20)
+        image[0, 0] = 255
+        etiree = stretch_contrast(image)
+        assert etiree.max() > 200
+        assert etiree.std() > image.std() * 5

@@ -51,6 +51,45 @@ _MARGIN_BOTTOM: Final = 139
 REFERENCE_SIZE: Final = (2559, 1439)
 
 
+# Le panneau de suivi de quête, sous la minimap. Ancré en haut à droite, il
+# grandit vers le bas selon le nombre de quêtes suivies, jusqu'à dix.
+#
+# Mesuré sur le même écran de référence. La hauteur retenue couvre un panneau
+# plein : capturer trop large ne coûte que quelques pixels, tandis que capturer
+# trop court ferait disparaître les dernières quêtes sans prévenir.
+_TRACKER_WIDTH: Final = 340
+_TRACKER_HEIGHT: Final = 380
+_TRACKER_MARGIN_RIGHT: Final = 130
+_TRACKER_TOP: Final = 440
+
+
+def tracker_region(window: Rect, ui_scale: float = 1.0) -> Rect:
+    """Rectangle du panneau de suivi de quête, dans les coordonnées de l'écran.
+
+    Ce panneau ne sert pas à mesurer mais à **savoir où l'on en est** : quelles
+    quêtes sont acceptées, et surtout dans quelle chaîne. C'est ce contexte qui
+    permet de trancher quand un nom lu sur le bandeau désigne plusieurs quêtes,
+    ce qui concerne 18 % des quêtes principales.
+
+    Il est ancré en haut à droite, sous la minimap, contrairement au bandeau
+    qui l'est en bas. Les noms y sont **tronqués** dès qu'ils dépassent la
+    largeur : c'est un complément, jamais la source principale.
+    """
+    if ui_scale <= 0:
+        raise ValueError(f"échelle d'interface invalide : {ui_scale}")
+
+    width = round(_TRACKER_WIDTH * ui_scale)
+    height = round(_TRACKER_HEIGHT * ui_scale)
+    left = max(window.left, window.right - round(_TRACKER_MARGIN_RIGHT * ui_scale) - width)
+    top = window.top + round(_TRACKER_TOP * ui_scale)
+    return Rect(
+        left=left,
+        top=min(top, window.bottom),
+        width=min(width, window.right - left),
+        height=min(height, max(0, window.bottom - top)),
+    )
+
+
 def banner_region(window: Rect, ui_scale: float = 1.0) -> Rect:
     """Rectangle du bandeau de quête, dans les coordonnées de l'écran.
 
