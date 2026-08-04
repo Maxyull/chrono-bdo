@@ -56,3 +56,30 @@ vers Postgres.
 ## Licence
 
 MIT, voir [../LICENSE](../LICENSE).
+
+## Déploiement
+
+```bash
+bash serveur/deploiement/deployer.sh
+```
+
+Le script se lance depuis le poste, sous Git Bash, et fait tout le travail sur
+le VPS. Il est **rejouable** : le relancer met à jour le code et redémarre le
+service sans rien détruire, ce qui en fait aussi le script de mise à jour.
+
+Il installe une base Postgres dédiée, le code dans `/opt/chrono`, un service
+systemd et un bloc Caddy. Les conventions sont celles de `bdi-infra`, qui
+occupe la même machine : mêmes accès, un fichier `.caddyfile` par service.
+
+Trois choix méritent d'être connus :
+
+- **Pas de conteneur.** Le VPS n'a que deux giga-octets de mémoire disponible,
+  et le service en consomme cinquante-six méga-octets en systemd.
+- **Une base séparée** plutôt qu'un schéma dans celle de BDI : les deux
+  services n'ont aucune donnée commune, et sauvegarder ou restaurer l'un ne
+  doit pas toucher l'autre.
+- **La configuration Caddy est validée avant d'être rechargée.** Une erreur de
+  syntaxe appliquée telle quelle couperait *tous* les sites du serveur.
+
+Le script ne crée pas l'enregistrement DNS, qui vit chez le registrar. Tant
+qu'il manque, Caddy ne peut obtenir aucun certificat.
