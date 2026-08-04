@@ -100,6 +100,37 @@ class Catalog:
         matches = self._by_name.get(language, {}).get(fold(name), [])
         return matches[0] if len(matches) == 1 else None
 
+    def resolve_partial(self, name: str, language: str = "fr") -> QuestId | None:
+        """Retrouve une quête dont le nom affiché a perdu son début.
+
+        Le jeu n'affiche pas toujours le nom complet. Le panneau de choix d'un
+        carrefour montre « [Carrefour] Du côté de Valks » là où le catalogue
+        porte « [Calpheon][Carrefour] Du côté de Valks » : le préfixe de région
+        a sauté.
+
+        Le nom lu est donc cherché comme **fin** d'un nom connu. 76 quêtes
+        principales portent un double préfixe et sont exposées au problème ;
+        72 se retrouvent ainsi sans la moindre ambiguïté.
+
+        Comme partout, plusieurs candidats valent `None` : une correspondance
+        partielle est plus facile à obtenir qu'une exacte, donc plus facile à
+        obtenir par erreur, et il n'est pas question d'attribuer une mesure à
+        une quête plutôt qu'à une autre sur cette base.
+        """
+        exact = self.resolve(name, language)
+        if exact is not None:
+            return exact
+        key = fold(name)
+        if len(key) < 8:  # trop court pour distinguer quoi que ce soit
+            return None
+        found = {
+            quest_id
+            for indexed, ids in self._by_name.get(language, {}).items()
+            if indexed.endswith(key)
+            for quest_id in ids
+        }
+        return next(iter(found)) if len(found) == 1 else None
+
     def resolve_lines(self, lines: Sequence[str], language: str = "fr") -> QuestId | None:
         """Retrouve une quête à partir de lignes dont on ignore où le nom s'arrête.
 
@@ -118,6 +149,12 @@ class Catalog:
             found = self.resolve(" ".join(lines[:count]), language)
             if found is not None:
                 return found
+        # Rien d'exact : le nom affiché a peut-être perdu son préfixe de région,
+        # ce que fait le panneau de choix d'un carrefour.
+        for count in range(len(lines), 0, -1):
+            partial = self.resolve_partial(" ".join(lines[:count]), language)
+            if partial is not None:
+                return partial
         return None
 
     def ambiguous_names(self, language: str = "fr") -> dict[str, list[QuestId]]:

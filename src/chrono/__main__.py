@@ -11,13 +11,18 @@ import argparse
 import sys
 import time
 from collections.abc import Sequence
+from pathlib import Path
+
+from platformdirs import user_data_dir
 
 from .capture import ScreenCapture, banner_region, find_game_window
 from .deferred import DeferredWatcher
+from .protocol import PlayerIdentity, build_session
 from .reading import RapidOcrReader
 from .reference import Catalog
-from .reference.source import load
+from .reference.source import catalog_date, load
 from .timing import Measure, Quality, Timeline
+from .upload import save_session, send_session
 from .watching import BannerWatcher
 
 #: Cadence de la boucle. Huit fois par seconde suffisent : le bandeau reste
@@ -151,7 +156,39 @@ def command_watch(args: argparse.Namespace) -> int:
         # Dit ce qui a été perdu plutôt que de le taire : un chiffre incomplet
         # qui s'annonce reste utilisable.
         print(f"{timeline.dropped} quêtes vues mais non mesurables")
+
+    _finish_session(timeline, args)
     return 0
+
+
+def _finish_session(timeline: Timeline, args: argparse.Namespace) -> None:
+    """Écrit le lot sur le disque, et l'envoie si un serveur a été demandé.
+
+    L'écriture a toujours lieu, l'envoi jamais tout seul. Transmettre les
+    données de quelqu'un sans qu'il l'ait demandé serait une décision prise à
+    sa place, et le fait qu'elles soient anonymes n'y change rien.
+    """
+    home = Path(user_data_dir("chrono-bdo", "maxyull"))
+    identity = PlayerIdentity.load_or_create(home / "identite")
+    payload = build_session(
+        timeline,
+        player=identity.value,
+        catalog_date=catalog_date(args.language),
+        language=args.language,
+    )
+    written = save_session(payload, home / "sessions" / f"session-{int(time.time())}.json")
+    print(f"lot écrit dans {written}")
+
+    if not args.server:
+        print("aucun serveur indiqué : rien n'a été envoyé (--envoyer pour contribuer)")
+        return
+    result = send_session(payload, args.server)
+    if result.ok:
+        print(f"envoyé : {result.stored} mesures enregistrées, {result.refused} refusées")
+    else:
+        # Le lot reste sur le disque : une session mesurée ne doit pas
+        # disparaître parce que le réseau a hoqueté.
+        print(f"envoi impossible, le lot est conservé — {result.detail}", file=sys.stderr)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -167,6 +204,13 @@ def build_parser() -> argparse.ArgumentParser:
     watch = subparsers.add_parser("suivre", help="chronomètre les quêtes pendant que vous jouez")
     watch.add_argument(
         "--langue", dest="language", default="fr", choices=("fr", "en"), help="langue du client"
+    )
+    watch.add_argument(
+        "--envoyer",
+        dest="server",
+        default=None,
+        metavar="URL",
+        help="adresse du serveur où envoyer les mesures en fin de session",
     )
     watch.add_argument(
         "--echelle",

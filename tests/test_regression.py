@@ -132,3 +132,27 @@ def test_un_nom_aux_espaces_avales_retombe_sur_la_bonne_quete(
     au suivant : il faut comparer des formes sans espaces du tout.
     """
     assert catalog.resolve(read) == expected
+
+
+def test_un_nom_prive_de_son_prefixe_de_region_reste_identifiable(catalog: Catalog) -> None:
+    """Régression : le panneau de choix d'un carrefour coupe le nom.
+
+    Relevé en jeu sur un embranchement : l'écran affiche « [Carrefour] Du côté
+    de Valks », le catalogue porte « [Calpheon][Carrefour] Du côté de Valks ».
+    Le préfixe de région a sauté, et la résolution exacte échouait.
+
+    76 quêtes principales portent un double préfixe et sont exposées au
+    problème ; 72 se retrouvent par la fin de leur nom sans ambiguïté. Les
+    carrefours comptent double, puisqu'ils décident du chemin suivi dans une
+    chaîne : les rater fausse aussi la suite.
+    """
+    assert catalog.resolve("[Carrefour] Du côté de Valks") is None
+    assert catalog.resolve_partial("[Carrefour] Du côté de Valks") == QuestId(21142, 1)
+    assert catalog.resolve_partial("[Carrefour] Du côté d'Andre") == QuestId(21142, 5)
+
+
+def test_ne_devine_pas_sur_un_fragment_trop_court(catalog: Catalog) -> None:
+    # Une correspondance partielle est plus facile à obtenir qu'une exacte,
+    # donc plus facile à obtenir par erreur.
+    assert catalog.resolve_partial("Valks") is None
+    assert catalog.resolve_partial("") is None
