@@ -9,19 +9,24 @@ vérifiable sans écran :
 """
 
 from .banner import (
-    ICON_BOX,
+    ICON_SEARCH,
+    ICON_SIZE,
+    ICON_TOP,
     PRESENCE_THRESHOLD,
     banner_score,
     correlation,
     has_banner,
     icon_template,
+    locate_icon,
 )
 from .region import REFERENCE_SIZE, Rect, banner_region
 from .screen import Grabber, GrayFrame, ScreenCapture
 from .window import TITLE_FRAGMENTS, find_game_window
 
 __all__ = [
-    "ICON_BOX",
+    "ICON_SEARCH",
+    "ICON_SIZE",
+    "ICON_TOP",
     "PRESENCE_THRESHOLD",
     "REFERENCE_SIZE",
     "TITLE_FRAGMENTS",
@@ -35,4 +40,5 @@ __all__ = [
     "find_game_window",
     "has_banner",
     "icon_template",
+    "locate_icon",
 ]
