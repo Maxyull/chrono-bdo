@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import unicodedata
 from collections import defaultdict
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from .models import KIND_MAIN, Chain, Quest, QuestId
@@ -18,27 +18,28 @@ from .parsing import parse_payload
 
 
 def fold(text: str) -> str:
-    """Réduit un nom à une forme comparable : sans accents, sans casse, sans ponctuation.
+    """Réduit un nom à une forme comparable : lettres et chiffres, rien d'autre.
 
     Les noms du catalogue viennent d'un fichier JSON, mais ceux qu'on leur
-    compare viennent d'un écran, lus par reconnaissance de caractères. Les trois
-    différences que celle-ci introduit sont traitées ici :
+    compare viennent d'un écran, lus par reconnaissance de caractères. Celle-ci
+    abîme les noms de trois façons, toutes observées en jeu :
 
-    - **les accents sautent**, « quête » se lit « quete » ;
-    - **la ponctuation se recolle**, « Jeron, la tacticienne » se lit
+    - **les accents sautent** : « quête » se lit « quete » ;
+    - **la ponctuation se recolle** : « Jeron, la tacticienne » se lit
       « Jeron,la tacticienne » ;
-    - **les espaces varient** en nombre.
+    - **les espaces disparaissent** : « Ce qui s'est passé » se lit
+      « Cequi s'estpasse ».
 
-    La ponctuation devient un espace plutôt que rien : « Jeron,la » et
-    « Jeron, la » se rejoignent alors sur la même forme, ce que la suppression
-    pure ne garantirait pas.
+    Ce dernier défaut est le plus destructeur, et c'est lui qui commande la
+    méthode. Aucun traitement des accents ne rattrape un mot recollé au
+    suivant, et le découpage réel est imprévisible d'une lecture à l'autre. La
+    seule forme stable est donc celle où espaces et ponctuation ont tous
+    disparu des deux côtés : « cequisestpasse » d'un côté comme de l'autre.
 
-    Deux quêtes qui ne différeraient que par leur ponctuation deviennent
-    indiscernables. Le coût a été mesuré : 11 quêtes principales de plus
-    deviennent ambiguës, 716 au lieu de 705 sur 3 924. C'est assumé, parce que
-    `resolve` refuse les formes ambiguës : le pire cas est une mesure perdue,
-    jamais une mesure attribuée à tort. En face, 32 % des noms portent de la
-    ponctuation et seraient tous exposés au problème.
+    Deux quêtes qui ne différeraient que par leurs espaces ou leur ponctuation
+    deviennent indiscernables. C'est assumé, parce que `resolve` refuse les
+    formes ambiguës : le pire cas est une mesure perdue, jamais une mesure
+    attribuée à tort.
 
     Reste provisoire. La normalisation complète vit dans le noyau partagé avec
     butin, qui traite en plus la ligature « œ » et les confusions de caractères
@@ -46,10 +47,8 @@ def fold(text: str) -> str:
     """
     decomposed = unicodedata.normalize("NFKD", text)
     without_marks = "".join(c for c in decomposed if not unicodedata.combining(c))
-    spaced = "".join(
-        " " if unicodedata.category(c).startswith("P") else c for c in without_marks
-    )
-    return " ".join(spaced.casefold().split())
+    kept = (c for c in without_marks if not unicodedata.category(c).startswith(("P", "Z")))
+    return "".join(kept).casefold().replace(" ", "")
 
 
 class Catalog:
@@ -100,6 +99,26 @@ class Catalog:
         """
         matches = self._by_name.get(language, {}).get(fold(name), [])
         return matches[0] if len(matches) == 1 else None
+
+    def resolve_lines(self, lines: Sequence[str], language: str = "fr") -> QuestId | None:
+        """Retrouve une quête à partir de lignes dont on ignore où le nom s'arrête.
+
+        Le bandeau n'affiche pas toujours que le nom. Sur un bandeau d'objectif,
+        une ligne de description le suit, du genre « Lire les dialogues en
+        fonction de l'audio », et rien dans sa mise en forme ne la distingue
+        d'une suite de nom : les noms longs passent eux aussi à la ligne.
+
+        On essaie donc les recollages, **du plus long au plus court**, et le
+        premier qui tombe sur une quête l'emporte. Dans cet ordre, un nom
+        complet est toujours préféré à l'un de ses débuts, ce qui évite qu'un
+        préfixe se trouvant coïncider avec une autre quête ne l'emporte sur la
+        bonne réponse.
+        """
+        for count in range(len(lines), 0, -1):
+            found = self.resolve(" ".join(lines[:count]), language)
+            if found is not None:
+                return found
+        return None
 
     def ambiguous_names(self, language: str = "fr") -> dict[str, list[QuestId]]:
         """Les noms qui désignent plus d'une quête, pour diagnostic."""

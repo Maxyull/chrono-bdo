@@ -43,9 +43,13 @@ MIN_READING_SCORE: Final = 0.80
 
 
 def _match_title(text: str) -> BannerKind | None:
+    # Les titres sont écrits lisiblement et normalisés ici, plutôt que stockés
+    # sous leur forme normalisée : celle-ci n'a ni espaces ni accents, donc
+    # « objectifdequetepartielle », et une table écrite ainsi serait pénible à
+    # relire et fragile au moindre changement de normalisation.
     normalized = fold(text)
     candidates = sorted(
-        ((kind, title) for kind, titles in TITLES.items() for title in titles),
+        ((kind, fold(title)) for kind, titles in TITLES.items() for title in titles),
         key=lambda pair: len(pair[1]),
         reverse=True,
     )
@@ -80,14 +84,17 @@ def parse_banner(
     if kind is None:
         return None
 
-    name = " ".join(text for text, _ in kept[1:])
+    name_lines = tuple(text for text, _ in kept[1:])
+    name = " ".join(name_lines)
     if not name:
         return None
 
     confidence = min(score for _, score in kept)
     if confidence < min_reading_score:
         return None
-    return BannerReading(kind=kind, quest_name=name, confidence=confidence)
+    return BannerReading(
+        kind=kind, quest_name=name, name_lines=name_lines, confidence=confidence
+    )
 
 
 def is_known_title(text: str) -> bool:

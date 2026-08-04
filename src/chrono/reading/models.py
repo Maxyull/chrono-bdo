@@ -44,3 +44,8 @@ class BannerReading:
     #: Score le plus faible parmi les lignes retenues. C'est le maillon faible
     #: qui compte : un titre lu à 0,99 ne rachète pas un nom lu à 0,40.
     confidence: float
+    #: Les lignes du nom, non recollées. Le bandeau n'affiche pas toujours que
+    #: le nom : sur un bandeau d'objectif, une ligne de description le suit, et
+    #: rien dans sa mise en forme ne la distingue d'une suite de nom. Savoir où
+    #: le nom s'arrête demande le catalogue, que ce module n'a pas.
+    name_lines: tuple[str, ...] = ()
