@@ -86,14 +86,27 @@ ligne de classement. Aucune table de traduction n'est écrite à la main.
 |---|---|
 | Référentiel des quêtes, deux langues | ✅ fonctionne, testé |
 | Reconstitution des chaînes | ✅ 267 chaînes sur 349 complètes |
-| Détection des bandeaux à l'écran | ⬜ à écrire |
-| Chronométrage et journal d'événements | ⬜ à écrire |
+| Capture et lecture des bandeaux | ✅ écrit et testé sur captures réelles |
+| Chronométrage et journal d'événements | ✅ écrit et testé |
+| Calibration en conditions de jeu | ⚠️ **en cours**, voir ci-dessous |
 | Envoi au serveur et classement | ⬜ à écrire |
 
-Essayer le référentiel :
+> ⚠️ **La zone du bandeau est calibrée sur des captures fixes et ne se
+> déclenche pas encore de façon fiable pendant une partie.** Sur des captures à
+> l'arrêt, la reconnaissance de présence vaut 0,99 ; en quarante secondes de jeu
+> réel, elle n'a jamais dépassé 0,47. C'est le point sur lequel porte le travail
+> en cours.
+
+Voir l'état du référentiel :
 
 ```bash
-python -m chrono
+python -m chrono referentiel
+```
+
+Chronométrer une session :
+
+```bash
+python -m chrono suivre
 ```
 
 ## Sources des données

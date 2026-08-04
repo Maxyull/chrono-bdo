@@ -7,7 +7,29 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
-Rien pour l'instant.
+### Ajouté
+
+- **Capture de la zone du bandeau** : la fenêtre du jeu est trouvée toute seule,
+  la zone en est déduite, et une capture coûte 4 millisecondes.
+- **Reconnaissance de la présence d'un bandeau** par la forme de son icône.
+  Nécessaire parce que sans bandeau, la zone montre le chat du jeu, qui défile
+  en permanence et déclencherait la lecture sans arrêt.
+- **Lecture du bandeau** : quatre types reconnus, noms sur deux lignes recollés,
+  artefacts de reconnaissance écartés.
+- **Boucle de surveillance** : capture huit fois par seconde, ne lance la
+  reconnaissance qu'au moment utile, et sait reconnaître qu'un bandeau en a
+  remplacé un autre sans que la zone se vide.
+- **Journal d'événements** : reconstruit les durées après coup et sait déduire
+  une fin manquée par la position dans la chaîne.
+- **Commande `chrono suivre`** : chronomètre les quêtes pendant une session.
+
+### Connu
+
+- **La zone du bandeau est calibrée sur des captures fixes et ne se déclenche
+  pas de façon fiable en jeu.** En quarante secondes de jeu réel, la
+  reconnaissance de présence n'a jamais dépassé 0,47, là où elle vaut 0,99 sur
+  les mêmes bandeaux capturés à l'arrêt. Sous investigation : soit la zone est
+  mal placée, soit aucun bandeau n'était affiché pendant la mesure.
 
 ## [0.1.0] - 2026-08-04
 
