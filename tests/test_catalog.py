@@ -13,6 +13,15 @@ class TestFold:
     def test_reduit_les_espaces_multiples(self) -> None:
         assert fold("  Vent   de  panique ") == "vent de panique"
 
+    def test_ignore_une_virgule_recollee(self) -> None:
+        assert fold("Jeron,la tacticienne") == fold("Jeron, la tacticienne")
+
+    def test_ignore_les_crochets_du_prefixe(self) -> None:
+        assert fold("[Calpheon] Statue") == fold("Calpheon Statue")
+
+    def test_ignore_une_apostrophe_espacee(self) -> None:
+        assert fold("L' ancienne famille") == fold("L'ancienne famille")
+
 
 class TestCatalog:
     def test_charge_les_deux_langues(self, catalog: Catalog) -> None:
@@ -70,7 +79,7 @@ class TestCatalog:
     def test_regroupe_les_quetes_en_chaines(self, catalog: Catalog) -> None:
         chains = catalog.chains("fr")
         assert 21136 in chains
-        assert [q.id.position for q in chains[21136].quests] == [1, 2]
+        assert [q.id.position for q in chains[21136].quests] == [1, 2, 3]
 
     def test_ne_garde_que_les_quetes_principales_par_defaut(self, catalog: Catalog) -> None:
         principales = catalog.chains("fr")
