@@ -13,6 +13,7 @@ import time
 from collections.abc import Sequence
 
 from .capture import ScreenCapture, banner_region, find_game_window
+from .deferred import DeferredWatcher
 from .reading import RapidOcrReader
 from .reference import Catalog
 from .reference.source import load
@@ -106,17 +107,23 @@ def command_watch(args: argparse.Namespace) -> int:
 
     timeline = Timeline(catalog=catalog, language=args.language)
     started = time.monotonic()
+    reader = RapidOcrReader()
     try:
         with ScreenCapture(region) as capture:
-            watcher = BannerWatcher(capture, RapidOcrReader())
-            while True:
-                tick = time.monotonic()
-                reading = watcher.poll()
-                if reading is not None:
-                    measure = timeline.record(reading)
-                    if measure is not None:
-                        _print_measure(measure, catalog, args.language)
-                time.sleep(max(0.0, POLL_INTERVAL - (time.monotonic() - tick)))
+            watcher = BannerWatcher(capture, reader)
+            # La capture et la lecture vivent dans deux fils séparés : sinon,
+            # l'écran cesserait d'être surveillé pendant chaque reconnaissance,
+            # soit jusqu'à une seconde, et un bandeau qui apparaît puis
+            # disparaît dans cet intervalle serait perdu en silence.
+            with DeferredWatcher(watcher, reader, interval=POLL_INTERVAL) as deferred:
+                while True:
+                    for reading, at in deferred.readings(timeout=1.0):
+                        # L'instant retenu est celui de la capture, pas celui
+                        # de la lecture : sans quoi chaque mesure serait
+                        # allongée de la durée de sa propre reconnaissance.
+                        measure = timeline.record(reading, at=at)
+                        if measure is not None:
+                            _print_measure(measure, catalog, args.language)
     except KeyboardInterrupt:
         pass
 
