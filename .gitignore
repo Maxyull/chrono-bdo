@@ -27,3 +27,6 @@ __pycache__/
 
 # Le serveur a son propre environnement.
 serveur/.venv/
+
+# Base de démonstration du serveur.
+serveur/demo.db

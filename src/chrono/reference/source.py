@@ -107,3 +107,23 @@ def load(
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     return payload
+
+
+def catalog_date(language: str, cache_dir: Path | None = None) -> str:
+    """Date du catalogue en cache, au format AAAA-MM-JJ.
+
+    Elle voyage avec chaque lot de mesures. Le catalogue suit le jeu et non le
+    logiciel : sans cette date, une quête renommée par une mise à jour donnerait
+    deux séries de temps sous deux noms différents, sans qu'aucun moyen n'existe
+    de savoir qu'il s'agit de la même.
+
+    La date de dernière écriture du fichier fait foi, faute de mieux : la source
+    n'annonce pas la version du jeu à laquelle elle correspond. C'est une
+    approximation, mais elle est monotone et suffit à ordonner deux catalogues.
+    """
+    path = cache_path(language, cache_dir)
+    try:
+        stamp = path.stat().st_mtime
+    except OSError:
+        stamp = time.time()
+    return time.strftime("%Y-%m-%d", time.gmtime(stamp))
