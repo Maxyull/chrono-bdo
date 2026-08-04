@@ -30,14 +30,33 @@ import numpy as np
 
 from .screen import GrayFrame
 
-#: Position de l'icône dans la zone du bandeau : gauche, haut, droite, bas.
-ICON_BOX: Final = (25, 40, 80, 95)
+#: Hauteur du dessin de l'icône, et distance entre le haut de la zone et le
+#: haut de l'icône. Mesuré en jeu : `y` ne bouge pas d'un pixel d'un bandeau à
+#: l'autre.
+ICON_SIZE: Final = 55
+ICON_TOP: Final = 39
 
-#: Au-delà, un bandeau est considéré comme affiché. Les mesures donnent 0,994
-#: au minimum quand il l'est, et 0,022 au maximum quand il ne l'est pas. Le
-#: seuil est posé loin des deux, là où il ne départage rien d'observé : le
-#: choix exact n'a donc aucune influence, ce qui est le signe d'un bon indice.
-PRESENCE_THRESHOLD: Final = 0.80
+#: Plage horizontale où chercher l'icône, en pixels depuis le bord gauche de la
+#: zone.
+#:
+#: **La barre du bandeau s'adapte à la longueur du nom et reste ancrée à
+#: droite.** L'icône, qui est à son extrémité gauche, se déplace donc d'une
+#: quête à l'autre. Mesuré en jeu sur une session : 150 pixels d'amplitude
+#: entre un nom court sur une ligne et un nom long sur deux.
+#:
+#: C'est ce qui rendait la détection inopérante : une position fixe, calibrée
+#: sur des captures ayant toutes un nom long, ne retrouvait presque jamais
+#: l'icône en conditions réelles.
+ICON_SEARCH: Final = (0, 200)
+
+#: Au-delà, un bandeau est considéré comme affiché.
+#:
+#: Sur des captures fixes, la corrélation vaut 0,99 quand le bandeau est là et
+#: moins de 0,03 sinon. **En jeu elle plafonne à 0,90**, parce que le bandeau
+#: est semi-transparent et que le décor bouge derrière. Un seuil calé sur les
+#: captures fixes aurait donc raté la moitié des bandeaux réels, alors même que
+#: la marge avec l'absence de bandeau reste énorme.
+PRESENCE_THRESHOLD: Final = 0.70
 
 _TEMPLATE_PATH: Final = Path(__file__).parent / "data" / "banner_icon.png"
 
@@ -79,12 +98,36 @@ def correlation(a: GrayFrame, b: GrayFrame) -> float:
     return float((x * y).sum() / denominator)
 
 
+def locate_icon(frame: GrayFrame) -> tuple[float, int]:
+    """Meilleure corrélation trouvée en glissant sur l'axe horizontal, et son abscisse.
+
+    Ne glisse que sur `x` : la hauteur de l'icône est constante d'un bandeau à
+    l'autre, seule sa position horizontale varie avec la longueur du nom.
+    Chercher aussi en `y` multiplierait le coût pour rien.
+
+    Le glissement se fait au pixel près. Un pas plus grand irait plus vite mais
+    manquerait le pic exact, et sur une corrélation déjà rabotée par la
+    transparence du bandeau, chaque centième compte.
+    """
+    template = icon_template()
+    size = template.shape[0]
+    if frame.shape[0] < ICON_TOP + size or frame.shape[1] < size:
+        return 0.0, 0
+
+    band = frame[ICON_TOP : ICON_TOP + size]
+    start, stop = ICON_SEARCH
+    stop = min(stop, band.shape[1] - size)
+    best, best_x = 0.0, 0
+    for x in range(max(0, start), max(0, stop) + 1):
+        score = correlation(template, band[:, x : x + size])
+        if score > best:
+            best, best_x = score, x
+    return best, best_x
+
+
 def banner_score(frame: GrayFrame) -> float:
     """À quel point cette capture de la zone contient l'icône du bandeau."""
-    left, top, right, bottom = ICON_BOX
-    if frame.shape[0] < bottom or frame.shape[1] < right:
-        return 0.0
-    return correlation(icon_template(), frame[top:bottom, left:right])
+    return locate_icon(frame)[0]
 
 
 def has_banner(frame: GrayFrame, threshold: float = PRESENCE_THRESHOLD) -> bool:
