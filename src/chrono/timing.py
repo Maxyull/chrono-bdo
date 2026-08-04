@@ -96,7 +96,9 @@ class Timeline:
     def record(self, reading: BannerReading, at: float | None = None) -> Measure | None:
         """Enregistre un bandeau lu, et renvoie la mesure qu'il clôt, s'il en clôt une."""
         moment = self.clock() if at is None else at
-        quest_id = self.catalog.resolve(reading.quest_name, self.language)
+        quest_id = self.catalog.resolve_lines(
+            reading.name_lines or (reading.quest_name,), self.language
+        )
         event = Event(
             at=moment,
             kind=reading.kind,

@@ -91,3 +91,44 @@ def test_le_nom_anglais_mene_a_la_meme_quete(catalog: Catalog) -> None:
     anglais = catalog.get(quest_id, "en")
     assert anglais is not None
     assert catalog.resolve(anglais.name, "en") == quest_id
+
+
+#: Lignes rendues par la reconnaissance sur un bandeau d'objectif capté en
+#: session. La dernière n'est pas le nom de la quête mais la description de
+#: l'objectif, et rien dans sa mise en forme ne l'en distingue.
+OBJECTIVE_BANNER = (
+    "[Calpheon] Cequi s'estpasse",
+    "jusqu'apresent",
+    "Lirelesdialoguesen fonctlon delaudio",
+)
+
+
+def test_ecarte_la_description_d_objectif_collee_au_nom(catalog: Catalog) -> None:
+    """Régression : un bandeau d'objectif porte une ligne de trop.
+
+    Relevé en jeu. Recoller toutes les lignes fabrique un nom qui n'existe
+    pas, et la mesure est perdue. Les recollages sont donc essayés du plus
+    long au plus court, et le premier qui tombe sur une quête l'emporte.
+    """
+    assert catalog.resolve(" ".join(OBJECTIVE_BANNER)) is None
+    assert catalog.resolve_lines(OBJECTIVE_BANNER) == QuestId(21139, 29)
+
+
+@pytest.mark.parametrize(
+    ("read", "expected"),
+    [
+        # Espaces avalés, accents perdus : tel que lu en session.
+        ("[Calpheon] Cequi s'estpasse jusqu'apresent", QuestId(21139, 29)),
+        ("[Calpheon] Pretre officiel dElion", QuestId(21143, 2)),
+    ],
+)
+def test_un_nom_aux_espaces_avales_retombe_sur_la_bonne_quete(
+    catalog: Catalog, read: str, expected: QuestId
+) -> None:
+    """Régression : la reconnaissance supprime des espaces.
+
+    « Ce qui s'est passé jusqu'à présent » est rendu « Cequi s'estpasse
+    jusqu'apresent ». Aucun traitement des accents ne rattrape un mot recollé
+    au suivant : il faut comparer des formes sans espaces du tout.
+    """
+    assert catalog.resolve(read) == expected

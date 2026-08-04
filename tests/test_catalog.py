@@ -10,8 +10,15 @@ class TestFold:
     def test_ignore_la_casse(self) -> None:
         assert fold("STATUE DU DRAGON NOIR") == fold("statue du dragon noir")
 
-    def test_reduit_les_espaces_multiples(self) -> None:
-        assert fold("  Vent   de  panique ") == "vent de panique"
+    def test_supprime_tous_les_espaces(self) -> None:
+        """Régression : la reconnaissance recolle les mots entre eux.
+
+        Relevé en jeu : « Ce qui s'est passé » est rendu « Cequi s'estpasse ».
+        Le découpage est imprévisible d'une lecture à l'autre, donc la seule
+        forme stable est celle où les espaces ont disparu des deux côtés.
+        """
+        assert fold("  Vent   de  panique ") == "ventdepanique"
+        assert fold("Cequi s'estpasse") == fold("Ce qui s'est passé")
 
     def test_ignore_une_virgule_recollee(self) -> None:
         assert fold("Jeron,la tacticienne") == fold("Jeron, la tacticienne")
