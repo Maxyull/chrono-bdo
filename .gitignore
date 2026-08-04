@@ -11,6 +11,12 @@ donnees/cache/
 *.png
 *.jpg
 
+# Deux exceptions, vérifiées une à une comme ne portant aucune donnée de tiers :
+# le gabarit de l'icône du bandeau, qui ne contient aucun texte, et l'échantillon
+# de test, qui ne montre qu'un bandeau et son nom de quête.
+!src/chrono/capture/data/*.png
+!tests/data/*.png
+
 .venv/
 __pycache__/
 *.py[cod]

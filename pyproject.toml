@@ -59,7 +59,7 @@ chrono = "chrono.__main__:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-chrono = ["py.typed"]
+chrono = ["py.typed", "capture/data/*.png"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
