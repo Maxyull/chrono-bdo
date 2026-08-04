@@ -1,0 +1,20 @@
+# Dumps bruts de bdocodex. Jamais commités.
+#
+# Ce sont des données de jeu appartenant à Pearl Abyss, redistribuées par
+# bdocodex. Les republier dans un dépôt public MIT reviendrait à s'attribuer
+# une licence qu'on n'a pas. Le client les télécharge au premier lancement,
+# comme butin le fait pour son catalogue d'objets.
+donnees/cache/
+
+# Captures d'écran : elles contiennent des pseudos de joueurs tiers.
+# Les échantillons vivent dans D:\DEV\bdo\echantillons\, hors dépôt.
+*.png
+*.jpg
+
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
