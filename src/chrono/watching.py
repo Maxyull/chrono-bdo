@@ -121,11 +121,13 @@ class BannerWatcher:
             current[key] += value
         self.stats = WatchStats(**current)
 
-    def poll(self) -> BannerReading | None:
-        """Un tour de boucle. Renvoie une lecture, ou `None` la plupart du temps.
+    def capture_pending(self) -> GrayFrame | None:
+        """Capture, et renvoie l'image **si elle mérite d'être lue**.
 
-        `None` est le cas normal : la grande majorité des tours ne voit aucun
-        bandeau, ou voit celui qui a déjà été lu.
+        Toute la décision est ici, et rien de coûteux : une capture à 4
+        millisecondes et une corrélation à 10. Séparer cette décision de la
+        lecture permet de différer celle-ci, qui prend entre 300 et 1 000
+        millisecondes pendant lesquelles l'écran ne serait pas surveillé.
         """
         frame = self._source.grab_gray()
         self._bump(frames=1)
@@ -151,10 +153,21 @@ class BannerWatcher:
         if frame_difference(self._last_read, frame) < self._new_banner_diff:
             return None  # même bandeau qu'à la dernière lecture
 
-        # On note la lecture avant de connaître son résultat : une lecture qui
-        # échoue ne doit pas être retentée à chaque tour sur la même image.
+        # On note l'image avant de connaître le résultat de sa lecture : une
+        # lecture qui échoue ne doit pas être retentée à chaque tour.
         self._last_read = frame
         self._bump(reads=1)
+        return frame
+
+    def poll(self) -> BannerReading | None:
+        """Un tour de boucle, capture et lecture enchaînées.
+
+        `None` est le cas normal : la grande majorité des tours ne voit aucun
+        bandeau, ou voit celui qui a déjà été lu.
+        """
+        frame = self.capture_pending()
+        if frame is None:
+            return None
         reading = parse_banner(self._reader.read(frame))
         if reading is not None:
             self._bump(readings=1)
