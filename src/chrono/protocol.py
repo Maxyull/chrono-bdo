@@ -22,10 +22,17 @@ import json
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from . import __version__
-from .timing import Measure, Quality, Timeline
+
+if TYPE_CHECKING:  # pragma: pas de couverture
+    # Importé pour les annotations seulement. À l'exécution, ce module ne
+    # dépend que de la bibliothèque standard : le serveur le relit sans avoir
+    # à installer numpy ni un moteur de reconnaissance d'images, qui ne lui
+    # servent à rien. Un protocole qui traîne les dépendances de l'un de ses
+    # deux bouts est un protocole mal placé.
+    from .timing import Measure, Timeline
 
 #: Version du protocole. À incrémenter dès qu'un champ change de sens.
 #: Le serveur accepte cette version et la précédente.
@@ -166,7 +173,6 @@ __all__ = [
     "PROTOCOL_VERSION",
     "MeasurePayload",
     "PlayerIdentity",
-    "Quality",
     "SessionPayload",
     "build_session",
 ]

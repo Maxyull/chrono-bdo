@@ -24,3 +24,6 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 *.egg-info/
+
+# Le serveur a son propre environnement.
+serveur/.venv/
