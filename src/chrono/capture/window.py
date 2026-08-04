@@ -21,37 +21,50 @@ from .region import Rect
 TITLE_FRAGMENTS: Final = ("black desert",)
 
 
-def _windows_rect(fragment: str) -> Rect | None:
-    """Cherche une fenêtre visible dont le titre contient `fragment`."""
-    import ctypes
-    from ctypes import wintypes
+# La condition est écrite au niveau du module, et sous cette forme exacte,
+# parce que c'est celle que le vérificateur de types reconnaît : il n'analyse
+# alors que la branche correspondant à la plateforme visée. Un test à
+# l'intérieur de la fonction ne suffirait pas, `ctypes.WinDLL` n'existant pas
+# hors Windows ; et une annotation d'exception serait signalée comme inutile
+# quand la vérification tourne, elle, sur Windows.
+if sys.platform == "win32":
 
-    user32 = ctypes.WinDLL("user32", use_last_error=True)
-    found: list[Rect] = []
+    def _windows_rect(fragment: str) -> Rect | None:
+        """Cherche une fenêtre visible dont le titre contient `fragment`."""
+        import ctypes
+        from ctypes import wintypes
 
-    def visit(handle: int, _param: int) -> bool:
-        if not user32.IsWindowVisible(handle):
-            return True
-        length = user32.GetWindowTextLengthW(handle)
-        if length <= 0:
-            return True
-        buffer = ctypes.create_unicode_buffer(length + 1)
-        user32.GetWindowTextW(handle, buffer, length + 1)
-        if fragment not in buffer.value.lower():
-            return True
-        rect = wintypes.RECT()
-        if not user32.GetClientRect(handle, ctypes.byref(rect)):
-            return True
-        origin = wintypes.POINT(0, 0)
-        user32.ClientToScreen(handle, ctypes.byref(origin))
-        width, height = rect.right - rect.left, rect.bottom - rect.top
-        if width > 0 and height > 0:
-            found.append(Rect(origin.x, origin.y, width, height))
-        return False  # Arrête l'énumération : la première fenêtre suffit.
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        found: list[Rect] = []
 
-    callback = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)(visit)
-    user32.EnumWindows(callback, 0)
-    return found[0] if found else None
+        def visit(handle: int, _param: int) -> bool:
+            if not user32.IsWindowVisible(handle):
+                return True
+            length = user32.GetWindowTextLengthW(handle)
+            if length <= 0:
+                return True
+            buffer = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(handle, buffer, length + 1)
+            if fragment not in buffer.value.lower():
+                return True
+            rect = wintypes.RECT()
+            if not user32.GetClientRect(handle, ctypes.byref(rect)):
+                return True
+            origin = wintypes.POINT(0, 0)
+            user32.ClientToScreen(handle, ctypes.byref(origin))
+            width, height = rect.right - rect.left, rect.bottom - rect.top
+            if width > 0 and height > 0:
+                found.append(Rect(origin.x, origin.y, width, height))
+            return False  # Arrête l'énumération : la première fenêtre suffit.
+
+        callback = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)(visit)
+        user32.EnumWindows(callback, 0)
+        return found[0] if found else None
+
+else:
+
+    def _windows_rect(fragment: str) -> Rect | None:
+        return None
 
 
 def find_game_window(fragments: tuple[str, ...] = TITLE_FRAGMENTS) -> Rect | None:
@@ -62,8 +75,9 @@ def find_game_window(fragments: tuple[str, ...] = TITLE_FRAGMENTS) -> Rect | Non
     l'image du jeu, donc aux coordonnées du bandeau. En plein écran sans
     bordure, les deux coïncident.
     """
-    if sys.platform != "win32":
-        return None
+    # Pas de test de plateforme ici : `_windows_rect` rend déjà `None` hors
+    # Windows. En ajouter un rendrait tout ce qui suit inatteignable aux yeux
+    # du vérificateur de types quand il vise Linux, et il le signale.
     for fragment in fragments:
         rect = _windows_rect(fragment.lower())
         if rect is not None:
