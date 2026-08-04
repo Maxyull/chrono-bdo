@@ -26,11 +26,43 @@ SEEN_ON_SCREEN = {
 }
 
 
+#: Textes rendus par la reconnaissance de caractères sur les captures, copiés
+#: tels quels, défauts compris. Ce ne sont pas les noms du jeu : ce sont les
+#: noms tels que le logiciel les recevra vraiment.
+READ_BY_OCR = {
+    # Accents perdus, et surtout virgule recollée au mot suivant.
+    "[Calpheon] Jeron,la tacticienne": QuestId(21136, 1),
+    # Nom rendu sur deux lignes par le bandeau, recollé avant résolution.
+    "[Calpheon] Cris stridents des harpies": QuestId(21136, 2),
+    # Accent conservé sur « desiré » mais perdu ailleurs : la reconnaissance
+    # n'est pas cohérente d'un mot à l'autre, la normalisation doit l'absorber.
+    "[Calpheon] Coup de main tant desiré": QuestId(21136, 3),
+}
+
+
 @pytest.mark.parametrize(("displayed", "expected"), SEEN_ON_SCREEN.items())
 def test_un_nom_lu_a_l_ecran_retombe_sur_la_bonne_quete(
     catalog: Catalog, displayed: str, expected: QuestId
 ) -> None:
     assert catalog.resolve(displayed) == expected
+
+
+@pytest.mark.parametrize(("read", "expected"), READ_BY_OCR.items())
+def test_un_nom_abime_par_l_ocr_retombe_sur_la_bonne_quete(
+    catalog: Catalog, read: str, expected: QuestId
+) -> None:
+    """Régression : « Jeron,la tacticienne » ne se résolvait pas.
+
+    La reconnaissance colle la virgule au mot suivant. La normalisation ne
+    traitait que les accents, la casse et les espaces, donc ce nom, pourtant lu
+    avec un score de 0,95, ne retombait sur aucune quête.
+
+    32 % des quêtes principales portent de la ponctuation dans leur nom, dont
+    3 % une virgule. Sans ce traitement, le chronomètre aurait perdu ces
+    mesures sans jamais dire pourquoi : un nom non résolu ne produit aucune
+    erreur, seulement un trou dans les données.
+    """
+    assert catalog.resolve(read) == expected
 
 
 @pytest.mark.parametrize("displayed", SEEN_ON_SCREEN)

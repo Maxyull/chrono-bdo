@@ -18,17 +18,38 @@ from .parsing import parse_payload
 
 
 def fold(text: str) -> str:
-    """Réduit un nom à une forme comparable : sans accents, sans casse.
+    """Réduit un nom à une forme comparable : sans accents, sans casse, sans ponctuation.
 
-    Provisoire, et volontairement minimal. La vraie normalisation vit dans le
-    noyau partagé avec butin, qui traite en plus la ligature « œ » et le bruit
-    propre à la reconnaissance de caractères. Ici, les noms viennent d'un
-    fichier JSON, pas d'un écran : il n'y a pas de bruit à absorber, seulement
-    des différences d'accent et de casse à ignorer.
+    Les noms du catalogue viennent d'un fichier JSON, mais ceux qu'on leur
+    compare viennent d'un écran, lus par reconnaissance de caractères. Les trois
+    différences que celle-ci introduit sont traitées ici :
+
+    - **les accents sautent**, « quête » se lit « quete » ;
+    - **la ponctuation se recolle**, « Jeron, la tacticienne » se lit
+      « Jeron,la tacticienne » ;
+    - **les espaces varient** en nombre.
+
+    La ponctuation devient un espace plutôt que rien : « Jeron,la » et
+    « Jeron, la » se rejoignent alors sur la même forme, ce que la suppression
+    pure ne garantirait pas.
+
+    Deux quêtes qui ne différeraient que par leur ponctuation deviennent
+    indiscernables. Le coût a été mesuré : 11 quêtes principales de plus
+    deviennent ambiguës, 716 au lieu de 705 sur 3 924. C'est assumé, parce que
+    `resolve` refuse les formes ambiguës : le pire cas est une mesure perdue,
+    jamais une mesure attribuée à tort. En face, 32 % des noms portent de la
+    ponctuation et seraient tous exposés au problème.
+
+    Reste provisoire. La normalisation complète vit dans le noyau partagé avec
+    butin, qui traite en plus la ligature « œ » et les confusions de caractères
+    propres à la reconnaissance.
     """
     decomposed = unicodedata.normalize("NFKD", text)
     without_marks = "".join(c for c in decomposed if not unicodedata.combining(c))
-    return " ".join(without_marks.casefold().split())
+    spaced = "".join(
+        " " if unicodedata.category(c).startswith("P") else c for c in without_marks
+    )
+    return " ".join(spaced.casefold().split())
 
 
 class Catalog:
