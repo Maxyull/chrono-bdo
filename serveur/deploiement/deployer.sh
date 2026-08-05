@@ -130,8 +130,8 @@ ProtectHome=true
 WantedBy=multi-user.target
 UNIT
 sudo systemctl daemon-reload
-sudo systemctl enable --quiet chrono
-sudo systemctl restart chrono
+sudo systemctl enable --quiet rubin
+sudo systemctl restart rubin
 
 echo "--- reverse proxy"
 sudo tee /etc/caddy/rubin.caddyfile >/dev/null <<CADDY
@@ -174,7 +174,7 @@ fi
 
 echo "--- vérification"
 sleep 2
-systemctl is-active chrono
+systemctl is-active rubin
 curl -fsS "http://127.0.0.1:${RUBIN_PORT}/sante" && echo
 DISTANT
 
