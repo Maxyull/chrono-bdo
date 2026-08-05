@@ -59,7 +59,7 @@ rubin = "rubin.__main__:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-rubin = ["py.typed", "capture/data/*.png"]
+rubin = ["py.typed", "capture/data/*.png", "interface/data/*.png"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
