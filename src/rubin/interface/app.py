@@ -41,6 +41,7 @@ from ..capture import (
     tracker_region,
 )
 from ..history import personal_best
+from ..notes import load_notes, save_note
 from ..placement import choose, conflicts
 from ..protocol import PlayerIdentity
 from ..reference import Catalog, Quest, QuestId
@@ -74,6 +75,7 @@ from .presentation import (
     format_lettred_quest,
     format_link,
     format_measure_line,
+    format_note_placeholder,
     format_other_quests,
     format_personal_best,
     format_quest_times,
@@ -215,6 +217,15 @@ class RubinApp:
         self._alphabet_quest_for_item: dict[str, Quest] = {}
         self._compteur_alphabet_liens = 0
 
+        #: Les notes du joueur, chargées une fois au démarrage et tenues à
+        #: jour à chaque écriture par `_save_note` : voir `notes.py`. Purement
+        #: locales, jamais envoyées au serveur.
+        self._notes = load_notes(self._home)
+        #: La quête à laquelle s'applique le champ de note affiché, ou `None`
+        #: tant qu'aucune quête n'est en cours. Même garde-fou de fraîcheur
+        #: que `_show_current_reference` : voir `_save_note`.
+        self._note_quest_id: QuestId | None = None
+
         self.root = tk.Tk()
         self.root.title("Rubin, chronomètre de quêtes")
         self.root.minsize(*WINDOW_SIZE)
@@ -343,6 +354,32 @@ class RubinApp:
             dedans, text="", style="Faible.TLabel", anchor="w", wraplength=400
         )
         self._surveillance.pack(fill="x", padx=12, pady=(0, 6))
+
+        # La note de la quête en cours : le monstre à tuer, l'instance, le
+        # choix pris à un carrefour, un mot ou un nombre à noter dans le chat.
+        # Demandé par Maxime le 05/08/2026 au soir. Purement locale, voir
+        # `notes.py` ; le champ n'est activé que le temps qu'une quête est en
+        # cours, sur le même garde-fou de fraîcheur que le record personnel.
+        ttk.Label(
+            dedans, text="NOTE DE QUÊTE", style="Section.TLabel", anchor="w"
+        ).pack(fill="x", padx=12, pady=(2, 3))
+        self._note_etat = ttk.Label(
+            dedans, text=format_note_placeholder(has_note=False),
+            style="Faible.TLabel", anchor="w", justify="left", wraplength=400,
+        )
+        self._note_etat.pack(fill="x", padx=12)
+        ligne_note = ttk.Frame(dedans)
+        ligne_note.pack(fill="x", padx=12, pady=(4, 10))
+        self._note_texte = tk.StringVar()
+        self._note_champ = ttk.Entry(
+            ligne_note, textvariable=self._note_texte, state="disabled"
+        )
+        self._note_champ.pack(side="left", fill="x", expand=True)
+        self._note_champ.bind("<Return>", self._save_note)
+        self._note_bouton = ttk.Button(
+            ligne_note, text="Enregistrer", command=self._save_note, state="disabled"
+        )
+        self._note_bouton.pack(side="left", padx=(6, 0))
 
         ttk.Label(
             dedans, text="QUÊTES FAITES", style="Section.TLabel", anchor="w"
@@ -1646,6 +1683,11 @@ class RubinApp:
             self._surveillance.config(text="")
             self._record_en_cours.config(text="")
             self._record_personnel.config(text="")
+            self._note_quest_id = None
+            self._note_texte.set("")
+            self._note_etat.config(text=format_note_placeholder(has_note=False))
+            self._note_champ.config(state="disabled")
+            self._note_bouton.config(state="disabled")
         self._lock_zone_controls(running)
 
     def _over_zones_tab(self, x: int, y: int) -> bool:
@@ -1933,6 +1975,36 @@ class RubinApp:
             return
         self._record_en_cours.config(text=format_current_reference(reference))
         self._record_personnel.config(text=format_personal_best(record))
+        self._show_note(quest_id)
+
+    def _show_note(self, quest_id: QuestId) -> None:
+        """Ouvre le champ de note sur la quête en cours, avec sa note existante.
+
+        Purement local (`self._notes`, chargé une fois au démarrage) : pas de
+        fil à part, contrairement au reste de `_show_current_reference`, qui
+        interroge le réseau.
+        """
+        self._note_quest_id = quest_id
+        note = self._notes.get(quest_id, "")
+        self._note_texte.set(note)
+        self._note_etat.config(text=format_note_placeholder(has_note=bool(note)))
+        self._note_champ.config(state="normal")
+        self._note_bouton.config(state="normal")
+
+    def _save_note(self, _event: object = None) -> None:
+        """Enregistre le contenu du champ comme note de la quête en cours.
+
+        `_note_quest_id` peut avoir été mis à jour par une quête suivante
+        pendant que le joueur tapait : ce n'est pas un risque à couvrir comme
+        `_show_current_reference` couvre le sien, c'est le comportement
+        voulu, le champ note toujours la quête qu'il affiche à l'instant du
+        clic.
+        """
+        if self._note_quest_id is None:
+            return
+        self._notes = save_note(self._home, self._note_quest_id, self._note_texte.get())
+        note = self._notes.get(self._note_quest_id, "")
+        self._note_etat.config(text=format_note_placeholder(has_note=bool(note)))
 
     def _show_coverage(self, parts: tuple[str, str, str] | None) -> None:
         """Affiche « 0 verte, 11 orange, 3 913 jamais mesurées », ou son absence.

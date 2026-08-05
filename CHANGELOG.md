@@ -7,6 +7,19 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+### Ajouté
+
+- **Une note personnelle par quête, dans l'onglet Session.** Demandé par
+  Maxime le 05/08/2026 au soir : de quoi noter le monstre à tuer, l'instance
+  à faire, le choix pris à un carrefour, ou un mot ou un nombre relevé dans
+  le chat du jeu, pour la prochaine fois qu'on refait cette quête, sur un
+  autre personnage ou après l'avoir oublié.
+
+  Purement locale (`notes.py`), sur le modèle du record personnel : rien
+  n'est envoyé au serveur, qui n'a par conception aucune notion de note. Le
+  champ ne s'active que le temps qu'une quête est en cours, et se vide entre
+  deux, comme le meilleur temps connu et le record personnel juste au-dessus.
+
 ## [0.5.4] - 2026-08-05
 
 ### Corrigé

@@ -413,6 +413,22 @@ def format_personal_best(seconds: float | None) -> str:
     return f"ton meilleur temps : {format_duration(seconds)}"
 
 
+def format_note_placeholder(has_note: bool) -> str:
+    """Le texte d'aide au-dessus du champ de note, selon qu'une note existe déjà.
+
+    Deux formulations et non une seule : « écris une note » sur une quête
+    jamais notée invite au premier geste, quand « note enregistrée » sur une
+    quête déjà notée confirme qu'il y a quelque chose à relire, avant même
+    d'avoir regardé le champ lui-même.
+    """
+    return (
+        "note enregistrée pour cette quête, modifiable ci-dessous"
+        if has_note
+        else "aucune note pour cette quête : le monstre à tuer, l'instance, "
+        "le choix pris, un mot ou un nombre à noter"
+    )
+
+
 def format_upcoming_line(item: UpcomingQuest) -> str:
     """Une ligne de la liste des quêtes à venir."""
     marque = "   (branche d'un choix)" if item.is_crossroad else ""
