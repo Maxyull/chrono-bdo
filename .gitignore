@@ -30,3 +30,7 @@ serveur/.venv/
 
 # Base de démonstration du serveur.
 serveur/demo.db
+
+# Empaquetage.
+build/
+dist/
