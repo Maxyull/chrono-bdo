@@ -14,6 +14,26 @@ Le bouton dit aussi quelque chose d'utile au logiciel : « je commence les
 quêtes ». Une session ouverte pendant qu'on est au marché mesurerait des
 attentes, pas des quêtes.
 
+## Les sous-chronos ne quittent jamais ce poste
+
+Un bandeau « Objectif de quête accompli » ne borne aucune durée de quête, mais
+il borne bien quelque chose : le temps passé sur un objectif. Une quête de cinq
+minutes dont quatre sont du trajet n'est pas une quête de cinq minutes de
+combat, et seul ce découpage le dit.
+
+⚠️ **Ces temps ne sont PAS envoyés au serveur**, et c'est délibéré. Un bandeau
+d'objectif raté ne produit pas un trou : il **fusionne deux segments en un**, et
+donne un temps trop long qui a toutes les apparences d'une vraie mesure. Là où
+une quête ratée donne un chiffre incomplet, un objectif raté donne un chiffre
+faux, qui entrerait dans les médianes et n'en ressortirait jamais.
+
+Ils sont donc affichés au joueur, qui voit sa propre partie et peut juger, et
+ils s'arrêtent là. Ils vivent entièrement dans cette couche : ni le journal
+d'événements, ni le lot envoyé ne les connaissent, ce qui rend la fuite
+impossible par construction plutôt que par vigilance.
+
+Le jour où l'on saura détecter un objectif manqué, ils pourront monter.
+
 ## Le fil ne touche jamais à l'affichage
 
 Il dépose dans une file que la boucle de Tk vide depuis le bon fil. Un appel
@@ -34,7 +54,7 @@ from ..capture import ScreenCapture, banner_region, find_game_window
 from ..deferred import DeferredWatcher
 from ..failures import FailureStore
 from ..protocol import PlayerIdentity, build_session
-from ..reading import RapidOcrReader
+from ..reading import BannerKind, RapidOcrReader
 from ..reference import Catalog
 from ..reference.source import catalog_date
 from ..references import ReferenceClient
@@ -131,6 +151,11 @@ class MeasuringSession:
         self._publish("demarre", True)
         début = time.monotonic()
         dernière: tuple[int | None, int | None] = (None, None)
+        # Sous-chronos : instant du dernier jalon de la quête en cours, et
+        # numéro de l'objectif franchi. Remis à zéro à chaque quête
+        # acceptée, effacés à chaque quête accomplie.
+        jalon: float | None = None
+        objectif = 0
 
         try:
             reader = RapidOcrReader()
@@ -157,6 +182,22 @@ class MeasuringSession:
                             # distingue pas « je ne vois rien » de « je vois,
                             # ça ne se mesure pas ».
                             self._publish("vu", (reading, langue))
+
+                            # Sous-chronos. Ils vivent ENTIÈREMENT ici, dans la
+                            # couche d'affichage : ils n'entrent ni dans le
+                            # journal d'événements, ni dans le lot envoyé. Voir
+                            # l'en-tête du module pour la raison.
+                            if reading.kind is BannerKind.ACCEPTED:
+                                jalon, objectif = at, 0
+                            elif reading.kind is BannerKind.COMPLETED:
+                                jalon = None
+                            elif reading.kind is BannerKind.OBJECTIVE_DONE and jalon:
+                                objectif += 1
+                                self._publish(
+                                    "sous_chrono",
+                                    (reading.quest_name, objectif, at - jalon),
+                                )
+                                jalon = at
                             if mesure is not None:
                                 self._publish("mesure", (mesure, langue))
                             ici = (timeline.current_chain, timeline.current_position)
