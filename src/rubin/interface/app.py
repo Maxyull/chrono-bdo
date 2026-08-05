@@ -35,6 +35,7 @@ from ..references import ReferenceClient
 from ..settings import LANGUAGES, LIMITS, load, save
 from ..timing import Quality
 from ..upcoming import upcoming
+from .picker import ZonePicker
 from .presentation import (
     ZoneState,
     describe_conflict,
@@ -239,6 +240,13 @@ class RubinApp:
             side="left", padx=8
         )
 
+        tracer = ttk.Frame(self._zones)
+        tracer.pack(fill="x", padx=12, pady=(0, 4))
+        for clé, libellé in (("banner", "Tracer le bandeau"), ("tracker", "Tracer le suivi")):
+            ttk.Button(
+                tracer, text=libellé, command=self._pick(clé)
+            ).pack(side="left", padx=(0, 8))
+
         self._avertissement = ttk.Label(
             self._zones, text="", style="Alerte.TLabel", anchor="w", justify="left", wraplength=400
         )
@@ -423,6 +431,42 @@ class RubinApp:
         composant.delete("1.0", "end")
         composant.insert("1.0", describe_reading(état))
         composant.config(state="disabled")
+
+    def _pick(self, which: str) -> Callable[[], None]:
+        """Ouvre le tracé de zone, sur une photographie du jeu.
+
+        Une fabrique et non une lambda : les deux boutons naissent d'une boucle,
+        et une lambda y capturerait la variable, donc la même zone pour les deux.
+        """
+
+        def ouvrir() -> None:
+            fenêtre = find_game_window()
+            if fenêtre is None:
+                self._avertissement.config(text="jeu introuvable, impossible de tracer")
+                return
+            titre = "Bandeau de quête" if which == "banner" else "Panneau de suivi"
+            ZonePicker(self.root, fenêtre, titre, self._zone_chosen(which))
+
+        return ouvrir
+
+    def _zone_chosen(self, which: str) -> Callable[[Rect], None]:
+        def retenir(zone: Rect) -> None:
+            # Deux branches explicites plutôt qu'un nom de champ calculé :
+            # le vérificateur de types ne sait rien d'une clé construite à
+            # l'exécution, et une faute de frappe y passerait inaperçue
+            # jusqu'au moment où le réglage ne s'enregistre pas.
+            if which == "banner":
+                self._settings = replace(self._settings, banner=zone)
+            else:
+                self._settings = replace(self._settings, tracker=zone)
+            save(self._settings, self._home)
+            self.refresh_zones()
+            # Lire tout de suite : le seul moyen de savoir si le tracé est bon
+            # est de voir ce qu'on en tire, et l'attente d'une session entière
+            # est précisément ce qu'on cherche à supprimer.
+            self.read_zones_now()
+
+        return retenir
 
     def reset_zones(self) -> None:
         """Oublie les zones choisies, et revient au calcul qui suit la fenêtre."""
