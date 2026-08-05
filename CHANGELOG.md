@@ -7,6 +7,8 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+## [0.5.6] - 2026-08-06
+
 ### Ajouté
 
 - **Un installateur Windows, avec mise à jour en un clic depuis la fenêtre.**
@@ -44,6 +46,10 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
   jamais un tri alphabétique qui mélangerait le début et la fin d'une même
   histoire. Les 349 chaînes elles-mêmes sont triées par nom, faute d'un ordre
   de scénario dans le référentiel.
+
+- **La fenêtre par défaut est plus grande**, 700 à 820 de haut. Signalé par
+  Maxime le 06/08/2026 : même avec le défilement, elle montrait trop peu à la
+  fois.
 
 ## [0.5.5] - 2026-08-06
 
