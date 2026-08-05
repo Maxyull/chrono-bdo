@@ -5,12 +5,15 @@ versionnage [SemVer](https://semver.org/lang/fr/). Les règles propres au projet
 notamment les trois versions qui évoluent séparément, sont expliquées dans
 [docs/versionnage.md](docs/versionnage.md).
 
-## [Non publié] — sortira en 0.4.0
+## [Non publié]
 
-Le numéro est déjà posé dans le code et dans les métadonnées du binaire, parce
-qu'ils doivent bouger ensemble et qu'il vaut mieux le faire une fois. **La
-version n'est pas publiée pour autant** : cette section reste ouverte, et sera
-datée le jour de la release.
+Rien pour l'instant.
+
+## [0.4.0] - 2026-08-05
+
+La première version qu'on peut mettre entre les mains d'un testeur : elle ne
+peut plus se tromper de fenêtre, ni échouer en silence, ni laisser quelqu'un
+devant un « aucune quête mesurée » sans explication.
 
 ### Ajouté
 
