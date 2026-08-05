@@ -693,6 +693,8 @@ class RubinApp:
             self._add_measure(*charge)
         elif genre == "vu":
             self._show_seen(*charge)
+        elif genre == "sans_chaine":
+            self._show_no_chain(str(charge))
         elif genre == "position":
             self._show_upcoming(*charge)
 
@@ -745,6 +747,32 @@ class RubinApp:
         self._faites.insert("2.0", "")
         self._faites.config(state="disabled")
         self._faites.see("1.0")
+
+    def _show_no_chain(self, name: str) -> None:
+        """Explique une liste vide au lieu de la laisser muette.
+
+        Constaté en jouant : la fenêtre affichait « Les fanatiques » en titre et
+        une liste vide dessous. Le nom avait bien été lu, mais il ne s'était
+        résolu en aucune quête connue, donc la chaîne était inconnue, donc il
+        n'y avait pas de suite à montrer.
+
+        Une liste vide et muette se lit comme « il n'y a rien après ». La vraie
+        réponse est « je ne sais pas où tu es », ce qui est très différent et
+        indique quoi regarder : le nom lu, et le référentiel.
+        """
+        self._liste.config(state="normal")
+        self._liste.delete("1.0", "end")
+        self._liste.insert(
+            "1.0",
+            f"« {name} » n'a pas été retrouvée au référentiel, "
+            "donc la chaîne est inconnue et la suite ne peut pas être "
+            "affichée.\n\n"
+            "Ce n'est pas forcément une panne : les quêtes hors "
+            "« Principales » ne sont pas mesurées, et le nom peut avoir "
+            "été mal lu. L'onglet Zones montre ce qui est lu à l'instant.",
+            "faible",
+        )
+        self._liste.config(state="disabled")
 
     def _show_upcoming(self, chain: int, position: int, references: Any) -> None:
         """Réaffiche la liste des quêtes à venir, avec leur score."""

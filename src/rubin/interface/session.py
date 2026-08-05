@@ -160,7 +160,15 @@ class MeasuringSession:
                             if mesure is not None:
                                 self._publish("mesure", (mesure, langue))
                             ici = (timeline.current_chain, timeline.current_position)
-                            if ici != dernière and ici[0] is not None:
+                            if ici[0] is None:
+                                # Le nom a été lu mais ne s'est résolu en aucune
+                                # quête connue, donc la chaîne est inconnue et
+                                # il n'y a pas de suite à montrer. Le DIRE :
+                                # une liste vide et muette se lit comme « il n'y
+                                # a rien après », alors que la vraie réponse est
+                                # « je ne sais pas où tu es ».
+                                self._publish("sans_chaine", reading.quest_name)
+                            elif ici != dernière:
                                 self._publish("position", (ici[0], ici[1], references))
                                 dernière = ici
                             self._publish(
