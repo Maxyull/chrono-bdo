@@ -9,6 +9,36 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ### Ajouté
 
+- **Une fenêtre, `rubin fenetre`.** Trois onglets. **Session** dit où l'on en
+  est et ce qui vient. **Zones** montre les deux rectangles que Rubin lit *et ce
+  qu'il y lit à l'instant*. **Réglages** porte les curseurs, la langue du client
+  de jeu et l'opacité.
+
+  L'onglet des zones est celui qui manquait le plus. Trois des défauts de ce
+  projet ont coûté une séance chacun, faute de pouvoir répondre à « qu'est-ce
+  que tu lis, là, tout de suite ». Il y répond en une seconde et demie.
+
+- **Les zones de lecture et les seuils sont réglables**, enregistrés dans
+  `reglages.json`, en français et modifiable au bloc-notes. Ce qui autorise à
+  donner ces boutons : un réglage faux produit une mesure **manquante**, jamais
+  une mesure fausse. Une zone mal placée capture du décor, où l'analyse ne
+  trouve aucun titre connu ; un seuil mal réglé rate des bandeaux ou en propose
+  que l'analyse refuse. On perd des mesures, on n'en invente aucune.
+
+- **La fenêtre refuse de se poser sur ce qu'elle lit.** Rubin lit une capture
+  d'écran, donc une fenêtre posée sur une zone de lecture est lue à la place de
+  cette zone. Elle se place d'elle-même à côté du panneau de quêtes, et prévient
+  quand on l'y déplace. ⚠️ La transparence n'y change rien, c'est le mélange des
+  deux qui est capturé.
+
+  Ce n'est **pas une surcouche**. Rien n'est injecté dans le jeu, aucune
+  fonction graphique n'est accrochée : c'est une fenêtre Windows ordinaire. La
+  limite du projet vise l'injection, et elle tient.
+
+  Tk, de la bibliothèque standard, **n'ajoute aucun octet** à l'exécutable, là
+  où Qt en aurait ajouté cent cinquante pour cinq curseurs et une liste.
+
+
 - **Un robot Discord de consultation**, dans le nouveau dossier `bot/`, avec son
   propre `pyproject.toml` et son propre environnement, sur le modèle de
   `serveur/`. Trois commandes, toutes en lecture : `/rapides` pour les chaînes

@@ -505,6 +505,33 @@ def _finish_session(timeline: Timeline, args: argparse.Namespace) -> None:
         print(f"envoi impossible, le lot est conservé — {result.detail}", file=sys.stderr)
 
 
+def command_interface(args: argparse.Namespace) -> int:
+    """Ouvre la fenêtre de Rubin.
+
+    Séparée de `suivre` et non substituée à elle : la ligne de commande reste le
+    moyen de mesurer sur une machine sans interface graphique, et elle est aussi
+    ce qui permet de rendre compte d'un défaut en collant du texte plutôt qu'une
+    capture d'écran.
+    """
+    try:
+        from .interface.app import RubinApp
+    except ImportError as error:  # pragma: pas de couverture
+        # Tk est dans la bibliothèque standard, mais certaines installations
+        # Linux le livrent à part. Le dire plutôt que de montrer une trace.
+        print(f"interface graphique indisponible : {error}", file=sys.stderr)
+        print("« rubin suivre » fonctionne sans elle.", file=sys.stderr)
+        return 1
+
+    try:
+        catalogue = _load_catalog((args.language,))
+    except Exception as error:  # message lisible plutôt qu'une trace
+        print(f"référentiel indisponible : {error}", file=sys.stderr)
+        return 1
+
+    RubinApp(_home(), catalog=catalogue).run()
+    return 0
+
+
 def command_failures(args: argparse.Namespace) -> int:
     """Montre les lectures ratées, et en fabrique une archive sur demande.
 
@@ -700,6 +727,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="nombre de quêtes à venir affichées après chaque mesure, 0 pour aucune",
     )
     watch.set_defaults(handler=command_watch)
+
+    fenetre = subparsers.add_parser("fenetre", help="ouvre l'interface graphique")
+    fenetre.add_argument(
+        "--langue", dest="language", default="fr", choices=("fr", "en"), help="langue du client"
+    )
+    fenetre.set_defaults(handler=command_interface)
 
     failures = subparsers.add_parser("echecs", help="montre les lectures ratées et les archive")
     failures.add_argument(

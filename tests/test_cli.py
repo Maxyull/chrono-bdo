@@ -57,6 +57,17 @@ class TestParser:
     def test_suivre_accepte_de_n_en_montrer_aucune(self) -> None:
         assert build_parser().parse_args(["suivre", "--suivantes", "0"]).upcoming == 0
 
+    def test_connait_la_commande_fenetre(self) -> None:
+        args = build_parser().parse_args(["fenetre"])
+        assert args.handler is not None
+        assert args.language == "fr"
+
+    def test_la_fenetre_accepte_le_client_anglais(self) -> None:
+        # La ligne de commande reste disponible sans interface graphique : elle
+        # sert sur une machine qui n'en a pas, et elle permet de rendre compte
+        # d'un défaut en collant du texte plutôt qu'une capture d'écran.
+        assert build_parser().parse_args(["fenetre", "--langue", "en"]).language == "en"
+
     def test_echecs_vise_github_par_defaut(self) -> None:
         # La destination la plus contrainte, mais la seule où le fichier reste
         # attaché au rapport qui le décrit.
