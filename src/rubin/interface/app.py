@@ -1056,10 +1056,18 @@ class RubinApp:
         utiles. Le fil ne touche à aucun composant : il passe par la file, comme
         le moteur de mesure.
 
-        Une seule fois par lancement, et c'est assumé : rien ne peut bouger
-        pendant la session, puisque les mesures ne partent qu'à son arrêt. Les
-        compteurs montrent donc l'état au démarrage, et la contribution du jour
-        se voit au lancement suivant.
+        Appelée au lancement, puis à nouveau après chaque quête mesurée, voir
+        `_add_measure`.
+
+        ⚠️ Ce commentaire a longtemps affirmé l'inverse, « une seule fois par
+        lancement, rien ne peut bouger pendant la session, puisque les mesures
+        ne partent qu'à son arrêt ». C'était vrai avant #59, qui écrit et
+        envoie chaque mesure au fil de l'eau : depuis, ça bouge à chaque quête
+        finie, et les compteurs restaient figés sur l'état du lancement pendant
+        qu'une vraie session tournait à côté. Vu en jouant le 5 août 2026 au
+        soir : la couverture affichait toujours 21 quêtes peu mesurées après
+        deux mesures envoyées avec succès, quand le serveur, lui, en comptait
+        déjà 28.
 
         L'ordre n'est pas indifférent : le témoin de connexion part en premier,
         parce que c'est lui qui explique les silences des deux autres.
@@ -1577,6 +1585,10 @@ class RubinApp:
             self._faites.tag_bind(tag_lien, "<Button-1>", self._go_to_ranking(quest))
         self._faites.config(state="disabled")
         self._faites.see("1.0")
+        # La couverture, le classement et le témoin de serveur datent tous du
+        # lancement, sinon : voir l'en-tête de `_ask_server`, corrigée le
+        # 5 août 2026 au soir sur le même défaut.
+        self._ask_server()
 
     def _add_split(self, quest_name: str, index: int, seconds: float) -> None:
         """Affiche le temps d'un objectif franchi.
