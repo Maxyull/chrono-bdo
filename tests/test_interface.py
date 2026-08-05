@@ -17,6 +17,7 @@ from rubin.interface import (
     FRAGILE_BELOW,
     LINK_TAGS,
     RANKING_UNAVAILABLE,
+    Watching,
     ZoneState,
     demo_active,
     demo_ranking,
@@ -34,6 +35,7 @@ from rubin.interface import (
     format_running,
     format_search_result,
     format_upcoming_line,
+    format_watching,
     main_quest_total,
     other_quest_total,
     quest_display_name,
@@ -894,3 +896,81 @@ class TestRechercheDeQuete:
             quête, QuestReference(median_seconds=97.5, samples=1, fastest_seconds=97.5)
         )
         assert "peu sûr" in texte
+
+
+class TestSurveillanceVisible:
+    """Ce que la boucle de mesure voit, rendu lisible pendant qu'elle tourne.
+
+    `BannerWatcher` comptait déjà ces nombres et personne ne les regardait.
+    Toute la valeur est dans le cas où il ne se passe rien : une session qui
+    mesure se raconte toute seule dans la liste des quêtes faites, une session
+    qui ne mesure pas n'avait, elle, aucun mot pour se décrire.
+    """
+
+    def test_donne_les_trois_etages_de_la_chaine_dans_l_ordre(self) -> None:
+        texte = format_watching(
+            Watching(frames=1368, banners_seen=154, reads=7, elapsed=180.0, since_banner=2.0)
+        )
+
+        # L'ordre suit la chaîne : capturer, voir, lire. Le premier nombre resté
+        # à zéro désigne l'étage en panne, et c'est tout l'intérêt de la ligne.
+        assert texte.index("images") < texte.index("bandeaux vus") < texte.index("lectures")
+        assert "1 368 images" in texte
+        assert "154 bandeaux vus" in texte
+        assert "7 lectures" in texte
+
+    def test_une_session_qui_demarre_ne_crie_pas_encore(self) -> None:
+        # Zéro bandeau au bout de dix secondes est le cas normal : le joueur
+        # vient d'appuyer sur Démarrer. Un avertissement ici serait du bruit,
+        # et un avertissement permanent n'avertit plus de rien.
+        texte = format_watching(Watching(frames=80, banners_seen=0, reads=0, elapsed=10.0))
+
+        assert "aucun bandeau" not in texte
+        assert "80 images" in texte
+
+    def test_le_silence_prolonge_est_dit_avec_sa_duree(self) -> None:
+        texte = format_watching(Watching(frames=7200, banners_seen=0, reads=0, elapsed=900.0))
+
+        assert "aucun bandeau depuis 15 min 00 s" in texte
+
+    def test_les_images_perdues_sont_signalees_a_part(self) -> None:
+        # Un débordement veut dire que la lecture ne suit plus la capture, donc
+        # que des bandeaux réels ont été jetés. Ça ne se confond pas avec un
+        # écran où rien n'apparaît, et ça ne doit pas se taire.
+        texte = format_watching(
+            Watching(frames=900, banners_seen=40, reads=12, overflowed=3, elapsed=60.0)
+        )
+
+        assert "3 images perdues" in texte
+
+    def test_rien_a_afficher_hors_session(self) -> None:
+        assert format_watching(None) == ""
+
+    def test_regression_la_fenetre_disait_mesure_en_cours_sans_rien_mesurer(self) -> None:
+        """Régression : session du 5 août 2026, 16 h 06, quinze minutes muettes.
+
+        Le cas réel, mesuré des deux côtés. La fenêtre affichait « mesure en
+        cours, zone 349x115 », le journal de session ne contenait que son
+        en-tête, et le jeu tournait bien : un guet lancé à côté a vu quarante
+        bandeaux au-dessus du seuil sur la même zone, dont une paire complète,
+        « [Mediah] Intentions inconnues » acceptée à 16 h 08 min 47 s puis
+        accomplie à 16 h 09 min 50 s.
+
+        Rien dans l'interface ne permettait de choisir entre les quatre causes
+        possibles, et il a fallu écrire cinq programmes de diagnostic hors du
+        logiciel pour seulement savoir où chercher. Avec cette ligne, le premier
+        nombre resté à zéro l'aurait dit en une seconde.
+
+        Le `since_banner` à `None` est le cœur du cas : aucun bandeau n'a JAMAIS
+        été vu, ce qui ne se confond pas avec « vu il y a zéro seconde ». C'est
+        `elapsed` qui porte alors le jugement.
+        """
+        texte = format_watching(
+            Watching(frames=7128, banners_seen=0, reads=0, elapsed=891.0, since_banner=None)
+        )
+
+        assert "0 bandeaux vus" in texte
+        assert "aucun bandeau depuis" in texte
+        # Et surtout : la ligne ne peut pas être vide, sans quoi on retombe
+        # exactement sur le silence qu'elle existe pour rompre.
+        assert texte

@@ -71,6 +71,7 @@ from .presentation import (
     format_running,
     format_search_result,
     format_upcoming_line,
+    format_watching,
     main_quest_total,
     other_quest_total,
     ranking_message,
@@ -261,7 +262,17 @@ class RubinApp:
         self._etat = ttk.Label(
             self._session, text="", style="Faible.TLabel", anchor="w", wraplength=400
         )
-        self._etat.pack(fill="x", padx=12, pady=(0, 6))
+        self._etat.pack(fill="x", padx=12, pady=(0, 2))
+
+        # Ce que la surveillance voit, rafraîchi à chaque tour de la boucle de
+        # mesure. Juste sous l'état, parce que les deux se lisent ensemble :
+        # « mesure en cours » dit ce que le logiciel CROIT faire, cette
+        # ligne-ci dit ce qu'il voit RÉELLEMENT. Le 5 août 2026, les deux se
+        # contredisaient pendant quinze minutes et rien ne le montrait.
+        self._surveillance = ttk.Label(
+            self._session, text="", style="Faible.TLabel", anchor="w", wraplength=400
+        )
+        self._surveillance.pack(fill="x", padx=12, pady=(0, 6))
 
         ttk.Label(
             self._session, text="QUÊTES FAITES", style="Section.TLabel", anchor="w"
@@ -1191,6 +1202,8 @@ class RubinApp:
             self._etat.config(text=str(charge))
         elif genre == "demarre":
             self._set_running(bool(charge))
+        elif genre == "surveillance":
+            self._surveillance.config(text=format_watching(charge))
         elif genre == "progres":
             self._show_progress(charge)
         elif genre == "mesure":
@@ -1231,6 +1244,20 @@ class RubinApp:
             text="Arrêter" if running else "Je commence mes quêtes",
             style="TButton" if running else "Accent.TButton",
         )
+        # ⚠️ Le titre doit suivre, sans quoi la fenêtre se contredit. Le 5 août
+        # 2026, elle a affiché « En attente du jeu / lancez Black Desert, puis
+        # jouez » **pendant que la session mesurait**, jeu lancé et trouvé. Ces
+        # deux phrases sont le texte de départ des composants, qu'aucune quête
+        # lue n'était encore venue remplacer, mais elles se lisent comme un
+        # diagnostic. Cherchant pourquoi rien n'était mesuré, j'ai perdu du
+        # temps sur une piste que la fenêtre elle-même désignait à tort.
+        if running:
+            self._titre.config(text="Aucun bandeau lu pour l'instant")
+            self._sous_titre.config(text="acceptez ou terminez une quête")
+        else:
+            self._titre.config(text="En attente du jeu")
+            self._sous_titre.config(text="lancez Black Desert, puis jouez")
+            self._surveillance.config(text="")
 
     def _show_progress(self, progress: Any) -> None:
         morceaux = [f"{progress.measured} mesurées"]

@@ -83,6 +83,7 @@ from ..upload import (
     send_session,
 )
 from ..watching import BannerWatcher
+from .presentation import Watching
 
 #: Âge minimal d'un journal pour être tenu pour orphelin, en secondes.
 #: Voir `orphan_journals` : un journal écrit à l'instant est peut-être celui
@@ -192,6 +193,11 @@ class MeasuringSession:
         # acceptée, effacés à chaque quête accomplie.
         jalon: float | None = None
         objectif = 0
+        # Surveillance : combien de bandeaux avaient été vus au tour précédent,
+        # et quand le compte a bougé pour la dernière fois. `None` tant qu'aucun
+        # n'a jamais été vu, ce qui ne veut pas dire « il y a zéro seconde ».
+        derniers_bandeaux = 0
+        dernier_bandeau: float | None = None
 
         try:
             reader = RapidOcrReader()
@@ -280,6 +286,31 @@ class MeasuringSession:
                                     elapsed=time.monotonic() - début,
                                 ),
                             )
+                        # Ce que la surveillance voit, à chaque tour de boucle,
+                        # qu'il se soit passé quelque chose ou non. **Surtout
+                        # quand il ne s'est rien passé** : c'est le silence qui
+                        # a besoin d'être décrit, pas l'activité, qui se voit
+                        # déjà dans la liste des quêtes faites.
+                        vus = watcher.stats.banners_seen
+                        if vus != derniers_bandeaux:
+                            dernier_bandeau = time.monotonic()
+                            derniers_bandeaux = vus
+                        self._publish(
+                            "surveillance",
+                            Watching(
+                                frames=watcher.stats.frames,
+                                banners_seen=vus,
+                                reads=watcher.stats.reads,
+                                failed=deferred.failed,
+                                overflowed=deferred.overflowed,
+                                elapsed=time.monotonic() - début,
+                                since_banner=(
+                                    None
+                                    if dernier_bandeau is None
+                                    else time.monotonic() - dernier_bandeau
+                                ),
+                            ),
+                        )
                         if self._stop.is_set():
                             break
         except Exception as erreur:  # pragma: pas de couverture

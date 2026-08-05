@@ -97,6 +97,83 @@ def format_running(seconds: float | None) -> str:
     return f"chronomètre : {format_duration(seconds)}"
 
 
+#: Au-delà de ce silence, la ligne de surveillance devient un avertissement.
+#:
+#: Quarante-cinq secondes, parce que c'est le temps qu'il faut pour douter sans
+#: que ce soit encore anormal : une quête courante dure une à deux minutes, donc
+#: aucun bandeau pendant quarante-cinq secondes arrive tous les jours. Le seuil
+#: ne sert pas à accuser, il sert à ce que le joueur qui SE DEMANDE si ça marche
+#: trouve la réponse à l'écran au lieu de la chercher une heure plus tard dans
+#: un lot vide.
+SILENCE_WARNING: Final = 45.0
+
+
+@dataclass(frozen=True)
+class Watching:
+    """Ce que la surveillance a fait depuis le début de la session.
+
+    Les quatre premiers nombres viennent de `BannerWatcher.stats` et de
+    `DeferredWatcher`, qui les comptaient déjà. Ils ne sont pas nouveaux, ils
+    étaient seulement invisibles.
+
+    `since_banner` vaut `None` tant qu'aucun bandeau n'a jamais été vu, ce qui
+    ne se confond pas avec zéro seconde : `elapsed` porte alors la durée de la
+    session, seul chiffre qui permette de juger si ce silence est normal.
+    """
+
+    frames: int = 0
+    banners_seen: int = 0
+    reads: int = 0
+    failed: int = 0
+    overflowed: int = 0
+    #: Durée de la session, en secondes.
+    elapsed: float = 0.0
+    #: Secondes depuis le dernier bandeau vu, ou `None` s'il n'y en a jamais eu.
+    since_banner: float | None = None
+
+
+def format_watching(watching: Watching | None) -> str:
+    """Ce que la surveillance a vu, en une ligne, pour rendre son silence lisible.
+
+    **C'est la ligne qui manquait le 5 août 2026**, et son absence a coûté une
+    séance entière. La fenêtre affichait « mesure en cours, zone 349x115 »
+    pendant quinze minutes sans mesurer une seule quête, et rien, nulle part,
+    ne permettait de distinguer les quatre causes possibles : la capture ne
+    tourne plus, elle tourne sur une zone qui ne contient pas le bandeau, elle
+    voit le bandeau mais refuse de le lire, ou elle le lit sans rien en tirer.
+    Il a fallu écrire cinq programmes de diagnostic hors du logiciel pour
+    trancher, alors que `BannerWatcher.stats` comptait déjà exactement ces
+    quatre nombres et les jetait.
+
+    L'ordre des nombres suit la chaîne, et c'est ce qui rend la ligne
+    diagnostique : le premier qui reste à zéro désigne l'étage en panne.
+
+    Le temps depuis le dernier bandeau est là pour la même raison que le
+    chronomètre en direct : « 0 bandeau » sur une session de dix secondes est
+    normal, sur une session de dix minutes c'est la panne elle-même.
+    """
+    if watching is None:
+        return ""
+    morceaux = [
+        f"{_grouped(watching.frames)} images",
+        f"{_grouped(watching.banners_seen)} bandeaux vus",
+        f"{_grouped(watching.reads)} lectures",
+    ]
+    if watching.failed:
+        morceaux.append(f"{_grouped(watching.failed)} sans résultat")
+    if watching.overflowed:
+        # Jamais normal : la lecture ne suit plus la capture. Le dire plutôt que
+        # de laisser croire à des bandeaux jamais apparus.
+        morceaux.append(f"⚠ {_grouped(watching.overflowed)} images perdues")
+    ligne = ", ".join(morceaux)
+    if watching.banners_seen == 0 and watching.elapsed >= SILENCE_WARNING:
+        # Le seul cas où la ligne devient un avertissement. Voir la constante.
+        return f"{ligne} — aucun bandeau depuis {format_duration(watching.elapsed)}"
+    if watching.since_banner is not None and watching.since_banner >= SILENCE_WARNING:
+        return f"{ligne} — dernier bandeau il y a {format_duration(watching.since_banner)}"
+    return ligne
+
+
 def _grouped(number: int) -> str:
     """Un nombre avec son séparateur de milliers, « 3 913 » et pas « 3913 ».
 
