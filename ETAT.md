@@ -23,9 +23,9 @@ les temps de référence des autres. La chaîne complète tient debout.
 | Liste des quêtes suivantes | ✅ trous et branches signalés |
 | Serveur, classement, envoi | ✅ **en ligne** |
 | Exécutable Windows | ✅ **v0.5.4 publiée**, la fenêtre est dedans, double-clic suffit |
-| Vérification de version | ⚠️ le serveur annonce encore **0.4.0** (`RUBIN_LATEST` pas mis à jour depuis, voir plus bas) |
+| Vérification de version | ✅ le serveur annonce **0.5.4** (corrigé le 05/08/2026 au soir, voir plus bas) |
 | Rétention des lectures ratées | ✅ local, envoi manuel, **et image gardée à l'aveugle après deux minutes de silence** |
-| Interface graphique | ✅ 3 onglets, zones réglables, meilleur temps personnel, liste alphabétique |
+| Interface graphique | ✅ 3 onglets, zones réglables, meilleur temps personnel, liste alphabétique, note de quête |
 | Rattachement Discord | ⏸ en ligne, **503** faute d'identifiants |
 | Robot Discord de consultation | ⏸ écrit et testé, jamais lancé |
 
@@ -42,13 +42,17 @@ Le serveur tourne en systemd sur le VPS OVH, dans `/opt/rubin`, base Postgres
 dédiée, derrière Caddy. Redéploiement et mise à jour :
 `bash serveur/deploiement/deployer.sh`, rejouable sans rien détruire.
 
-⚠️ **Ce script ne met pas à jour `RUBIN_LATEST`.** Vérifié le 05/08/2026 au
-soir, en interrogeant directement le serveur : `GET /v1/version` répond encore
-`"derniere": "0.4.0"` après cinq releases publiées (v0.5.0 à v0.5.4). Un joueur
-qui lance `rubin verifier` ne voit donc pas qu'une mise à jour existe. La
-variable est lue depuis l'environnement du service (`RUBIN_LATEST`,
-`serveur/src/rubin_serveur/main.py`) : à mettre à jour sur le VPS et à
-redéployer, à chaque nouvelle release.
+✅ **Corrigé le 05/08/2026 au soir.** `deployer.sh` dérive `RUBIN_LATEST` de
+`rubin.__version__`, mais ce numéro n'avait pas bougé depuis des mois malgré
+cinq tags git (v0.5.0 à v0.5.4) : la variable annonçait donc toujours 0.4.0.
+`__version__` et `pyproject.toml` corrigés à 0.5.4, puis redéployé ; vérifié
+en direct, `GET /v1/version` répond désormais `0.5.4`.
+
+⚠️ **Résidu qu'un redéploiement ne peut pas corriger** : l'exécutable v0.5.4
+déjà téléchargé par un joueur garde `__version__="0.4.0"` figé dedans, donc
+son propre contrôle de version (`updates.py`) le dira « en retard » alors
+qu'il a la dernière version. Seule une v0.5.5 reconstruite avec le numéro
+corrigé règle ça pour de bon.
 
 ---
 
