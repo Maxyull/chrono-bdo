@@ -38,3 +38,9 @@ dist/
 # Worktrees temporaires des agents. Ce sont des dépôts imbriqués : les
 # commiter emporterait un dépôt dans un dépôt, sans son contenu.
 .claude/worktrees/
+
+# Données brutes de couverture, régénérées à chaque exécution.
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
