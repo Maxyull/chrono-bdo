@@ -1050,3 +1050,45 @@ class TestZonesVerrouilleesPendantLaMesure:
         """
         assert lock_label("Zones", locked=True) == f"{LOCK_MARK} Zones"
         assert lock_label("Zones", locked=False) == "Zones"
+
+
+class TestImagesRepeteesDansLaLigneDeSurveillance:
+    """Le taux de captures répétées, remonté jusqu'à la ligne affichée.
+
+    Suite directe de la séance du 5 août 2026 : la ligne de surveillance de
+    #63 disait « 3 266 images, 2 bandeaux vus », mais rien ne disait POURQUOI
+    si peu de bandeaux sortaient d'autant d'images. Le compteur de #68 mesure
+    la cause la plus probable, une capture qui répète une image déjà prise ;
+    cette ligne la rend visible sans qu'il faille aller lire `echecs/`.
+    """
+
+    def test_un_taux_de_repetition_bas_ne_dit_rien(self) -> None:
+        # Quelques répétitions sont normales : un menu ouvert, un chargement.
+        texte = format_watching(
+            Watching(frames=1000, banners_seen=20, reads=5, repeated=40, elapsed=60.0)
+        )
+
+        assert "répétées" not in texte
+
+    def test_un_taux_de_repetition_soutenu_devient_un_avertissement(self) -> None:
+        texte = format_watching(
+            Watching(frames=1000, banners_seen=2, reads=0, repeated=600, elapsed=400.0)
+        )
+
+        assert "600 images répétées sur 1\u00a0000" in texte
+
+    def test_regression_le_taux_du_5_aout_47_contre_2_bandeaux(self) -> None:
+        """Régression : les proportions réelles de la session muette.
+
+        Sept minutes, 3 266 images côté Rubin, 2 bandeaux vus, quand un témoin
+        sur la même zone en voyait 47. La cause précise n'a jamais été
+        confirmée ce jour-là faute d'avoir eu ce compteur : ce test fige
+        seulement que SI le taux avait été soutenu, la ligne l'aurait dit,
+        au lieu de laisser deviner entre quatre hypothèses concurrentes.
+        """
+        texte = format_watching(
+            Watching(frames=3266, banners_seen=2, reads=0, repeated=2800, elapsed=420.0)
+        )
+
+        assert "⚠" in texte
+        assert "images répétées" in texte
