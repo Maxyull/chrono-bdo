@@ -156,3 +156,50 @@ def test_ne_devine_pas_sur_un_fragment_trop_court(catalog: Catalog) -> None:
     # donc plus facile à obtenir par erreur.
     assert catalog.resolve_partial("Valks") is None
     assert catalog.resolve_partial("") is None
+
+
+class TestLeveeDAmbiguite:
+    """Le contexte de la chaîne et de la position identifie les homonymes."""
+
+    def test_la_chaine_departage_deux_quetes_de_meme_nom(self, catalog: Catalog) -> None:
+        """Régression : 18 % des quêtes principales portent un nom partagé.
+
+        « [Serendia] Boss des Fogans » désigne trois quêtes distinctes. Sans
+        contexte, le catalogue refuse de trancher et ces quêtes ne sont jamais
+        mesurées : une sur cinq disparaissait silencieusement du chronomètre.
+
+        La chaîne en cours suffit dans 57 % des cas. Un joueur qui vient de
+        finir une quête de la chaîne 21133 fait évidemment celle de 21133, pas
+        celle d'une chaîne qu'il n'a jamais commencée.
+        """
+        nom = "[Calpheon] Jeron, la tacticienne"
+        assert catalog.resolve_in_chain(nom, 21136) == QuestId(21136, 1)
+
+    def test_la_position_departage_deux_homonymes_d_une_meme_chaine(
+        self, catalog: Catalog
+    ) -> None:
+        """Régression : 305 homonymes sont dans la même chaîne.
+
+        La chaîne ne les départage pas, seule la position le peut : celle qui
+        suit immédiatement la dernière quête connue. Ce dernier niveau porte le
+        taux d'identification de 92 % à 100 %.
+        """
+        nom = "[Calpheon] Cris stridents des harpies"
+        assert catalog.resolve_in_chain(nom, 21136, after_position=1) == QuestId(21136, 2)
+
+    def test_ne_devine_jamais_un_saut_de_position(self, catalog: Catalog) -> None:
+        """Le recours à la position exige la suivante immédiate, jamais plus loin.
+
+        Deviner un saut reviendrait à attribuer une mesure à une quête que le
+        joueur n'a peut-être pas faite, ce qui est l'erreur refusée partout
+        ailleurs. Une mesure perdue coûte moins cher.
+        """
+        nom = "[Calpheon] Coup de main tant désiré"  # position 3
+        assert catalog.resolve_in_chain(nom, 21136, after_position=0) == QuestId(21136, 3)
+
+    def test_sans_contexte_le_catalogue_refuse_toujours(self, catalog: Catalog) -> None:
+        # Le comportement d'origine est intact : sans savoir où l'on est, on ne
+        # devine pas.
+        assert catalog.resolve_in_chain("[Calpheon] Jeron, la tacticienne", None) == QuestId(
+            21136, 1
+        )

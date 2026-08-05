@@ -140,3 +140,27 @@ class TestEtat:
         mesure = timeline.record(lecture(BannerKind.COMPLETED, JERON))
         assert mesure is not None
         assert mesure.seconds == pytest.approx(75.0)
+
+
+class TestContexteDeChaine:
+    def test_expose_la_chaine_de_la_quete_en_cours(self, timeline: Timeline) -> None:
+        timeline.record(lecture(BannerKind.ACCEPTED, JERON), at=0.0)
+        assert timeline.current_chain == 21136
+        assert timeline.current_position == 1
+
+    def test_garde_le_contexte_entre_deux_quetes(self, timeline: Timeline) -> None:
+        """Régression : entre deux quêtes, aucune n'est ouverte.
+
+        C'est précisément le moment où le bandeau de la suivante apparaît, donc
+        celui où le contexte est le plus utile. Le prendre uniquement sur la
+        quête en cours le perdrait juste avant d'en avoir besoin.
+        """
+        timeline.record(lecture(BannerKind.ACCEPTED, JERON), at=0.0)
+        timeline.record(lecture(BannerKind.COMPLETED, JERON), at=30.0)
+        assert timeline.pending_quest is None
+        assert timeline.current_chain == 21136
+        assert timeline.current_position == 1
+
+    def test_n_invente_pas_de_contexte_au_demarrage(self, timeline: Timeline) -> None:
+        assert timeline.current_chain is None
+        assert timeline.current_position is None

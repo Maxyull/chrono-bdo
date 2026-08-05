@@ -96,8 +96,14 @@ class Timeline:
     def record(self, reading: BannerReading, at: float | None = None) -> Measure | None:
         """Enregistre un bandeau lu, et renvoie la mesure qu'il clôt, s'il en clôt une."""
         moment = self.clock() if at is None else at
+        # La chaîne en cours sert de contexte : c'est elle qui permet de
+        # trancher quand un nom désigne plusieurs quêtes, ce qui arrive pour
+        # 18 % des quêtes principales.
         quest_id = self.catalog.resolve_lines(
-            reading.name_lines or (reading.quest_name,), self.language
+            reading.name_lines or (reading.quest_name,),
+            self.language,
+            chain=self.current_chain,
+            after_position=self.current_position,
         )
         event = Event(
             at=moment,
@@ -187,6 +193,36 @@ class Timeline:
             measure = self.record(reading)
             if measure is not None:
                 yield measure
+
+    @property
+    def current_chain(self) -> int | None:
+        """La chaîne dans laquelle le joueur se trouve, autant qu'on le sache.
+
+        Celle de la quête en cours si elle est connue, sinon celle du dernier
+        événement identifié. Le second cas compte : entre deux quêtes, aucune
+        n'est ouverte, et c'est précisément le moment où le bandeau de la
+        suivante apparaît.
+        """
+        if self._pending is not None:
+            return self._pending.quest_id.chain
+        for event in reversed(self.events):
+            if event.quest_id is not None:
+                return event.quest_id.chain
+        return None
+
+    @property
+    def current_position(self) -> int | None:
+        """Position de la dernière quête identifiée dans sa chaîne.
+
+        Sert à départager les homonymes d'une même chaîne, en retenant celle
+        qui suit immédiatement.
+        """
+        if self._pending is not None:
+            return self._pending.quest_id.position
+        for event in reversed(self.events):
+            if event.quest_id is not None:
+                return event.quest_id.position
+        return None
 
     @property
     def pending_quest(self) -> QuestId | None:
