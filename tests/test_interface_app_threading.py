@@ -20,9 +20,11 @@ from __future__ import annotations
 import queue
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 from rubin.interface.app import RubinApp
+from rubin.protocol import MeasurePayload, SessionPayload
 from rubin.reference import QuestId
 from rubin.references import QuestReference
 from rubin.timing import Measure, Quality
@@ -34,10 +36,16 @@ BUDGET_RETOUR = 0.2
 
 
 class _Porteur:
-    """Le strict nécessaire que `_add_measure` lit et écrit sur `self`."""
+    """Le strict nécessaire que les méthodes testées ici lisent et écrivent sur `self`.
 
-    def __init__(self, references: Any) -> None:
+    `_home` ne sert qu'à `_ask_current_reference`, qui en a besoin pour le
+    record personnel local (`history.personal_best`) : `None` par défaut pour
+    ne rien changer aux tests de `_add_measure`, qui ne le lisent jamais.
+    """
+
+    def __init__(self, references: Any, home: Path | None = None) -> None:
         self._references = references
+        self._home = home
         self._messages: queue.Queue[tuple[str, Any]] = queue.Queue()
 
     def publish(self, genre: str, charge: Any) -> None:
@@ -142,3 +150,62 @@ class TestAjoutDeMesureNeBloquePasLeFilDeTk:
 
         genre, _charge = porteur._messages.get(timeout=DÉLAI_SERVEUR_LENT + BUDGET_RETOUR)
         assert genre == "mesure_reference"
+
+
+class TestReferenceEnCoursPorteAussiLeRecordPersonnel:
+    """`_ask_current_reference` va aussi chercher le record personnel local.
+
+    Voir `history.py` : cette lecture ne touche jamais le réseau, mais elle
+    part quand même dans le même fil que la requête réseau, exprès. Les deux
+    résultats arrivent alors sur un seul message « reference_en_cours », et
+    `_show_current_reference` n'a besoin que d'UN garde-fou de fraîcheur pour
+    les deux, jamais de deux copies du même contrôle.
+    """
+
+    def test_publie_la_reference_globale_et_le_record_personnel_ensemble(
+        self, tmp_path: Path
+    ) -> None:
+        """Régression : Jéron (21136/2) a déjà été faite une fois, à 31,8 s, sur
+        ce poste. Le message publié doit porter les deux chiffres à la fois, le
+        meilleur temps connu de tout le monde ET le record personnel, pour que
+        la fenêtre les affiche sous le même contrôle de fraîcheur plutôt que par
+        deux voies qui pourraient un jour diverger.
+        """
+        session = SessionPayload(
+            player="abc123",
+            language="fr",
+            catalog_date="2026-08-05",
+            measures=(
+                MeasurePayload(quest="21136/2", seconds=31.8, quality="exacte", confidence=0.94),
+            ),
+        )
+        dossier = tmp_path / "sessions"
+        dossier.mkdir()
+        (dossier / "session-1.json").write_text(session.to_json(), encoding="utf-8")
+
+        référence = QuestReference(median_seconds=40.0, samples=3, fastest_seconds=35.0)
+        referentiel = _ReferentielBloquant(référence)
+        referentiel.débloquer()
+        porteur = _Porteur(referentiel, home=tmp_path)
+
+        RubinApp._ask_current_reference(porteur, 21136, 2, referentiel)
+
+        genre, charge = porteur._messages.get(timeout=BUDGET_RETOUR)
+        assert genre == "reference_en_cours"
+        quest_id, reference_reçue, record = charge
+        assert quest_id == QuestId(21136, 2)
+        assert reference_reçue is référence
+        assert record == 31.8
+
+    def test_rend_none_pour_le_record_d_une_quete_jamais_faite_ici(
+        self, tmp_path: Path
+    ) -> None:
+        referentiel = _ReferentielBloquant(None)
+        referentiel.débloquer()
+        porteur = _Porteur(referentiel, home=tmp_path)
+
+        RubinApp._ask_current_reference(porteur, 21136, 2, referentiel)
+
+        _genre, charge = porteur._messages.get(timeout=BUDGET_RETOUR)
+        _quest_id, _reference, record = charge
+        assert record is None

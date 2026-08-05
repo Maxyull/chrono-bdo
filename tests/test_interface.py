@@ -33,6 +33,7 @@ from rubin.interface import (
     format_link,
     format_measure_line,
     format_other_quests,
+    format_personal_best,
     format_quest_times,
     format_ranking,
     format_reference,
@@ -328,6 +329,31 @@ class TestMeilleurTempsEnCours:
         )
 
         assert "peu sûr" not in format_current_reference(référence)
+
+
+class TestRecordPersonnel:
+    """Le record PERSONNEL du joueur sur la quête en cours, distinct du meilleur
+    temps connu de tout le monde ci-dessus.
+
+    Demandé par Maxime après #72 : « Ton temps : xx / Ton meilleur temps : xx ou
+    N/A / Meilleur temps : xx ». C'est une donnée locale, lue dans les sessions
+    déjà écrites sur ce poste (voir `history.personal_best`), jamais envoyée ni
+    reçue du serveur.
+    """
+
+    def test_une_quete_jamais_faite_le_dit_honnetement(self) -> None:
+        # Ni un zéro ni une ligne vide, qui se liraient comme « instantané »,
+        # l'inverse de la vérité : le même écueil que partout ailleurs dans ce
+        # projet pour une quête sans référence.
+        texte = format_personal_best(None)
+
+        assert "jamais mesurée" in texte
+
+    def test_affiche_la_duree_du_record(self) -> None:
+        texte = format_personal_best(97.0)
+
+        assert "1 min 37 s" in texte
+        assert "ton meilleur temps" in texte
 
 
 class TestLignesAVenir:
