@@ -16,6 +16,8 @@ import zipfile
 from pathlib import Path
 
 RACINE = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(RACINE / "src"))
+from rubin import __version__  # noqa: E402
 
 
 def main() -> int:
@@ -57,7 +59,12 @@ def main() -> int:
     # `Expand-Archive` était plus clair, « méthode de compression non prise en
     # charge ». Les trois releases publiées ce soir avant ce correctif, v0.5.0
     # à v0.5.2, sont donc illisibles par les outils Windows natifs.
-    archive = RACINE / "dist" / "rubin-windows.zip"
+    # Le numéro de version est dans le nom du fichier, pas seulement dans la
+    # release GitHub qui le porte : un joueur qui a plusieurs zips dans ses
+    # téléchargements ne peut sinon pas dire lequel est le plus récent sans
+    # les ouvrir un par un.
+    nom_archive = f"rubin-windows-{__version__}.zip"
+    archive = RACINE / "dist" / nom_archive
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
         for fichier in sorted(cible.rglob("*")):
             if fichier.is_file():
@@ -68,8 +75,8 @@ def main() -> int:
     empreinte = hashlib.sha256(archive.read_bytes()).hexdigest()
     # Le format est celui de `sha256sum`, pour que la vérification soit une
     # commande et non un travail de comparaison à l'œil.
-    (RACINE / "dist" / "rubin-windows.zip.sha256").write_text(
-        f"{empreinte}  rubin-windows.zip" + "\n", encoding="utf-8"
+    (RACINE / "dist" / f"{nom_archive}.sha256").write_text(
+        f"{empreinte}  {nom_archive}" + "\n", encoding="utf-8"
     )
     print(f"--- {archive.stat().st_size / 1e6:.0f} Mo : {archive}")
     print(f"--- sha256 : {empreinte}")

@@ -305,8 +305,11 @@ prises en attendant : le programme n'est pas compressé par UPX, et il est
 distribué en dossier plutôt qu'en fichier auto-extractible, deux traits que les
 antivirus associent aux logiciels malveillants.
 
-Vérifier une archive téléchargée :
+Vérifier une archive téléchargée (le nom porte la version, par exemple
+`rubin-windows-0.5.4.zip`) :
 
 ```powershell
-Get-FileHash rubin-windows.zip -Algorithm SHA256
+Get-FileHash rubin-windows-0.5.4.zip -Algorithm SHA256
 ```
+
+et comparer au fichier `.sha256` publié à côté de l'archive.
