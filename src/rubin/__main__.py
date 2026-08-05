@@ -1,8 +1,10 @@
 """Ligne de commande.
 
-Deux commandes. `referentiel` construit le catalogue et dit ce qu'il contient,
+Quatre commandes. `referentiel` construit le catalogue et dit ce qu'il contient,
 ce qui vérifie que la source répond et que son format n'a pas changé. `suivre`
-est le chronomètre lui-même.
+est le chronomètre lui-même. `echecs` montre les bandeaux qui n'ont pas pu être
+lus et en fabrique une archive à envoyer à la main. `verifier` contrôle que
+l'installation est complète.
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ from platformdirs import user_data_dir
 
 from .capture import ScreenCapture, banner_region, find_game_window
 from .deferred import DeferredWatcher
+from .failures import DESTINATIONS, FailureStore, find_destination, larger_than
 from .protocol import PlayerIdentity, build_session
 from .reading import RapidOcrReader
 from .reference import Catalog
@@ -42,6 +45,11 @@ def _setup_console() -> None:
         reconfigure = getattr(stream, "reconfigure", None)
         if reconfigure is not None:
             reconfigure(encoding="utf-8", errors="replace")
+
+
+def _home() -> Path:
+    """Le dossier de données du logiciel, chez l'utilisateur courant."""
+    return Path(user_data_dir("rubin-bdo", "maxyull"))
 
 
 def _load_catalog(languages: Sequence[str], refresh: bool = False) -> Catalog:
@@ -137,6 +145,13 @@ def command_watch(args: argparse.Namespace) -> int:
     timeline = Timeline(catalog=catalog, language=args.language)
     started = time.monotonic()
     reader = RapidOcrReader()
+    # Les lectures ratées sont gardées sur le disque, et n'en sortent que si le
+    # joueur fabrique une archive et l'envoie lui-même. La purge a lieu avant la
+    # session plutôt qu'après : une session s'arrête souvent par un Ctrl+C, et un
+    # ménage placé à la fin ne serait jamais fait.
+    failures = FailureStore(_home() / "echecs")
+    failures.purge()
+    deferred = None
     # Les références sont lues sur le serveur d'envoi, sans qu'envoyer soit
     # nécessaire pour les consulter : la lecture est publique.
     references = ReferenceClient(args.server or args.references)
@@ -147,7 +162,9 @@ def command_watch(args: argparse.Namespace) -> int:
             # l'écran cesserait d'être surveillé pendant chaque reconnaissance,
             # soit jusqu'à une seconde, et un bandeau qui apparaît puis
             # disparaît dans cet intervalle serait perdu en silence.
-            with DeferredWatcher(watcher, reader, interval=POLL_INTERVAL) as deferred:
+            with DeferredWatcher(
+                watcher, reader, interval=POLL_INTERVAL, failures=failures
+            ) as deferred:
                 while True:
                     for reading, at in deferred.readings(timeout=1.0):
                         # L'instant retenu est celui de la capture, pas celui
@@ -169,6 +186,7 @@ def command_watch(args: argparse.Namespace) -> int:
                 "aucun bandeau n'a été vu : vérifiez que le jeu est bien au premier plan, "
                 "et que l'échelle de l'interface n'a pas été modifiée (--echelle)"
             )
+        _print_failures(deferred, failures)
         return 0
 
     measured = sum(m.seconds for m in timeline.measures)
@@ -185,8 +203,27 @@ def command_watch(args: argparse.Namespace) -> int:
         print(f"{timeline.dropped} quêtes vues mais non mesurables")
 
     _print_chain_summary(timeline, references, catalog, args.language)
+    _print_failures(deferred, failures)
     _finish_session(timeline, args)
     return 0
+
+
+def _print_failures(deferred: DeferredWatcher | None, failures: FailureStore) -> None:
+    """Dit combien de bandeaux ont été vus sans pouvoir être lus.
+
+    Ce chiffre manquait, et son absence coûtait cher : une session qui ne
+    mesurait rien ne disait pas si le jeu n'avait rien montré, ou si le logiciel
+    n'avait rien su lire. Ce sont deux pannes opposées, avec deux remèdes
+    opposés.
+    """
+    if deferred is None or not deferred.failed:
+        return
+    print()
+    print(f"{deferred.failed} bandeaux vus mais illisibles, gardés dans {failures.directory}")
+    if failures.unwritable:
+        # Un dossier vide ne doit pas se lire comme « aucun échec ».
+        print(f"({failures.unwritable} n'ont pas pu être écrits sur le disque)")
+    print("« rubin echecs --archiver » en fait une archive, si vous voulez aider à corriger")
 
 
 def _print_chain_summary(
@@ -245,7 +282,7 @@ def _finish_session(timeline: Timeline, args: argparse.Namespace) -> None:
     données de quelqu'un sans qu'il l'ait demandé serait une décision prise à
     sa place, et le fait qu'elles soient anonymes n'y change rien.
     """
-    home = Path(user_data_dir("rubin-bdo", "maxyull"))
+    home = _home()
     identity = PlayerIdentity.load_or_create(home / "identite")
     payload = build_session(
         timeline,
@@ -266,6 +303,81 @@ def _finish_session(timeline: Timeline, args: argparse.Namespace) -> None:
         # Le lot reste sur le disque : une session mesurée ne doit pas
         # disparaître parce que le réseau a hoqueté.
         print(f"envoi impossible, le lot est conservé — {result.detail}", file=sys.stderr)
+
+
+def command_failures(args: argparse.Namespace) -> int:
+    """Montre les lectures ratées, et en fabrique une archive sur demande.
+
+    L'archive ne part nulle part. Elle est écrite sur le disque, et son chemin
+    s'affiche : c'est le joueur qui l'envoie, s'il le veut, où il veut. Un envoi
+    automatique déciderait à sa place de partager ses images, et le fait qu'elles
+    ne montrent qu'un bandeau de quête n'y changerait rien.
+    """
+    failures = FailureStore(_home() / "echecs")
+    removed = failures.purge()
+    stats = failures.stats()
+
+    if not stats.images and not stats.entries:
+        print(f"aucune lecture ratée retenue ({failures.directory})")
+        return 0
+
+    print(
+        f"{stats.images} images retenues pour {stats.entries} échecs, "
+        f"{stats.kilobytes} Ko dans {failures.directory}"
+    )
+    if removed:
+        print(f"{removed} effacées, trop anciennes ou au-delà du plafond")
+    if not args.archive:
+        print()
+        print("« rubin echecs --archiver » pour en faire une archive à envoyer.")
+        _print_destinations()
+        return 0
+
+    cible = find_destination(args.destination)
+    chemin = _home() / "echecs" / f"rubin-echecs-{int(time.time())}.zip"
+    result = failures.package(chemin, max_bytes=cible.max_bytes)
+    if result is None:  # pragma: pas de couverture
+        print("rien à archiver")
+        return 0
+
+    print()
+    print(f"archive écrite : {result.path}")
+    print(
+        f"{result.images} images, {result.kilobytes} Ko "
+        f"sur les {cible.kilobytes} Ko que {cible.label} accepte"
+    )
+    if result.left_out:
+        # Une troncature qui se tait se lirait comme un inventaire complet.
+        print(f"⚠ {result.left_out} images laissées dehors, l'archive était pleine")
+        plus_grand = larger_than(result.needed)
+        if plus_grand is not None and plus_grand.key != cible.key:
+            print(
+                f"  tout tiendrait dans {plus_grand.kilobytes} Ko : "
+                f"« rubin echecs --archiver --vers {plus_grand.key} »"
+            )
+    print()
+    print("elle ne contient que des vignettes de texte de quête en niveaux de gris,")
+    print("et les lignes lues. Ni le nom du personnage, ni le chat, ni la carte.")
+    print("vous pouvez l'ouvrir avant de l'envoyer.")
+    print()
+    print(f"à déposer sur {cible.label} : {cible.url}")
+    print(f"  {cible.detail}")
+    if cible.account:
+        print("  (un compte est nécessaire)")
+    return 0
+
+
+def _print_destinations() -> None:
+    """Les destinations et ce qu'elles acceptent, en kilo-octets.
+
+    Le plafond est affiché parce qu'il décide du choix : une archive de mille
+    échecs passe partout, une reconnaissance qui s'est effondrée pendant une nuit
+    entière ne passe plus par la porte la plus étroite.
+    """
+    print("destinations possibles (--vers) :")
+    for candidate in DESTINATIONS:
+        compte = ", compte nécessaire" if candidate.account else ", sans compte"
+        print(f"  {candidate.key:<12} {candidate.kilobytes:>10} Ko max   {candidate.url}{compte}")
 
 
 def command_check(args: argparse.Namespace) -> int:
@@ -375,6 +487,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="échelle de l'interface du jeu, si elle a été modifiée",
     )
     watch.set_defaults(handler=command_watch)
+
+    failures = subparsers.add_parser("echecs", help="montre les lectures ratées et les archive")
+    failures.add_argument(
+        "--archiver",
+        dest="archive",
+        action="store_true",
+        help="fabrique une archive à envoyer à la main, pour aider à corriger",
+    )
+    failures.add_argument(
+        "--vers",
+        dest="destination",
+        default=DESTINATIONS[0].key,
+        choices=[candidate.key for candidate in DESTINATIONS],
+        help="où l'archive sera déposée, ce qui fixe sa taille maximale",
+    )
+    failures.set_defaults(handler=command_failures)
 
     check = subparsers.add_parser("verifier", help="vérifie que l'installation est complète")
     check.add_argument("--langue", dest="language", default="fr", choices=("fr", "en"))
