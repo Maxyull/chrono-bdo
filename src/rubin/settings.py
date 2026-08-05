@@ -40,19 +40,86 @@ encore, un trou.
 
 C'est la seule raison pour laquelle ces réglages peuvent être exposés sans
 danger : le pire qu'ils produisent est un silence, jamais un chiffre faux.
+
+## Une zone n'a de sens qu'avec la taille de fenêtre où elle a été tracée
+
+C'est le détail qui commande toute la mémoire des zones. Un rectangle tracé en
+2560 x 1440 ne veut **rien dire** en 1920 x 1080 : l'interface du jeu garde sa
+taille en pixels quand la résolution change, donc c'est la distance au coin qui
+se conserve, et un rectangle posé en absolu tombe ailleurs.
+
+Une seule zone gardée sans clé serait donc le pire cas du projet : un réglage
+**faux ET persistant**. Le joueur passe en fenêtré, sa zone d'hier ne capture
+plus rien, et comme elle est enregistrée, elle survit au redémarrage. Rien ne
+l'annonce, puisqu'une zone mal placée est silencieuse par construction.
+
+Les zones sont donc retenues dans une table indexée par **taille de fenêtre**,
+et `zone_for` ne rend une zone que pour la taille **exacte** où elle a été
+tracée. Sur toute autre taille, on retombe sur le calcul d'origine, qui suit la
+fenêtre. Rien n'est extrapolé d'une résolution à l'autre : une zone mise à
+l'échelle serait une zone inventée, et le principe du projet vaut ici comme
+ailleurs.
+
+Ce qui rend la mémorisation sans danger reste l'argument du dessus : **une zone
+proposée à tort ne fabrique aucune mesure fausse.** L'analyse exige un titre
+connu, que du décor ne contient pas.
+
+## Ce qu'il advient d'une zone tracée avant cette table
+
+Les fichiers écrits jusqu'ici portent `zone_bandeau`, `zone_suivi` et
+`zone_choix` **sans taille de fenêtre**. On ne sait donc pas à quelle résolution
+ces rectangles ont été tracés, et c'est une information qui ne se devine pas.
+
+Trois traitements étaient possibles, deux sont mauvais :
+
+- les **jeter** perdrait le travail du joueur, pour un fichier parfaitement
+  valide la veille. Une mise à jour qui efface un réglage sans le dire est une
+  surprise, et celle-là serait irréversible ;
+- les **appliquer partout** referait très exactement le défaut qu'on corrige,
+  cette fois en le rendant permanent : le rectangle d'hier s'appliquerait à
+  toutes les résolutions de demain ;
+- les **garder sans les appliquer d'office**, ce qui est retenu.
+
+Une zone sans taille connue est donc relue, conservée en mémoire et **réécrite
+telle quelle** dans les champs `banner`, `tracker` et `choice`. Rien n'est
+perdu. Mais `zone_for` ne la rend pour aucune taille : elle attend d'être
+attribuée à une taille de fenêtre par `adopted_for`, ce qui est un geste, pas
+une supposition. Le joueur perd au pire un tracé à refaire d'un clic ; il ne
+gagne jamais une zone fausse et durable.
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, TypeAlias
 
 from .capture import Rect
 
 #: Nom du fichier, dans le dossier de données du joueur.
 FILE_NAME: Final = "reglages.json"
+
+#: Une taille de fenêtre de jeu, en pixels : (largeur, hauteur).
+#:
+#: C'est la **fenêtre du jeu** qui sert de clé, pas l'écran : un joueur en
+#: fenêtré change la première sans toucher au second, et ce sont bien les zones
+#: qui bougent dans ce cas-là.
+WindowSize: TypeAlias = tuple[int, int]
+
+#: Les trois surfaces lisibles, dans l'ordre où l'interface les présente.
+ZONE_NAMES: Final = ("banner", "tracker", "choice")
+
+#: Le nom de chaque zone dans le fichier, en français comme le reste.
+ZONE_FILE_KEYS: Final = {
+    "banner": "zone_bandeau",
+    "tracker": "zone_suivi",
+    "choice": "zone_choix",
+}
+
+#: Clé du bloc des zones rangées par taille de fenêtre.
+ZONES_KEY: Final = "zones_par_taille"
 
 #: Langues de client prises en charge, dans l'ordre où elles sont proposées.
 #:
@@ -98,6 +165,46 @@ def _clamp(name: str, value: float) -> float:
 
 
 @dataclass(frozen=True)
+class ZoneEntry:
+    """Une zone tracée, **et la taille de fenêtre où elle l'a été**.
+
+    Les deux ne se séparent pas. Un rectangle sans sa taille de fenêtre n'est
+    pas une zone à moitié connue, c'est une zone qu'on ne sait pas placer : la
+    même suite de quatre nombres désigne le bandeau en 2560 x 1440 et du décor
+    en 1920 x 1080.
+    """
+
+    #: L'un de `ZONE_NAMES`.
+    name: str
+    #: La taille de la fenêtre du jeu au moment du tracé.
+    size: WindowSize
+    rect: Rect
+
+
+def _valid_entries(entries: Iterable[ZoneEntry]) -> tuple[ZoneEntry, ...]:
+    """Ne garde que les entrées utilisables, et une seule par (zone, taille).
+
+    Mêmes refus que pour une zone seule, pour les mêmes raisons : un rectangle
+    plat capture une image vide que la reconnaissance traite comme un écran sans
+    bandeau, et une taille de fenêtre nulle ou négative ne désigne aucun écran
+    réel. Une zone dont le nom est inconnu ne sert personne : elle serait
+    réécrite à chaque enregistrement sans que rien ne la lise jamais.
+
+    En cas de doublon, la dernière écrite gagne : c'est le tracé le plus récent
+    du joueur pour cette taille-là.
+    """
+    dernières: dict[tuple[str, WindowSize], ZoneEntry] = {}
+    for entrée in entries:
+        largeur, hauteur = entrée.size
+        if entrée.name not in ZONE_NAMES or largeur <= 0 or hauteur <= 0:
+            continue
+        if entrée.rect.width <= 0 or entrée.rect.height <= 0:
+            continue
+        dernières[(entrée.name, entrée.size)] = entrée
+    return tuple(sorted(dernières.values(), key=lambda entrée: (entrée.name, entrée.size)))
+
+
+@dataclass(frozen=True)
 class Settings:
     """Ce que le joueur a réglé, ou les valeurs mesurées à défaut.
 
@@ -108,6 +215,11 @@ class Settings:
     ⚠️ La troisième, `choice`, mérite un tracé à la main plus que les deux
     autres : son calcul d'origine est **estimé et non mesuré**. Voir
     `capture.region.choice_region`.
+
+    ⚠️ Ces trois champs sont les zones **sans taille de fenêtre connue** : les
+    seules qui puissent en arriver sont celles des fichiers écrits avant que la
+    table `zones` existe. Elles sont conservées et réécrites, mais `zone_for` ne
+    les rend pour aucune taille. L'en-tête du module dit pourquoi.
     """
 
     #: Langue du **client de jeu**, pas celle de l'interface. Un joueur
@@ -124,6 +236,8 @@ class Settings:
     banner: Rect | None = None
     tracker: Rect | None = None
     choice: Rect | None = None
+    #: Les zones tracées, rangées par taille de fenêtre. Vide au départ.
+    zones: tuple[ZoneEntry, ...] = ()
 
     def normalised(self) -> Settings:
         """Une copie dont tous les nombres tiennent dans leurs bornes."""
@@ -135,6 +249,83 @@ class Settings:
             poll_interval=_clamp("poll_interval", self.poll_interval),
             upcoming_count=int(_clamp("upcoming_count", self.upcoming_count)),
             opacity=_clamp("opacity", self.opacity),
+            zones=_valid_entries(self.zones),
+        )
+
+    # -------------------------------------------------------------- les zones
+
+    def zone_for(self, name: str, size: WindowSize) -> Rect | None:
+        """La zone tracée pour **cette** taille de fenêtre, ou `None`.
+
+        La correspondance est exacte, et rien n'est mis à l'échelle depuis une
+        autre taille. `None` veut dire « calcule-la depuis la fenêtre », donc le
+        joueur qui change de résolution retombe sur le calcul d'origine, qui
+        suit la fenêtre, au lieu de garder un rectangle devenu faux.
+
+        Une zone traînant sans taille connue, venue d'un fichier ancien, n'est
+        **pas** rendue ici : voir `adopted_for`.
+        """
+        for entrée in self.zones:
+            if entrée.name == name and entrée.size == size:
+                return entrée.rect
+        return None
+
+    def with_zone(self, name: str, size: WindowSize, rect: Rect | None) -> Settings:
+        """Retient une zone pour une taille de fenêtre, ou l'oublie si `rect` vaut `None`.
+
+        Les zones tracées pour les **autres** tailles sont gardées intactes :
+        c'est tout l'intérêt de la table. Un joueur qui alterne entre le plein
+        écran et le fenêtré retrouve chaque fois le tracé qui convient, sans
+        avoir à le refaire.
+
+        La zone sans taille connue du même nom, s'il en restait une d'un ancien
+        fichier, est effacée par la même occasion : le joueur vient de dire où
+        est cette zone, et pour quelle taille. Garder à côté un rectangle dont
+        on ignore la résolution ne pourrait plus qu'égarer.
+        """
+        restantes = [
+            entrée for entrée in self.zones if not (entrée.name == name and entrée.size == size)
+        ]
+        if rect is not None:
+            restantes.append(ZoneEntry(name=name, size=size, rect=rect))
+        return replace(
+            self,
+            zones=_valid_entries(restantes),
+            banner=None if name == "banner" else self.banner,
+            tracker=None if name == "tracker" else self.tracker,
+            choice=None if name == "choice" else self.choice,
+        )
+
+    def unkeyed(self, name: str) -> Rect | None:
+        """La zone d'un ancien fichier, tracée à une taille de fenêtre inconnue.
+
+        Elle n'est appliquée nulle part. Elle existe pour que l'interface puisse
+        la **proposer** au joueur, qui sait, lui, sur quel écran il l'a tracée.
+        """
+        return {"banner": self.banner, "tracker": self.tracker, "choice": self.choice}.get(name)
+
+    def adopted_for(self, size: WindowSize) -> Settings:
+        """Attribue les zones sans taille connue à `size`, et vide les anciens champs.
+
+        C'est le seul chemin par lequel une zone d'un ancien fichier redevient
+        active, et il demande une taille de fenêtre que seul l'appelant connaît.
+        Le tracé du joueur n'est donc jamais perdu, mais il n'est jamais non
+        plus appliqué à une résolution qu'il ne visait peut-être pas.
+
+        Une zone déjà retenue pour cette taille l'emporte : elle a été tracée en
+        sachant sur quel écran, l'autre non.
+        """
+        adoptées = [
+            ZoneEntry(name=nom, size=size, rect=rect)
+            for nom in ZONE_NAMES
+            if (rect := self.unkeyed(nom)) is not None and self.zone_for(nom, size) is None
+        ]
+        return replace(
+            self,
+            zones=_valid_entries([*self.zones, *adoptées]),
+            banner=None,
+            tracker=None,
+            choice=None,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -155,6 +346,17 @@ class Settings:
             données["zone_suivi"] = _rect_to_dict(self.tracker)
         if self.choice is not None:
             données["zone_choix"] = _rect_to_dict(self.choice)
+        # Les zones tracées, rangées sous la taille de fenêtre où elles l'ont
+        # été. La clé se lit « 2560x1440 » : quelqu'un qui ouvre ce fichier au
+        # bloc-notes doit voir du premier coup d'œil à quel écran chaque
+        # rectangle se rapporte, sinon la table serait aussi muette que
+        # l'unique rectangle qu'elle remplace.
+        par_taille: dict[str, dict[str, dict[str, int]]] = {}
+        for entrée in _valid_entries(self.zones):
+            clé = _size_to_key(entrée.size)
+            par_taille.setdefault(clé, {})[ZONE_FILE_KEYS[entrée.name]] = _rect_to_dict(entrée.rect)
+        if par_taille:
+            données[ZONES_KEY] = par_taille
         return données
 
     @classmethod
@@ -176,6 +378,7 @@ class Settings:
             banner=_rect_from_dict(données.get("zone_bandeau")),
             tracker=_rect_from_dict(données.get("zone_suivi")),
             choice=_rect_from_dict(données.get("zone_choix")),
+            zones=_zones_from_dict(données.get(ZONES_KEY)),
         ).normalised()
 
 
@@ -211,6 +414,53 @@ def _rect_from_dict(brut: Any) -> Rect | None:
     except (KeyError, TypeError, ValueError):
         return None
     return rect if rect.width > 0 and rect.height > 0 else None
+
+
+def _size_to_key(size: WindowSize) -> str:
+    return f"{size[0]}x{size[1]}"
+
+
+def _size_from_key(brut: Any) -> WindowSize | None:
+    """Relit « 2560x1440 », ou rend `None` si la clé ne dit pas une taille.
+
+    Une clé qu'on ne sait pas lire fait sauter ses zones, elle n'en promeut
+    aucune : appliquer un rectangle à une taille de fenêtre devinée est la seule
+    façon, ici, de fabriquer un réglage faux au lieu d'un réglage manquant.
+    """
+    if not isinstance(brut, str):
+        return None
+    morceaux = brut.lower().split("x")
+    if len(morceaux) != 2:
+        return None
+    try:
+        largeur, hauteur = int(morceaux[0]), int(morceaux[1])
+    except ValueError:
+        return None
+    return (largeur, hauteur) if largeur > 0 and hauteur > 0 else None
+
+
+def _zones_from_dict(brut: Any) -> tuple[ZoneEntry, ...]:
+    """Relit la table des zones, en écartant tout ce qui est illisible.
+
+    Le fichier se corrige au bloc-notes, donc tout y est possible : une taille
+    mal écrite, un nom de zone inconnu, un rectangle plat. Chaque cas coûte la
+    zone concernée et rien d'autre, jamais le démarrage ni les zones voisines.
+    """
+    if not isinstance(brut, dict):
+        return ()
+    entrées: list[ZoneEntry] = []
+    noms = {clé_fichier: nom for nom, clé_fichier in ZONE_FILE_KEYS.items()}
+    for clé_taille, zones in brut.items():
+        taille = _size_from_key(clé_taille)
+        if taille is None or not isinstance(zones, dict):
+            continue
+        for clé_zone, rect_brut in zones.items():
+            nom = noms.get(clé_zone)
+            rect = _rect_from_dict(rect_brut)
+            if nom is None or rect is None:
+                continue
+            entrées.append(ZoneEntry(name=nom, size=taille, rect=rect))
+    return _valid_entries(entrées)
 
 
 def load(directory: Path) -> Settings:
