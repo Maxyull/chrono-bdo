@@ -4,8 +4,9 @@
 python empaquetage/construire.py
 ```
 
-Produit `dist/rubin/` et `dist/rubin-windows.zip`, prêt à distribuer.
-Personne n'a besoin d'installer Python pour s'en servir.
+Produit `dist/rubin/` et `dist/rubin-windows-{version}.zip` (par exemple
+`rubin-windows-0.5.4.zip`, la version vient de `rubin.__version__`), prêt à
+distribuer. Personne n'a besoin d'installer Python pour s'en servir.
 
 ## Poids
 
