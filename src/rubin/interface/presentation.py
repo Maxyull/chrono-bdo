@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from typing import Final
 
 from ..capture import Rect
-from ..reference import Catalog, Quest, QuestId, fold
+from ..reference import Catalog, Chain, Quest, QuestId, fold
 from ..references import (
     MIN_SAMPLES_PER_QUEST,
     RANKING_LIMIT,
@@ -603,7 +603,7 @@ def ranking_message(
     return None
 
 
-# --------------------------------------------------------- arbre alphabétique
+# --------------------------------------------------------------- par chaîne
 
 #: Le plafond appliqué par `/v1/quetes` côté serveur, recopié comme
 #: `MIN_SAMPLES_PER_QUEST` l'est déjà dans `references.py` : ce client ne
@@ -611,12 +611,12 @@ def ranking_message(
 #: `limit = max(1, min(limit, 200))` quel que soit ce qu'on demande. La
 #: valeur voyage dans la requête, jamais dans la réponse, donc un écart entre
 #: les deux se verrait plutôt que de se deviner.
-ALPHABET_QUEST_LIMIT: Final = 200
+QUEST_LIST_LIMIT: Final = 200
 
 
 @dataclass(frozen=True)
-class LettredQuest:
-    """Une quête principale, rangée sous sa lettre, avec son nombre de mesures.
+class ListedQuest:
+    """Une quête principale, listée dans sa chaîne, avec son nombre de mesures.
 
     `samples` vient d'une donnée en masse fournie par l'appelant, jamais
     interrogée quête par quête : 3 924 requêtes au lancement pour peupler une
@@ -628,65 +628,61 @@ class LettredQuest:
     samples: int
 
 
-def alphabet_key(quest: Quest) -> str:
-    """La lettre sous laquelle une quête se range dans la liste alphabétique.
-
-    Passe par `fold`, comme la résolution des noms lus à l'écran : sans lui,
-    « École de commerce » et « Ecole de commerce » tomberaient dans deux
-    lettres différentes selon que l'accent a survécu ou non à la
-    reconnaissance, une distinction que rien ne justifie ici. `fold` porte
-    déjà cette règle pour tout le reste du projet, il n'y a pas de raison
-    d'en inventer une seconde. Elle a aussi l'avantage de faire tomber une
-    apostrophe de tête : « L'appel » se range sous « L », pas sous une
-    lettre qui n'existe pas.
-
-    `title`, jamais `name` : `name` porte le préfixe de région entre
-    crochets, et grouper dessus mettrait la quasi-totalité du catalogue sous
-    « [ ». Voir le cinquième piège de `ETAT.md`, le panneau de choix qui
-    coupe ce même préfixe : ce module-ci part directement du bon champ, il
-    n'a pas besoin de le reconstituer.
-    """
-    normalisé = fold(quest.title)
-    return normalisé[0].upper() if normalisé and normalisé[0].isalpha() else "#"
-
-
-def alphabet_sections(
+def chain_sections(
     catalog: Catalog, language: str, samples_by_id: dict[QuestId, int]
-) -> dict[str, tuple[LettredQuest, ...]]:
-    """Les quêtes principales, groupées par lettre et triées à l'intérieur.
+) -> tuple[tuple[Chain, tuple[ListedQuest, ...]], ...]:
+    """Les quêtes principales, groupées par chaîne, comme le journal du jeu.
+
+    Demandé par Maxime le 06/08/2026 : le premier jet groupait par lettre du
+    nom, ce qui n'est pas ce que montre l'onglet « Principales » du journal.
+    Celui-ci liste des CHAÎNES, chacune avec son propre décompte, du type
+    « [Abyss One] Magnus : 0/104 ». Voir `format_chain_header`.
+
+    Les quêtes d'une chaîne gardent l'ordre du référentiel, `Chain.quests`
+    étant déjà trié par position : c'est l'ordre dans lequel on les fait, pas
+    un ordre alphabétique qui mélangerait le début et la fin d'une même
+    histoire. Les chaînes elles-mêmes sont triées par nom, faute d'un ordre de
+    scénario dans le référentiel ; ce n'est pas l'ordre du jeu, mais c'est un
+    ordre stable et cherchable.
 
     `samples_by_id` vient d'une seule requête en masse : voir l'en-tête de
-    `LettredQuest`. Une quête absente de cette table n'a **pas** été refusée
+    `ListedQuest`. Une quête absente de cette table n'a **pas** été refusée
     par le serveur : elle n'a simplement jamais été mesurée, ou alors mesurée
     au-delà du plafond que `samples_by_id` a pu porter. `samples` y vaut zéro
     dans les deux cas, jamais `None`, parce qu'une absence de mesure et une
     absence de réponse sont deux choses différentes que l'appelant a déjà
     tranchées en construisant cette table. Cette fonction-ci ne peut pas les
-    distinguer, et ne prétend pas le faire : voir `alphabet_cap_warning` pour
-    le second cas, qui a besoin d'un avertissement à part.
+    distinguer, et ne prétend pas le faire : voir `quest_list_cap_warning`
+    pour le second cas, qui a besoin d'un avertissement à part.
     """
-    brut: dict[str, list[LettredQuest]] = {}
-    for chain in catalog.chains(language).values():
-        for quest in chain.quests:
-            brut.setdefault(alphabet_key(quest), []).append(
-                LettredQuest(quest, samples_by_id.get(quest.id, 0))
-            )
-    return {
-        lettre: tuple(sorted(entrées, key=lambda e: fold(e.quest.title)))
-        for lettre, entrées in brut.items()
-    }
+    chaînes = sorted(catalog.chains(language).values(), key=lambda c: fold(c.name))
+    return tuple(
+        (
+            chaîne,
+            tuple(
+                ListedQuest(quest, samples_by_id.get(quest.id, 0))
+                for quest in chaîne.quests
+            ),
+        )
+        for chaîne in chaînes
+    )
 
 
-def format_letter_header(letter: str, entries: Sequence[LettredQuest]) -> str:
-    """L'en-tête d'une lettre repliée : l'échelle avant même de déplier."""
+def format_chain_header(chain: Chain, entries: Sequence[ListedQuest]) -> str:
+    """L'en-tête d'une chaîne repliée : son nom, et ce qui en est mesuré.
+
+    « mesurées », jamais « terminées » : Rubin ne sait pas si le joueur a
+    fini une quête, seulement si elle a déjà été chronométrée par quelqu'un.
+    Les deux se ressemblent mais ne sont pas la même chose, contrairement au
+    « 0/104 » du jeu, qui compte la progression du joueur.
+    """
     total = len(entries)
     mesurées = sum(1 for entrée in entries if entrée.samples > 0)
-    quêtes = "quête" if total == 1 else "quêtes"
-    return f"{letter}   —   {total} {quêtes}, {mesurées} mesurée{'s' if mesurées != 1 else ''}"
+    return f"{chain.name}   —   {mesurées}/{total} mesurée{'s' if mesurées != 1 else ''}"
 
 
-def format_lettred_quest(entry: LettredQuest) -> str:
-    """Une ligne de quête dans la liste alphabétique : son nom, son assise."""
+def format_listed_quest(entry: ListedQuest) -> str:
+    """Une ligne de quête dans la liste par chaîne : son nom, son assise."""
     if entry.samples <= 0:
         return f"{entry.quest.title}   —   jamais mesurée"
     mesures = "mesure" if entry.samples == 1 else "mesures"
@@ -697,20 +693,19 @@ def samples_by_quest(ranked: Sequence[RankedQuest] | None) -> dict[QuestId, int]
     """Convertit la réponse brute de `/v1/quetes` en table de comptage par quête.
 
     Sert de pont entre `ReferenceClient.fastest_quests`, qui rend des lignes
-    de classement, et `alphabet_sections`, qui n'a besoin que du nombre de
+    de classement, et `chain_sections`, qui n'a besoin que du nombre de
     mesures. `None`, l'absence de réponse, devient un dictionnaire vide et
     non une exception : chaque quête retombe alors sur le zéro par défaut de
-    `alphabet_sections`, ce qui est le comportement voulu quand c'est le
-    serveur qui n'a rien dit, pas seulement quand une quête précise n'a rien
-    reçu.
+    `chain_sections`, ce qui est le comportement voulu quand c'est le serveur
+    qui n'a rien dit, pas seulement quand une quête précise n'a rien reçu.
     """
     return {item.quest_id: item.samples for item in ranked} if ranked else {}
 
 
-def alphabet_cap_warning(
-    ranked: Sequence[RankedQuest] | None, limit: int = ALPHABET_QUEST_LIMIT
+def quest_list_cap_warning(
+    ranked: Sequence[RankedQuest] | None, limit: int = QUEST_LIST_LIMIT
 ) -> str | None:
-    """L'avertissement à afficher quand la liste alphabétique peut être incomplète.
+    """L'avertissement à afficher quand la liste par chaîne peut être incomplète.
 
     ⚠️ **`/v1/quetes` est plafonné à 200 lignes côté serveur**, triées par
     temps médian croissant, quel que soit le `limit` demandé. Tant que la
