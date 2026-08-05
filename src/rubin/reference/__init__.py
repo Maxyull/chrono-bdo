@@ -5,7 +5,7 @@ est fixe et se télécharge une fois, et ce que le joueur fait, qui se mesure à
 l'écran. Ce paquet ne s'occupe que du premier.
 """
 
-from .catalog import Catalog, fold
+from .catalog import MIN_TRUNCATED_KEY, Catalog, fold, is_roman_numeral
 from .models import (
     KIND_BLACK_SPIRIT,
     KIND_DAILY,
@@ -21,6 +21,7 @@ __all__ = [
     "KIND_BLACK_SPIRIT",
     "KIND_DAILY",
     "KIND_MAIN",
+    "MIN_TRUNCATED_KEY",
     "NO_REGION",
     "Catalog",
     "Chain",
@@ -28,6 +29,7 @@ __all__ = [
     "QuestId",
     "clean_text",
     "fold",
+    "is_roman_numeral",
     "parse_payload",
     "parse_row",
     "split_prefix",

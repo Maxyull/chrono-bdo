@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rubin.reference import Catalog, QuestId, fold
+from rubin.reference import Catalog, QuestId, fold, is_roman_numeral
 
 
 class TestFold:
@@ -28,6 +28,30 @@ class TestFold:
 
     def test_ignore_une_apostrophe_espacee(self) -> None:
         assert fold("L' ancienne famille") == fold("L'ancienne famille")
+
+    def test_ramene_le_chiffre_romain_unicode_aux_lettres(self) -> None:
+        """Le jeu emploie « Ⅱ » (U+2161), un caractère à part entière.
+
+        La reconnaissance le rend tel quel, alors que le catalogue porte
+        « II », deux lettres. La décomposition NFKD les réunit, sans quoi le
+        chiffre lu ne correspondrait à aucun nom.
+        """
+        assert fold("Ⅱ") == fold("II") == "ii"
+        assert fold("Les marchands d'Altinova Ⅱ") == fold("Les marchands d'Altinova II")
+
+
+class TestIsRomanNumeral:
+    """Sur des fragments déjà repliés, donc en minuscules et sans espace."""
+
+    def test_accepte_les_chiffres_rencontres_en_fin_de_nom(self) -> None:
+        for numeral in ("i", "ii", "iii", "iv", "v", "vi"):
+            assert is_roman_numeral(numeral)
+
+    def test_refuse_ce_qui_n_en_est_pas_un(self) -> None:
+        # « ic » et « iiii » n'emploient que des lettres de chiffres romains
+        # sans en être : les vérifier lettre à lettre ne suffirait pas.
+        for text in ("", "ic", "iiii", "vx", "harpies", "ii2"):
+            assert not is_roman_numeral(text)
 
 
 class TestCatalog:

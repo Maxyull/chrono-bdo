@@ -8,13 +8,31 @@ clients sans qu'aucune traduction n'ait à être écrite à la main.
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
-from typing import Any
+from typing import Any, Final
 
 from .models import KIND_MAIN, Chain, Quest, QuestId
 from .parsing import parse_payload
+
+#: Longueur minimale d'un nom tronqué pour qu'on accepte de le compléter. En
+#: dessous, un fragment ressemble à trop de choses pour désigner quoi que ce
+#: soit. Même seuil que `resolve_partial`, et pour la même raison.
+MIN_TRUNCATED_KEY: Final = 8
+
+#: Un chiffre romain, tel qu'il ressort de `fold` : minuscules, sans espace.
+#: `fold` normalise en NFKD, donc les caractères romains dédiés d'Unicode
+#: (« Ⅱ », U+2161) arrivent ici déjà décomposés en « ii ».
+_ROMAN = re.compile(
+    r"(?=[ivxlcdm]{1,7}$)m{0,3}(cm|cd|d?c{0,3})(xc|xl|l?x{0,3})(ix|iv|v?i{0,3})$"
+)
+
+
+def is_roman_numeral(folded: str) -> bool:
+    """Vrai si ce fragment déjà replié est un chiffre romain, et rien d'autre."""
+    return bool(folded) and _ROMAN.fullmatch(folded) is not None
 
 
 def fold(text: str) -> str:
@@ -175,6 +193,73 @@ class Catalog:
         }
         return next(iter(found)) if len(found) == 1 else None
 
+    def resolve_truncated(
+        self,
+        name: str,
+        language: str = "fr",
+        chain: int | None = None,
+        after_position: int | None = None,
+    ) -> QuestId | None:
+        """Retrouve une quête dont le nom affiché a perdu son numéro de fin.
+
+        Le cas symétrique de `resolve_partial`, et il demande le traitement
+        inverse. Là-bas c'est le **début** du nom qui saute, ici c'est la
+        **fin**, et chercher par la fin ne rattrape donc rien de ce cas.
+
+        Observé en jouant, cinq échecs d'affilée sur la même quête. Le nom
+        « [Mediah] Les marchands d'Altinova II » déborde de la largeur du
+        bandeau, et son chiffre romain part seul sur la deuxième ligne. Lu
+        « Ⅱ » à 0,515, ce fragment de deux caractères tombe sous le seuil des
+        lignes et se trouve écarté avant d'arriver ici. Le nom reconstruit
+        devient « Les marchands d'Altinova », qui n'est le nom complet
+        d'aucune quête.
+
+        81 quêtes principales finissent par un chiffre romain, et 76 d'entre
+        elles portent un nom que le seul début ne distingue plus : « Les
+        marchands d'Altinova » est le début exact du I, du II et du III.
+
+        D'où la règle, qui est celle de tout le projet : **on ne complète que
+        s'il ne reste qu'un candidat.** Une quête non identifiée coûte une
+        mesure ; une quête mal identifiée entre dans une médiane et n'en
+        ressort jamais. Le contexte peut lever l'ambiguïté, exactement comme
+        dans `resolve_in_chain` et avec la même étroitesse : d'abord la chaîne
+        en cours, puis, en dernier recours, la position immédiatement
+        suivante. Jamais une position plus loin, jamais un tirage au sort.
+
+        Le reste manquant doit par ailleurs se réduire à un chiffre romain.
+        Un nom dont il manquerait plusieurs mots est un autre problème, qui
+        n'a pas les mêmes garanties, et qu'on ne traite pas ici.
+        """
+        exact = self.resolve(name, language)
+        if exact is not None:
+            return exact
+        key = fold(name)
+        if len(key) < MIN_TRUNCATED_KEY:
+            return None
+        indexed_names = self._by_name.get(language, {})
+        if key in indexed_names:
+            # Une quête porte exactement ce nom. Si `resolve` n'a rien rendu,
+            # c'est qu'elles sont plusieurs, et compléter par un numéro
+            # ajouterait une hypothèse à une ambiguïté déjà non tranchée.
+            return None
+        candidates = [
+            quest_id
+            for name_key, ids in indexed_names.items()
+            if name_key.startswith(key) and is_roman_numeral(name_key[len(key) :])
+            for quest_id in ids
+        ]
+        if len(candidates) == 1:
+            return candidates[0]
+        if chain is None:
+            return None
+        in_chain = [quest_id for quest_id in candidates if quest_id.chain == chain]
+        if len(in_chain) == 1:
+            return in_chain[0]
+        if after_position is None:
+            return None
+        expected = [q for q in in_chain if q.position == after_position + 1]
+        return expected[0] if len(expected) == 1 else None
+
     def resolve_lines(
         self,
         lines: Sequence[str],
@@ -194,6 +279,11 @@ class Catalog:
         complet est toujours préféré à l'un de ses débuts, ce qui évite qu'un
         préfixe se trouvant coïncider avec une autre quête ne l'emporte sur la
         bonne réponse.
+
+        Les trois recours sont essayés dans cet ordre, du plus sûr au moins
+        sûr, et l'ordre est ce qui les rend acceptables : un nom complet
+        l'emporte toujours sur un nom auquel il faut ajouter ou retirer
+        quelque chose.
         """
         for count in range(len(lines), 0, -1):
             found = self.resolve_in_chain(
@@ -207,6 +297,14 @@ class Catalog:
             partial = self.resolve_partial(" ".join(lines[:count]), language)
             if partial is not None:
                 return partial
+        # Toujours rien : c'est peut-être la fin qui manque, un chiffre romain
+        # passé à la ligne et lu trop bas pour être retenu.
+        for count in range(len(lines), 0, -1):
+            truncated = self.resolve_truncated(
+                " ".join(lines[:count]), language, chain, after_position
+            )
+            if truncated is not None:
+                return truncated
         return None
 
     def ambiguous_names(self, language: str = "fr") -> dict[str, list[QuestId]]:

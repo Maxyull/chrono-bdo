@@ -437,6 +437,57 @@ devant un « aucune quête mesurée » sans explication.
   numéro d'un autre contributeur, donc de s'attribuer ses mesures. La date ne
   supprime pas la fuite, elle en ferme la fenêtre.
 
+- **Les quêtes dont le chiffre romain de fin est parti à la ligne se
+  retrouvent.** `Catalog.resolve_truncated` complète un nom lu qui est le
+  **début exact** d'un nom du catalogue, quand le reste manquant se réduit à un
+  chiffre romain. Elle est le troisième et dernier recours de `resolve_lines`,
+  après la résolution exacte et après `resolve_partial`.
+
+  Relevé en observant vingt minutes de jeu réel : cinq échecs d'affilée sur
+  « [Mediah] Les marchands d'Altinova II ». Le nom déborde de la largeur du
+  bandeau, son numéro passe seul sur la deuxième ligne, et ce fragment de deux
+  caractères sort à **0,515**, sous le seuil des lignes qui est à 0,75. Il est
+  écarté avant d'arriver au catalogue, et le nom reconstruit devient « Les
+  marchands d'Altinova », qui n'est le nom complet d'aucune quête.
+
+  Ce n'était pas un défaut de normalisation : `fold` ramène très bien « Ⅱ »
+  (U+2161) à « ii ». Et `resolve_partial` n'y pouvait rien, puisqu'elle cherche
+  par la **fin** du nom, pour le cas symétrique du panneau de choix où c'est le
+  préfixe de région qui saute. Ici c'est justement la fin qui manque.
+
+  Compté sur le catalogue réel : **81 quêtes principales** finissent par un
+  chiffre romain, et **76** portent un nom que le seul début ne distingue plus.
+  ⚠️ Le rapport qui a lancé ce travail annonçait 74 : le vrai chiffre est 76.
+  **72 des 81** se retrouvent désormais, 5 sans aucun contexte, 4 par la chaîne
+  en cours, 63 par la position suivante. Vérifié sur les 3 924 quêtes
+  principales : **zéro mauvaise réponse**, et aucun nom complet résolu
+  autrement qu'avant.
+
+  ⛔ Le garde-fou est ce qui rend la méthode acceptable, et il est volontairement
+  étroit : **on ne complète que s'il ne reste qu'un candidat.** « Les marchands
+  d'Altinova » est le début exact du I, du II et du III ; sans contexte, on
+  renonce. La chaîne en cours puis la position exactement suivante départagent,
+  jamais une position plus loin, exactement comme `resolve_in_chain` le fait
+  déjà pour les homonymes. Un nom qui est déjà celui d'une quête ne se voit
+  jamais ajouter de numéro, et un début de moins de huit caractères n'est pas
+  complété du tout. Une quête non identifiée coûte une mesure ; une quête mal
+  identifiée pollue une médiane pour toujours.
+
+  Restent **9 quêtes sur 81** hors de portée : 3 dont le nom amputé est déjà
+  celui d'une autre quête, 3 dont le début fait moins de huit caractères
+  (« Fracas »), et 3 dont le nom amputé est lui-même ambigu.
+
+  ⚠️ **Ce que cela ne corrige pas, et qui appartient au chemin de lecture** :
+  le fragment continue d'être jeté avant la résolution, donc les quêtes
+  retrouvées le sont par déduction et non par lecture. Abaisser le seuil pour
+  une ligne très courte serait le remède direct, mais **un seuil n'y suffirait
+  pas** : la confiance d'un bandeau est le **minimum** des scores retenus, donc
+  garder une ligne à 0,515 ferait tomber le bandeau entier sous
+  `MIN_READING_SCORE`, à 0,80. Il faudrait sortir les fragments très courts du
+  calcul de confiance, ou baisser les deux seuils, ce qui n'est pas la même
+  décision. La résolution par début de nom reste utile dans les deux cas, et le
+  test le vérifie : les deux chemins tombent sur la même quête.
+
 ### Corrigé
 
 - 🔴 **Le navigateur était pris pour le jeu.** `find_game_window` retenait la
