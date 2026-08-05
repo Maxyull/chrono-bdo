@@ -146,6 +146,7 @@ LOCKED_WHILE_MEASURING: Final = (
     "read_now",
     "reset",
     "auto",
+    "adopt",
     "pick_banner",
     "pick_tracker",
     "pick_choice",
@@ -696,15 +697,29 @@ class ZoneState:
     #: pas une absence de résultat : c'est même le symptôme d'une zone mal
     #: placée, et c'est précisément ce qu'on veut voir.
     lines: tuple[str, ...] = ()
+    #: Vrai quand un tracé existe pour cette zone, mais pour une taille de
+    #: fenêtre INCONNUE : un fichier écrit avant la table `zones` de #58, ou une
+    #: résolution jamais revue depuis. `Settings.zone_for` ne l'applique à
+    #: aucune taille, exprès, donc la zone montrée ici est la **calculée**, pas
+    #: le tracé perdu.
+    #:
+    #: Sans cette ligne, un joueur dont l'ancien tracé a cessé de s'appliquer ne
+    #: le saurait jamais : c'est exactement ce qui a coûté une matinée de
+    #: mesures le 5 août 2026, une zone à y=1224 restée active sans que rien ne
+    #: le montre, alors que `zone_for` disait déjà « non » depuis #58.
+    stray: bool = False
 
 
 def describe_zone(state: ZoneState) -> str:
     """Résume une zone en une ligne : d'où elle vient, et où elle est."""
     origine = "choisie" if state.chosen else "calculée"
-    return (
+    base = (
         f"{state.name} : {state.rect.width}x{state.rect.height} "
         f"en ({state.rect.left}, {state.rect.top}), {origine}"
     )
+    if state.stray:
+        base += " — ancien tracé disponible, bouton « Reprendre l'ancien tracé »"
+    return base
 
 
 def describe_reading(state: ZoneState) -> str:
