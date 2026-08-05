@@ -258,6 +258,69 @@ def _finish_session(timeline: Timeline, args: argparse.Namespace) -> None:
         print(f"envoi impossible, le lot est conservé — {result.detail}", file=sys.stderr)
 
 
+def command_check(args: argparse.Namespace) -> int:
+    """Vérifie que l'installation est complète et fonctionnelle.
+
+    Écrite pour deux raisons. Dans une version empaquetée, un fichier manquant
+    ne se voit qu'au moment où il sert, c'est-à-dire au milieu d'une session de
+    jeu. Et chez quelqu'un d'autre, « ça ne marche pas » n'est pas un
+    diagnostic : il faut pouvoir dire quelle étape précise a échoué.
+    """
+    ok = True
+
+    print("moteur de reconnaissance... ", end="", flush=True)
+    try:
+        import numpy as np
+
+        from .capture import icon_template
+        from .reading import RapidOcrReader, parse_banner
+
+        gabarit = icon_template()
+        print(f"chargé (gabarit {gabarit.shape[0]}x{gabarit.shape[1]})")
+    except Exception as error:  # message lisible plutôt qu'une trace
+        print(f"ÉCHEC : {error}")
+        return 1
+
+    print("lecture d'une image témoin... ", end="", flush=True)
+    try:
+        # Une image fabriquée plutôt qu'une capture de plus à embarquer : ce
+        # qu'on vérifie est que le moteur se charge et rend la main, pas ce
+        # qu'il lit.
+        temoin = np.full((60, 400), 20, dtype=np.uint8)
+        temoin[20:40, 20:380] = 200
+        lignes = RapidOcrReader().read(temoin)
+        print(f"moteur opérationnel ({len(lignes)} zone(s) analysée(s))")
+    except Exception as error:  # message lisible plutôt qu'une trace
+        print(f"ÉCHEC : {error}")
+        ok = False
+
+    print("analyse d'un bandeau... ", end="", flush=True)
+    lu = parse_banner([("Nouvelle quete", 0.99), ("[Calpheon] Une quete", 0.98)])
+    if lu is None:
+        print("ÉCHEC : le bandeau témoin n'a pas été compris")
+        ok = False
+    else:
+        print(f"reconnu ({lu.kind.value})")
+
+    print("référentiel des quêtes... ", end="", flush=True)
+    try:
+        catalog = _load_catalog((args.language,))
+        print(f"{len(catalog)} quêtes")
+    except Exception as error:  # message lisible plutôt qu'une trace
+        print(f"ÉCHEC : {error}")
+        ok = False
+
+    print("fenêtre du jeu... ", end="", flush=True)
+    window = find_game_window()
+    # L'absence du jeu n'est pas une panne : on doit pouvoir vérifier son
+    # installation sans avoir lancé Black Desert.
+    print(f"{window.width}x{window.height}" if window else "non lancé (sans gravité)")
+
+    print()
+    print("tout est en ordre" if ok else "installation incomplète")
+    return 0 if ok else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="chrono", description="Chronomètre de quêtes BDO")
     subparsers = parser.add_subparsers(dest="command")
@@ -294,6 +357,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="échelle de l'interface du jeu, si elle a été modifiée",
     )
     watch.set_defaults(handler=command_watch)
+
+    check = subparsers.add_parser("verifier", help="vérifie que l'installation est complète")
+    check.add_argument("--langue", dest="language", default="fr", choices=("fr", "en"))
+    check.set_defaults(handler=command_check)
     return parser
 
 
