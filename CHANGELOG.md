@@ -46,6 +46,29 @@ datée le jour de la release.
   L'archive est bornée par celle qu'on vise, et quand elle déborde, la
   destination suivante est proposée. Fabriquer une archive que l'hébergeur
   refusera au dépôt serait un piège.
+- **Le rattachement Discord est enfin branché.** Le module qui le fait existait
+  depuis deux versions, avec ses tests, mais aucune adresse ne l'appelait :
+  `/v1/discord/retour` rendait 404 en production. Un module complet et
+  documenté ressemble à s'y méprendre à une fonctionnalité prête, et l'état du
+  projet l'annonçait comme telle. Deux adresses le relient désormais à
+  l'application : `GET /v1/discord/connexion`, qui envoie vers Discord avec
+  l'identifiant anonyme signé dans le paramètre `state`, et
+  `GET /v1/discord/retour`, qui échange le code, lit le pseudonyme et rattache
+  le compte.
+
+  **Il reste éteint**, et c'est voulu. Sans `RUBIN_DISCORD_ID` ni
+  `RUBIN_DISCORD_SECRET`, les deux adresses répondent 503 en disant pourquoi,
+  et le reste du serveur n'en sait rien : contribuer n'a jamais demandé de
+  compte. ⚠️ Les poser stockerait un pseudonyme Discord, donc une donnée
+  personnelle, que la politique de confidentialité promet aujourd'hui de ne pas
+  transmettre. Politique d'abord, variables ensuite.
+
+  L'état signé porte désormais sa **date d'émission**, elle-même signée, et
+  n'est plus accepté au-delà d'un quart d'heure. Sans elle, un état ramassé
+  dans un historique de navigation ou un journal de mandataire restait valable
+  indéfiniment, et le rejouer permettait de rattacher **son** compte Discord au
+  numéro d'un autre contributeur, donc de s'attribuer ses mesures. La date ne
+  supprime pas la fuite, elle en ferme la fenêtre.
 
 ### Corrigé
 

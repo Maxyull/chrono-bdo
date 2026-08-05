@@ -36,9 +36,44 @@ permettre de remonter à une personne.
 | `GET /v1/quetes/{chaine}/{position}` | temps médian d'une quête |
 | `GET /v1/chaines/{chaine}` | débit d'une chaîne |
 | `GET /v1/chaines` | **les chaînes les plus rapides**, en quêtes par heure |
+| `GET /v1/discord/connexion` | envoie vers Discord pour rattacher un compte |
+| `GET /v1/discord/retour` | reçoit le retour de Discord et rattache le compte |
 
-Le dernier est la réponse à la question qui a fait naître le projet : par où
-commencer quand il reste des milliers de quêtes à faire.
+`GET /v1/chaines` est la réponse à la question qui a fait naître le projet : par
+où commencer quand il reste des milliers de quêtes à faire.
+
+## Le rattachement Discord, éteint par défaut
+
+Les deux dernières adresses répondent **503** tant que `RUBIN_DISCORD_ID` et
+`RUBIN_DISCORD_SECRET` sont absents, ce qui est le cas en production. C'est
+l'état normal et non une panne : contribuer n'a jamais demandé de compte, et un
+serveur qui refuserait de démarrer faute d'identifiants Discord couperait la
+mesure de tous les joueurs pour une fonction que personne n'utilise.
+
+⚠️ **Poser ces deux variables stocke un pseudonyme Discord, donc une donnée
+personnelle.** Le README du projet et la
+[politique de confidentialité](https://maxyull.fr/confidentialite.html)
+promettent aujourd'hui qu'aucun pseudonyme n'est transmis. L'ordre est donc
+obligatoire : **politique d'abord, variables ensuite.**
+
+| Variable | Rôle |
+|---|---|
+| `RUBIN_DISCORD_ID` | identifiant de l'application, portail développeur Discord |
+| `RUBIN_DISCORD_SECRET` | secret de la même application |
+| `RUBIN_DISCORD_RETOUR` | URL de retour, `https://rubin.maxyull.fr/v1/discord/retour` par défaut |
+| `RUBIN_DISCORD_ETAT` | clé qui signe l'état ; tirée au sort si absente, donc à figer en production |
+
+La dernière mérite une explication. L'état signé est ce qui empêche un tiers de
+rattacher **son** compte Discord au numéro d'un autre contributeur et de
+s'attribuer ses mesures. Non fournie, la clé change à chaque redémarrage, et
+toute connexion en cours à ce moment-là échoue sans raison visible. Le script de
+déploiement en génère une et la range dans le fichier de secrets, hors de tout
+dépôt git.
+
+L'état porte sa date d'émission, elle-même signée, et n'est plus accepté au-delà
+d'un quart d'heure : une adresse de retour finit dans un historique ou un
+journal de mandataire, et une signature sans date y resterait valable pour
+toujours.
 
 ## Lancer en développement
 
