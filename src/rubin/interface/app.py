@@ -33,6 +33,8 @@ from ..placement import choose, conflicts
 from ..reference import Catalog
 from ..settings import LANGUAGES, LIMITS, load, save
 from .presentation import ZoneState, describe_conflict, describe_reading, describe_zone
+from .theme import COLORS, FAMILY, MONO_FAMILY
+from .theme import apply as apply_theme
 
 #: Taille de la fenêtre. Assez large pour un nom de quête complet, assez étroite
 #: pour tenir à côté du panneau de suivi sans mordre dessus.
@@ -57,8 +59,13 @@ class RubinApp:
         self.root = tk.Tk()
         self.root.title("Rubin, chronomètre de quêtes")
         self.root.minsize(*WINDOW_SIZE)
+        self.root.configure(background=COLORS["fond"])
         self.root.protocol("WM_DELETE_WINDOW", self.close)
 
+        # L'habillage d'abord : les composants créés ensuite en héritent, alors
+        # qu'appliquer un style après coup en laisse toujours un au gris natif.
+        apply_theme(self.root)
+        self._build_header()
         self._build_tabs()
         self._apply_window_style()
         self._place_beside_the_game()
@@ -66,9 +73,26 @@ class RubinApp:
 
     # ------------------------------------------------------------------ mise en place
 
+    def _build_header(self) -> None:
+        """Le bandeau du haut : ce qu'on lit sans quitter le jeu des yeux.
+
+        Une seule chose y est grande, la quête en cours. Tout était à la même
+        taille dans le premier jet, donc rien ne ressortait, et il fallait lire
+        la fenêtre entière pour y trouver l'unique information qu'on cherchait.
+        """
+        cadre = ttk.Frame(self.root)
+        cadre.pack(fill="x", padx=14, pady=(12, 6))
+        ttk.Label(cadre, text="RUBIN", style="Section.TLabel").pack(anchor="w")
+        self._titre = ttk.Label(cadre, text="En attente du jeu", style="Titre.TLabel")
+        self._titre.pack(anchor="w", pady=(2, 0))
+        self._sous_titre = ttk.Label(
+            cadre, text="lancez Black Desert, puis jouez", style="Faible.TLabel"
+        )
+        self._sous_titre.pack(anchor="w")
+
     def _build_tabs(self) -> None:
         carnet = ttk.Notebook(self.root)
-        carnet.pack(fill="both", expand=True, padx=8, pady=8)
+        carnet.pack(fill="both", expand=True, padx=10, pady=(4, 10))
 
         self._session = ttk.Frame(carnet)
         self._zones = ttk.Frame(carnet)
@@ -82,45 +106,107 @@ class RubinApp:
         self._build_settings()
 
     def _build_session(self) -> None:
-        self._etat = ttk.Label(self._session, text="En attente du jeu…", anchor="w")
-        self._etat.pack(fill="x", pady=(4, 8))
+        self._etat = ttk.Label(self._session, text="", style="Faible.TLabel", anchor="w")
+        self._etat.pack(fill="x", padx=12, pady=(12, 4))
 
-        ttk.Label(self._session, text="À suivre", anchor="w").pack(fill="x")
-        self._liste = tk.Text(self._session, height=14, wrap="none", state="disabled")
-        self._liste.pack(fill="both", expand=True, pady=4)
+        ttk.Label(
+            self._session, text="LES QUÊTES QUI SUIVENT", style="Section.TLabel", anchor="w"
+        ).pack(fill="x", padx=12, pady=(6, 4))
 
-        self._compteurs = ttk.Label(self._session, text="", anchor="w")
-        self._compteurs.pack(fill="x", pady=(8, 0))
+        self._liste = self._text_box(self._session, height=13)
+        self._liste.pack(fill="both", expand=True, padx=12)
+
+        legende = ttk.Frame(self._session)
+        legende.pack(fill="x", padx=12, pady=(8, 4))
+        for couleur, texte in (
+            (COLORS["sur"], "5 mesures ou plus"),
+            (COLORS["moyen"], "peu de mesures"),
+            (COLORS["absent"], "jamais mesurée"),
+        ):
+            # Une pastille et son sens, parce qu'une couleur seule ne se devine
+            # pas, et parce que tout ne doit pas reposer sur la couleur.
+            pastille = ttk.Label(legende, text="●", foreground=couleur, background=COLORS["fond"])
+            pastille.pack(side="left")
+            ttk.Label(legende, text=f" {texte}   ", style="Faible.TLabel").pack(side="left")
+
+        self._compteurs = ttk.Label(self._session, text="", style="Faible.TLabel", anchor="w")
+        self._compteurs.pack(fill="x", padx=12, pady=(0, 10))
+
+    def _text_box(self, parent: tk.Misc, height: int, mono: bool = False) -> tk.Text:
+        """Une zone de texte habillée, `tk.Text` n'obéissant pas aux styles ttk.
+
+        Les lignes de la reconnaissance sont en chasse fixe **exprès** : on y
+        cherche des caractères précis, des espaces avalés, un « l » là où il
+        devrait y avoir un crochet. Une police proportionnelle masque exactement
+        ce qu'on veut voir.
+        """
+        police = (MONO_FAMILY, 9) if mono else (FAMILY, 10)
+        boite = tk.Text(
+            parent,
+            height=height,
+            wrap="word" if mono else "none",
+            state="disabled",
+            background=COLORS["carte"],
+            foreground=COLORS["texte"],
+            insertbackground=COLORS["texte"],
+            selectbackground=COLORS["accent"],
+            relief="flat",
+            borderwidth=0,
+            highlightthickness=0,
+            font=police,
+            padx=10,
+            pady=8,
+            spacing1=2,
+            spacing3=2,
+        )
+        for nom, couleur in (
+            ("sur", COLORS["sur"]),
+            ("moyen", COLORS["moyen"]),
+            ("absent", COLORS["absent"]),
+            ("faible", COLORS["faible"]),
+        ):
+            boite.tag_configure(nom, foreground=couleur)
+        return boite
 
     def _build_zones(self) -> None:
-        explication = (
-            "Rubin lit ces deux rectangles. S'ils tombent à côté, il ne mesure rien\n"
-            "et ne peut pas dire pourquoi. Le bouton montre ce qu'il y lit maintenant."
-        )
-        ttk.Label(self._zones, text=explication, anchor="w", justify="left").pack(
-            fill="x", pady=(4, 8)
-        )
+        ttk.Label(
+            self._zones,
+            text=(
+                "Rubin lit ces deux rectangles. S'ils tombent à côté, il ne mesure\n"
+                "rien et ne peut pas dire pourquoi."
+            ),
+            style="Faible.TLabel",
+            anchor="w",
+            justify="left",
+        ).pack(fill="x", padx=12, pady=(12, 8))
 
         self._zone_labels: dict[str, ttk.Label] = {}
         self._zone_readings: dict[str, tk.Text] = {}
-        for clé, nom in (("banner", "Bandeau de quête"), ("tracker", "Panneau de suivi")):
-            cadre = ttk.LabelFrame(self._zones, text=nom)
-            cadre.pack(fill="both", expand=True, pady=4)
-            self._zone_labels[clé] = ttk.Label(cadre, text="", anchor="w")
-            self._zone_labels[clé].pack(fill="x", padx=6, pady=2)
-            lecture = tk.Text(cadre, height=5, wrap="word", state="disabled")
-            lecture.pack(fill="both", expand=True, padx=6, pady=(0, 6))
+        for clé, nom in (("banner", "BANDEAU DE QUÊTE"), ("tracker", "PANNEAU DE SUIVI")):
+            ttk.Label(self._zones, text=nom, style="Section.TLabel", anchor="w").pack(
+                fill="x", padx=12, pady=(6, 2)
+            )
+            self._zone_labels[clé] = ttk.Label(
+                self._zones, text="", style="Faible.TLabel", anchor="w"
+            )
+            self._zone_labels[clé].pack(fill="x", padx=12)
+            lecture = self._text_box(self._zones, height=4, mono=True)
+            lecture.pack(fill="both", expand=True, padx=12, pady=(4, 2))
             self._zone_readings[clé] = lecture
 
         boutons = ttk.Frame(self._zones)
-        boutons.pack(fill="x", pady=4)
-        ttk.Button(boutons, text="Lire maintenant", command=self.read_zones_now).pack(side="left")
+        boutons.pack(fill="x", padx=12, pady=(8, 4))
         ttk.Button(
-            boutons, text="Revenir aux zones calculées", command=self.reset_zones
-        ).pack(side="left", padx=6)
+            boutons, text="Lire maintenant", style="Accent.TButton", command=self.read_zones_now
+        ).pack(side="left")
+        ttk.Button(boutons, text="Zones calculées", command=self.reset_zones).pack(
+            side="left", padx=8
+        )
 
-        self._avertissement = ttk.Label(self._zones, text="", anchor="w", justify="left")
-        self._avertissement.pack(fill="x", pady=(6, 0))
+        self._avertissement = ttk.Label(
+            self._zones, text="", style="Alerte.TLabel", anchor="w", justify="left", wraplength=400
+        )
+        self._avertissement.pack(fill="x", padx=12, pady=(4, 10))
         self.refresh_zones()
 
     def _build_settings(self) -> None:
@@ -135,56 +221,68 @@ class RubinApp:
         for nom, libellé in libellés.items():
             bas, haut, _ = LIMITS[nom]
             cadre = ttk.Frame(self._reglages)
-            cadre.pack(fill="x", pady=3)
+            cadre.pack(fill="x", padx=12, pady=(8, 0))
             valeur = tk.DoubleVar(value=float(getattr(self._settings, nom)))
             self._vars[nom] = valeur
-            étiquette = ttk.Label(cadre, text=f"{libellé} : {valeur.get():g}", anchor="w")
-            étiquette.pack(fill="x")
+
+            # Le libellé à gauche, la valeur à droite en accent : l'œil suit une
+            # colonne de chiffres, il ne relit pas cinq phrases pour trouver
+            # celui qui a bougé.
+            ligne = ttk.Frame(cadre)
+            ligne.pack(fill="x")
+            ttk.Label(ligne, text=libellé, anchor="w").pack(side="left")
+            étiquette = ttk.Label(ligne, text=f"{valeur.get():g}", style="Valeur.TLabel")
+            étiquette.pack(side="right")
             ttk.Scale(
                 cadre,
                 from_=bas,
                 to=haut,
                 variable=valeur,
-                command=self._slider_moved(nom, libellé, étiquette),
-            ).pack(fill="x")
+                command=self._slider_moved(nom, étiquette),
+            ).pack(fill="x", pady=(2, 0))
 
-        langue = ttk.LabelFrame(self._reglages, text="Langue du client de jeu")
-        langue.pack(fill="x", pady=8)
+        ttk.Label(
+            self._reglages, text="LANGUE DU CLIENT DE JEU", style="Section.TLabel", anchor="w"
+        ).pack(fill="x", padx=12, pady=(16, 2))
+        langue = ttk.Frame(self._reglages)
+        langue.pack(fill="x", padx=12)
         ttk.Label(
             langue,
             text=(
                 "Celle du jeu, pas la vôtre : on peut être francophone\n"
                 "et jouer sur le client anglais."
             ),
+            style="Faible.TLabel",
             anchor="w",
             justify="left",
-        ).pack(fill="x", padx=6)
+        ).pack(fill="x")
         self._langue = tk.StringVar(value=self._settings.language)
         for code in LANGUAGES:
             ttk.Radiobutton(
                 langue, text=code.upper(), value=code, variable=self._langue
-            ).pack(side="left", padx=6, pady=4)
+            ).pack(side="left", padx=(0, 14), pady=6)
 
-        ttk.Button(self._reglages, text="Enregistrer", command=self.save_settings).pack(
-            pady=8, anchor="w"
+        ttk.Button(
+            self._reglages, text="Enregistrer", style="Accent.TButton",
+            command=self.save_settings,
+        ).pack(padx=12, pady=(14, 4), anchor="w")
+        self._reglages_etat = ttk.Label(
+            self._reglages, text="", style="Faible.TLabel", anchor="w", wraplength=400
         )
-        self._reglages_etat = ttk.Label(self._reglages, text="", anchor="w")
-        self._reglages_etat.pack(fill="x")
+        self._reglages_etat.pack(fill="x", padx=12, pady=(0, 10))
 
-    def _slider_moved(
-        self, name: str, label: str, widget: ttk.Label
-    ) -> Callable[[str], None]:
+    def _slider_moved(self, name: str, widget: ttk.Label) -> Callable[[str], None]:
         """Fabrique le rappel d'un curseur, avec sa propre étiquette.
 
         Une fabrique plutôt qu'une lambda à valeurs par défaut : les cinq
         curseurs partagent la boucle qui les crée, et une lambda y capturerait
         la variable de boucle, donc la dernière valeur pour tous les cinq. Le
-        défaut ne se verrait qu'en bougeant un curseur et en voyant le libellé
+        défaut ne se verrait qu'en bougeant un curseur et en voyant la valeur
         d'un autre changer.
         """
 
         def rappel(_event: str) -> None:
-            widget.config(text=f"{label} : {self._vars[name].get():.3g}")
+            widget.config(text=f"{self._vars[name].get():.3g}")
 
         return rappel
 

@@ -21,6 +21,7 @@ from rubin.interface import (
     format_reference,
     format_upcoming_line,
 )
+from rubin.interface.theme import COLORS, confidence_colour
 from rubin.reference import Quest, QuestId
 from rubin.references import QuestReference
 from rubin.upcoming import UpcomingQuest
@@ -177,6 +178,37 @@ class TestZones:
 
         assert "Tissu haut de gamme" in texte
         assert texte.count("\n") == 1
+
+
+class TestCouleurDeConfiance:
+    def test_le_vert_demande_au_moins_cinq_mesures(self) -> None:
+        assert confidence_colour(5) == COLORS["sur"]
+        assert confidence_colour(40) == COLORS["sur"]
+
+    def test_l_orange_signale_le_peu_de_mesures(self) -> None:
+        # La base contient onze mesures d'un seul joueur : presque tout sera
+        # orange, et c'est exactement ce qu'il faut montrer.
+        assert confidence_colour(1) == COLORS["moyen"]
+        assert confidence_colour(4) == COLORS["moyen"]
+
+    def test_une_quete_jamais_mesuree_est_grise_et_non_rouge(self) -> None:
+        """Régression : peindre l'absence en rouge la fait passer pour une panne.
+
+        Un temps qui n'existe pas n'est pas un mauvais temps. C'est une
+        invitation à être le premier à le mesurer, et c'est le cas de la quasi
+        totalité des 3 924 quêtes principales aujourd'hui.
+
+        Le rouge est réservé à ce qui va mal. Une couleur neutre dit « personne
+        n'est passé par là », ce qui est la vérité.
+        """
+        assert confidence_colour(None) == COLORS["absent"]
+        assert confidence_colour(0) == COLORS["absent"]
+        assert confidence_colour(None) != COLORS["accent"]
+
+    def test_un_compte_negatif_est_traite_comme_une_absence(self) -> None:
+        # Ne devrait pas arriver, mais un serveur qui renverrait une valeur
+        # aberrante ne doit pas produire une couleur rassurante.
+        assert confidence_colour(-3) == COLORS["absent"]
 
 
 class TestConflits:
