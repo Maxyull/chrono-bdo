@@ -11,6 +11,7 @@ import pytest
 
 from rubin.capture import Rect, banner_region, tracker_region
 from rubin.interface import (
+    ALPHABET_QUEST_LIMIT,
     COVERAGE_TAGS,
     DEMO_BANNER,
     DEMO_MARK,
@@ -19,8 +20,12 @@ from rubin.interface import (
     LOCK_MARK,
     LOCKED_WHILE_MEASURING,
     RANKING_UNAVAILABLE,
+    LettredQuest,
     Watching,
     ZoneState,
+    alphabet_cap_warning,
+    alphabet_key,
+    alphabet_sections,
     demo_active,
     demo_ranking,
     describe_conflict,
@@ -30,6 +35,8 @@ from rubin.interface import (
     format_current_reference,
     format_duration,
     format_gap,
+    format_letter_header,
+    format_lettred_quest,
     format_link,
     format_measure_line,
     format_other_quests,
@@ -47,6 +54,7 @@ from rubin.interface import (
     quest_display_name,
     ranking_message,
     running_seconds,
+    samples_by_quest,
     search_quests,
     zone_lock_reason,
 )
@@ -1270,3 +1278,142 @@ class TestLigneDeQueteFaite:
 
         assert "55/100" in ligne
         assert ligne.count("/100") == 1
+
+
+def _lq(position: int, title: str, chain: int = 21136, prefix: str | None = "Calpheon") -> Quest:
+    """Une quête pour l'arbre alphabétique, `name` et `title` distincts.
+
+    À la différence de `_quete`, qui pose `title == name` par simplicité, ce
+    module-ci teste justement la différence entre les deux : `name` porte le
+    préfixe de région entre crochets, `title` ne le porte pas.
+    """
+    nom = f"[{prefix}] {title}" if prefix else title
+    return Quest(
+        id=QuestId(chain, position), name=nom, prefix=prefix, title=title,
+        region=None, kind=1, level=0,
+    )
+
+
+class TestArbreAlphabetique:
+    """La liste alphabétique des 3 924 quêtes principales, pastille au bout.
+
+    Demandée par Maxime le 05/08/2026 : voir d'un coup d'œil quelles quêtes
+    ont encore besoin d'être timées. `ReferenceClient.fastest_quests` fait
+    déjà tout le travail réseau ; ce module-ci se contente de grouper ce
+    qu'elle rend, et le seul point délicat est son plafond à 200 lignes.
+    """
+
+    def test_alphabet_key_ignore_les_accents(self) -> None:
+        assert (
+            alphabet_key(_lq(1, "École de commerce"))
+            == alphabet_key(_lq(2, "Ecole de commerce"))
+            == "E"
+        )
+
+    def test_alphabet_key_range_une_apostrophe_de_tete_sous_sa_lettre(self) -> None:
+        assert alphabet_key(_lq(1, "L'appel du sang")) == "L"
+
+    def test_alphabet_key_range_un_titre_qui_commence_par_un_chiffre_sous_diese(self) -> None:
+        assert alphabet_key(_lq(1, "1000 questions pour un noble")) == "#"
+
+    def test_regression_alphabet_key_ignore_le_prefixe_de_region(self) -> None:
+        """Régression : le cinquième piège de `ETAT.md`, sous un autre angle.
+
+        Le panneau de choix coupe le préfixe de région : l'écran affiche
+        « [Carrefour] Du côté de Valks » là où le catalogue porte
+        « [Calpheon][Carrefour] Du côté de Valks ». Grouper sur `name`, qui
+        PORTE ce préfixe entre crochets, aurait rangé la quasi-totalité du
+        catalogue sous « # » ou sous « [ », puisque tous les noms
+        commencent par un crochet. `alphabet_key` doit partir de `title`,
+        débarrassé du préfixe, jamais de `name`.
+        """
+        quete = _lq(1, "Du côté de Valks", prefix="Calpheon")
+        assert quete.name.startswith("[")
+
+        assert alphabet_key(quete) == "D"
+
+    def test_alphabet_sections_trie_a_l_interieur_d_une_lettre(self) -> None:
+        catalogue = Catalog({"fr": [_lq(1, "Zoulou"), _lq(2, "Abricot"), _lq(3, "Zamak")]})
+
+        sections = alphabet_sections(catalogue, "fr", {})
+
+        assert [entrée.quest.title for entrée in sections["Z"]] == ["Zamak", "Zoulou"]
+
+    def test_alphabet_sections_zero_mesure_par_defaut(self) -> None:
+        quete = _lq(1, "Abricot")
+        catalogue = Catalog({"fr": [quete]})
+
+        sections = alphabet_sections(catalogue, "fr", {})
+
+        assert sections["A"] == (LettredQuest(quete, 0),)
+
+    def test_alphabet_sections_reprend_le_compte_fourni_en_masse(self) -> None:
+        quete = _lq(1, "Abricot")
+        catalogue = Catalog({"fr": [quete]})
+
+        sections = alphabet_sections(catalogue, "fr", {quete.id: 7})
+
+        assert sections["A"][0].samples == 7
+
+    def test_format_letter_header_accorde_le_pluriel(self) -> None:
+        une = (LettredQuest(_lq(1, "Abricot"), 3),)
+        deux = (LettredQuest(_lq(1, "Abricot"), 0), LettredQuest(_lq(2, "Amande"), 2))
+
+        assert format_letter_header("A", une) == "A   —   1 quête, 1 mesurée"
+        assert format_letter_header("A", deux) == "A   —   2 quêtes, 1 mesurée"
+
+    def test_format_lettred_quest_dit_jamais_mesuree(self) -> None:
+        assert (
+            format_lettred_quest(LettredQuest(_lq(1, "Abricot"), 0))
+            == "Abricot   —   jamais mesurée"
+        )
+
+    def test_format_lettred_quest_accorde_mesure_au_singulier(self) -> None:
+        assert (
+            format_lettred_quest(LettredQuest(_lq(1, "Abricot"), 1)) == "Abricot   —   1 mesure"
+        )
+        assert (
+            format_lettred_quest(LettredQuest(_lq(1, "Abricot"), 4)) == "Abricot   —   4 mesures"
+        )
+
+    def test_samples_by_quest_vide_quand_le_serveur_n_a_rien_dit(self) -> None:
+        assert samples_by_quest(None) == {}
+
+    def test_samples_by_quest_indexe_par_identifiant(self) -> None:
+        ligne = RankedQuest(chain=21136, position=1, median_seconds=42.0, samples=9)
+
+        assert samples_by_quest((ligne,)) == {QuestId(21136, 1): 9}
+
+    def test_alphabet_cap_warning_se_tait_sous_le_plafond(self) -> None:
+        loin_du_plafond = tuple(
+            RankedQuest(chain=1, position=i, median_seconds=1.0, samples=1) for i in range(29)
+        )
+
+        assert alphabet_cap_warning(loin_du_plafond) is None
+
+    def test_alphabet_cap_warning_se_tait_quand_le_serveur_n_a_rien_dit(self) -> None:
+        assert alphabet_cap_warning(None) is None
+
+    def test_regression_alphabet_cap_warning_au_plafond_de_v1_quetes(self) -> None:
+        """Régression : `/v1/quetes` plafonne à 200 lignes, sans le dire.
+
+        `serveur/src/rubin_serveur/main.py` applique
+        `limit = max(1, min(limit, 200))` quel que soit ce qu'on demande, et
+        trie par temps médian croissant. Si la base compte un jour plus de
+        200 quêtes distinctes mesurées, ce sont les plus LENTES qui sortent
+        silencieusement du lot renvoyé : une quête réellement mesurée
+        apparaîtrait alors « jamais mesurée » dans l'arbre alphabétique,
+        exactement le chiffre faux que ce projet refuse d'inventer. La base
+        du 05/08/2026, avec 29 quêtes mesurées en tout, est bien trop petite
+        pour déclencher ce cas ; ce test le fabrique pour vérifier que le
+        garde-fou existe avant que la base ne le rencontre pour de vrai.
+        """
+        plafonné = tuple(
+            RankedQuest(chain=1, position=i, median_seconds=float(i), samples=1)
+            for i in range(ALPHABET_QUEST_LIMIT)
+        )
+
+        avertissement = alphabet_cap_warning(plafonné)
+
+        assert avertissement is not None
+        assert str(ALPHABET_QUEST_LIMIT) in avertissement

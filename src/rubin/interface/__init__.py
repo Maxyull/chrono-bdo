@@ -42,6 +42,7 @@ porte les erreurs qu'on ne voit pas.
 """
 
 from .presentation import (
+    ALPHABET_QUEST_LIMIT,
     COVERAGE_TAGS,
     DEMO_BANNER,
     DEMO_MARK,
@@ -52,8 +53,12 @@ from .presentation import (
     RANKING_UNAVAILABLE,
     SEARCH_MIN_LENGTH,
     SILENCE_WARNING,
+    LettredQuest,
     Watching,
     ZoneState,
+    alphabet_cap_warning,
+    alphabet_key,
+    alphabet_sections,
     demo_active,
     demo_ranking,
     describe_conflict,
@@ -63,6 +68,8 @@ from .presentation import (
     format_current_reference,
     format_duration,
     format_gap,
+    format_letter_header,
+    format_lettred_quest,
     format_link,
     format_measure_line,
     format_other_quests,
@@ -81,11 +88,13 @@ from .presentation import (
     quest_display_name,
     ranking_message,
     running_seconds,
+    samples_by_quest,
     search_quests,
     zone_lock_reason,
 )
 
 __all__ = [
+    "ALPHABET_QUEST_LIMIT",
     "COVERAGE_TAGS",
     "DEMO_BANNER",
     "DEMO_MARK",
@@ -96,8 +105,12 @@ __all__ = [
     "RANKING_UNAVAILABLE",
     "SEARCH_MIN_LENGTH",
     "SILENCE_WARNING",
+    "LettredQuest",
     "Watching",
     "ZoneState",
+    "alphabet_cap_warning",
+    "alphabet_key",
+    "alphabet_sections",
     "demo_active",
     "demo_ranking",
     "describe_conflict",
@@ -107,6 +120,8 @@ __all__ = [
     "format_current_reference",
     "format_duration",
     "format_gap",
+    "format_letter_header",
+    "format_lettred_quest",
     "format_link",
     "format_measure_line",
     "format_other_quests",
@@ -125,6 +140,7 @@ __all__ = [
     "quest_display_name",
     "ranking_message",
     "running_seconds",
+    "samples_by_quest",
     "search_quests",
     "zone_lock_reason",
 ]
