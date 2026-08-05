@@ -23,8 +23,10 @@ from rubin.capture import GrayFrame
 from rubin.deferred import DeferredWatcher
 from rubin.failures import (
     ARCHIVE_MAX_BYTES,
+    BLIND,
     DESTINATIONS,
     JOURNAL_NAME,
+    READING_FAILED,
     FailureStore,
     find_destination,
     fingerprint,
@@ -411,3 +413,66 @@ def _vieillir(path: Path, jours: int) -> None:
 
     ancien = path.stat().st_mtime - jours * 86400
     os.utime(path, (ancien, ancien))
+
+
+class TestImageGardeeAAveugle:
+    """L'image gardée quand la surveillance ne voit RIEN.
+
+    C'est la seule que ce projet retient sans qu'elle ait franchi le seuil de
+    présence, et c'est exactement pour cela qu'elle sert : les autres disent
+    pourquoi une lecture a échoué, celle-ci dit ce que la capture CONTIENT
+    quand il n'y a même pas de lecture à échouer.
+    """
+
+    def test_la_raison_distingue_les_deux_familles(self, tmp_path: Path) -> None:
+        magasin = FailureStore(tmp_path)
+        image = np.zeros((115, 349), dtype=np.uint8)
+
+        magasin.keep(image, [("Queteaccomplie", 0.96)])
+        magasin.keep(image + 1, (), reason=BLIND)
+
+        lignes = [
+            json.loads(ligne)
+            for ligne in (tmp_path / "journal.jsonl").read_text(encoding="utf-8").splitlines()
+        ]
+        assert [entree["raison"] for entree in lignes] == [READING_FAILED, BLIND]
+
+    def test_une_image_aveugle_n_a_aucune_ligne(self, tmp_path: Path) -> None:
+        # Aucune reconnaissance n'a eu lieu. Fabriquer une ligne vide ferait
+        # passer ce cas pour une reconnaissance qui n'a rien trouvé.
+        magasin = FailureStore(tmp_path)
+        magasin.keep(np.zeros((115, 349), dtype=np.uint8), (), reason=BLIND)
+
+        entree = json.loads((tmp_path / "journal.jsonl").read_text(encoding="utf-8").strip())
+        assert entree["lignes"] == []
+        assert entree["largeur"] == 349
+
+    def test_regression_une_session_muette_ne_laissait_aucune_trace(
+        self, tmp_path: Path
+    ) -> None:
+        """Régression : la session du 5 août 2026 qui n'a rien gardé du tout.
+
+        4 832 images capturées, zéro bandeau vu, zéro lecture, pendant qu'un
+        témoin lancé à côté voyait huit bandeaux sur le même rectangle et à la
+        même minute. Trois processus successifs ont eu le même comportement.
+
+        Le dossier des lectures ratées est resté vide, et c'est logique : il ne
+        reçoit que les images ayant franchi le seuil de présence, et aucune ne
+        l'avait franchi. Résultat, rien ne permettait de savoir si la capture
+        montrait le jeu, un écran figé, une autre fenêtre, ou le bon endroit
+        sans bandeau. Cinq programmes de diagnostic écrits hors du logiciel
+        n'ont pas suffi à trancher, et une seule image aurait suffi.
+
+        Le test fige la propriété qui manquait : une image REFUSÉE par le seuil
+        de présence doit pouvoir être gardée quand même.
+        """
+        magasin = FailureStore(tmp_path)
+        # Du décor, sans le moindre bandeau : exactement ce que la session
+        # capturait sans jamais le garder.
+        decor = np.full((115, 349), 83, dtype=np.uint8)
+
+        ecrit = magasin.keep(decor, (), reason=BLIND)
+
+        assert ecrit is not None
+        assert ecrit.exists()
+        assert ecrit.suffix == ".webp"

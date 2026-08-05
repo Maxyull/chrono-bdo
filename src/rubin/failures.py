@@ -153,6 +153,17 @@ def larger_than(size: int) -> Destination | None:
     return None  # pragma: pas de couverture
 
 
+#: Une image jugée digne d'être lue, dont aucun bandeau n'est sorti.
+READING_FAILED: Final = "lecture-ratee"
+
+#: Une image gardée alors que la surveillance ne voit RIEN depuis longtemps.
+#:
+#: Elle n'a rien raté : elle n'a rien vu. C'est le seul cas où l'on garde une
+#: image que le seuil de présence a refusée, et c'est justement parce que ce
+#: refus est le symptôme qu'on cherche à comprendre.
+BLIND: Final = "aveugle"
+
+
 def fingerprint(image: GrayFrame) -> str:
     """Empreinte d'une image, pour ne pas garder deux fois la même.
 
@@ -281,13 +292,28 @@ class FailureStore:
         image: GrayFrame,
         lines: Sequence[TextLine] | Sequence[tuple[str, float]],
         at: float | None = None,
+        reason: str = READING_FAILED,
     ) -> Path | None:
-        """Retient une lecture ratée, et renvoie le fichier écrit s'il l'a été.
+        """Retient une image et ce qu'on en a tiré, et renvoie le fichier écrit.
 
         L'image n'est écrite qu'une fois par empreinte, mais le journal reçoit
         une ligne à chaque occurrence : c'est la fréquence d'un échec qui dit
         s'il s'agit d'un cas isolé ou du défaut qui plombe toute une session, et
         elle ne coûte que quelques dizaines d'octets.
+
+        `reason` distingue deux cas qu'il ne faut surtout pas confondre en les
+        relisant. `READING_FAILED` est le cas d'origine : une image jugée digne
+        d'être lue dont aucun bandeau n'est sorti. `BLIND` est l'autre, ajouté
+        après la séance du 5 août 2026 : la surveillance ne voit **rien du
+        tout**, aucun bandeau depuis longtemps, et l'image est gardée pour
+        qu'on sache enfin CE QUE LA CAPTURE CONTIENT.
+
+        Ce jour-là, une session a compté 4 832 images et zéro bandeau pendant
+        qu'un témoin extérieur en voyait huit sur le même rectangle. Aucune
+        image n'avait été gardée, puisque aucune n'avait franchi le seuil de
+        présence, donc rien ne permettait de savoir si la capture montrait le
+        jeu, un écran figé, ou autre chose. Cinq programmes de diagnostic
+        écrits hors du logiciel n'ont pas suffi à trancher.
         """
         moment = self._clock() if at is None else at
         mark = fingerprint(image)
@@ -311,6 +337,7 @@ class FailureStore:
             "hauteur": int(image.shape[0]),
             "largeur": int(image.shape[1]),
             "lignes": [_journal_line(line) for line in lines],
+            "raison": reason,
         }
         try:
             with (self._directory / JOURNAL_NAME).open("a", encoding="utf-8") as journal:
