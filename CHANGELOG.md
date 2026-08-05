@@ -25,6 +25,35 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
   trouve aucun titre connu ; un seuil mal réglé rate des bandeaux ou en propose
   que l'analyse refuse. On perd des mesures, on n'en invente aucune.
 
+- **Un chronomètre en direct**, dans l'en-tête de la fenêtre. Le temps qui court
+  sur la quête en cours s'affiche pendant qu'elle est chronométrée, au lieu de
+  n'apparaître qu'une fois la quête finie.
+
+  Ce n'est pas qu'un confort, et c'est ce qui l'a rendu prioritaire. Aujourd'hui,
+  un bandeau de DÉPART ignoré est **parfaitement silencieux** : le joueur ne
+  s'aperçoit qu'une heure plus tard qu'il manque des quêtes. Le chronomètre le
+  dit sur-le-champ, en restant sur « aucune quête chronométrée » alors qu'une
+  quête vient d'être acceptée. Il transforme le « ça va trop vite et certaines
+  quêtes ne sont pas comptées » signalé le 05/08/2026 en fait observable.
+
+  ⚠️ C'est le temps de la quête **en cours**, jamais un total de session : un
+  total serait le débit au rythme médian, qui ment du simple au double, 77
+  quêtes à l'heure annoncées contre 36 réellement produites. Et l'horloge est
+  celle du journal d'événements, `time.monotonic`, jamais une heure du jour.
+
+- **Le compteur de couverture**, en bas de l'onglet Session : combien des 3 924
+  quêtes principales sont bien mesurées, peu mesurées, jamais mesurées, dans les
+  couleurs de la légende juste au-dessus. Il donne l'échelle de ce qui reste et
+  rend chaque contribution lisible.
+
+  ⚠️ **Le serveur ne rend pas les quêtes jamais mesurées**, et ce n'est pas un
+  oubli : il ne connaît que celles dont il a reçu une mesure. Les 3 924 quêtes
+  principales sont un fait du catalogue, que le client porte, donc la
+  soustraction se fait de ce côté-ci. Le chiffre du jour est « 0 verte, 11
+  orange, 3 913 jamais mesurées », sans pourcentage ni arrondi flatteur. Serveur
+  injoignable ou absent : la ligne dit qu'elle ne sait pas, elle n'affiche pas
+  trois zéros, qui se liraient « personne n'a jamais rien mesuré ».
+
 - **La fenêtre refuse de se poser sur ce qu'elle lit.** Rubin lit une capture
   d'écran, donc une fenêtre posée sur une zone de lecture est lue à la place de
   cette zone. Elle se place d'elle-même à côté du panneau de quêtes, et prévient

@@ -68,6 +68,33 @@ class ChainReference:
     samples: int
 
 
+@dataclass(frozen=True)
+class Coverage:
+    """Combien de quêtes le serveur voit bien mesurées, et combien peu.
+
+    ⚠️ **Les quêtes jamais mesurées n'y sont pas, et ce n'est pas un oubli.**
+    Le serveur ne connaît que les quêtes dont il a reçu au moins une mesure. Le
+    nombre de quêtes principales, lui, est un fait du catalogue, que ce client
+    porte et que le serveur n'a jamais vu : rien ne lui garantit d'ailleurs que
+    tous les clients lisent le même. La soustraction appartient donc à ce
+    côté-ci, et se fait dans `interface.presentation.format_coverage`.
+
+    Réclamer ce chiffre au serveur reviendrait à lui faire affirmer ce qu'il ne
+    peut pas vérifier, et un chiffre faux entre dans les affichages sans jamais
+    en ressortir.
+    """
+
+    #: Quêtes portant au moins `threshold` mesures. Les vertes de l'interface.
+    well_measured: int
+    #: Quêtes mesurées, mais moins que `threshold`. Les oranges.
+    lightly_measured: int
+    #: Le seuil qui sépare les deux, tel que le serveur l'applique. Lu et non
+    #: supposé : le jour où il bouge côté serveur, l'affichage suit.
+    threshold: int
+    #: Somme des deux tranches, c'est-à-dire tout ce que le serveur connaît.
+    measured_quests: int
+
+
 class ReferenceClient:
     """Lit les références sur le serveur, sans jamais faire échouer l'appelant."""
 
@@ -78,6 +105,8 @@ class ReferenceClient:
         # personne n'a mesurée le restera pendant toute la session.
         self._quests: dict[QuestId, QuestReference | None] = {}
         self._chains: dict[int, ChainReference | None] = {}
+        self._coverage: Coverage | None = None
+        self._coverage_asked = False
         #: Nombre d'appels qui n'ont pas abouti. Utile pour dire à la fin que
         #: les références manquaient, plutôt que de laisser croire qu'aucune
         #: quête n'avait jamais été mesurée.
@@ -144,3 +173,36 @@ class ReferenceClient:
         )
         self._chains[number] = reference
         return reference
+
+    def coverage(self) -> Coverage | None:
+        """Combien de quêtes sont bien mesurées et peu mesurées, sur le serveur.
+
+        Comme `quest` et `chain`, elle **ne lève jamais**. Un serveur
+        injoignable, lent ou incohérent rend `None`, c'est-à-dire une absence
+        d'information, jamais une panne de la fenêtre. Un compteur qui
+        emporterait l'affichage avec lui coûterait bien plus cher que le
+        compteur ne rapporte.
+
+        ⚠️ `None` ne se remplace pas par des zéros à l'affichage. « 0 verte, 0
+        orange, 3 924 grises » se lirait comme « personne n'a jamais rien
+        mesuré », ce qui est une affirmation, et une fausse.
+
+        La réponse est gardée en mémoire, absence comprise, comme le reste du
+        module. Rien ne peut bouger en cours de session de toute façon : les
+        mesures ne partent au serveur qu'à son arrêt.
+        """
+        if self._coverage_asked:
+            return self._coverage
+        body = self._get("/v1/couverture")
+        self._coverage_asked = True
+        self._coverage = (
+            Coverage(
+                well_measured=int(body.get("well_measured", 0)),
+                lightly_measured=int(body.get("lightly_measured", 0)),
+                threshold=int(body.get("threshold", 0)),
+                measured_quests=int(body.get("measured_quests", 0)),
+            )
+            if body
+            else None
+        )
+        return self._coverage

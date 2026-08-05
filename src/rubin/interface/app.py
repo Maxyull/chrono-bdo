@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import queue
 import threading
+import time
 import tkinter as tk
 import webbrowser
 from collections.abc import Callable
@@ -50,14 +51,19 @@ from .autozone import search as search_banner_zone
 from .help import EXAMPLES, HelpWindow
 from .picker import ZonePicker, png_data
 from .presentation import (
+    COVERAGE_TAGS,
     ZoneState,
     describe_conflict,
     describe_reading,
     describe_zone,
+    format_coverage,
     format_duration,
     format_gap,
     format_reference,
+    format_running,
     format_upcoming_line,
+    main_quest_total,
+    running_seconds,
 )
 from .session import MeasuringSession
 from .theme import COLORS, FAMILY, MONO_FAMILY, confidence_score
@@ -160,6 +166,7 @@ class RubinApp:
         self._build_tabs()
         self._apply_window_style()
         self._place_beside_the_game()
+        self._ask_coverage()
         self.root.after(REFRESH_MS, self._drain)
 
     # ------------------------------------------------------------------ mise en place
@@ -180,6 +187,12 @@ class RubinApp:
             cadre, text="lancez Black Desert, puis jouez", style="Faible.TLabel"
         )
         self._sous_titre.pack(anchor="w")
+        # Le temps qui court, en accent : c'est la deuxième chose qu'on vient
+        # chercher d'un coup d'œil, après le nom de la quête. En dessous du
+        # sous-titre et non à côté, pour qu'un nom de quête long ne le pousse
+        # jamais hors de la fenêtre.
+        self._chrono = ttk.Label(cadre, text="", style="Valeur.TLabel")
+        self._chrono.pack(anchor="w", pady=(4, 0))
 
     def _build_tabs(self) -> None:
         carnet = ttk.Notebook(self.root)
@@ -239,7 +252,34 @@ class RubinApp:
             ttk.Label(legende, text=f" {texte}   ", style="Faible.TLabel").pack(side="left")
 
         self._compteurs = ttk.Label(self._session, text="", style="Faible.TLabel", anchor="w")
-        self._compteurs.pack(fill="x", padx=12, pady=(0, 10))
+        self._compteurs.pack(fill="x", padx=12, pady=(0, 2))
+
+        # La couverture des 3 924 quêtes principales, juste sous la légende qui
+        # dit ce que chaque couleur veut dire.
+        #
+        # Trois étiquettes et non une seule : une `ttk.Label` n'a qu'une couleur
+        # de texte, et ici la couleur EST l'information, celle qui rattache
+        # chaque compte à sa pastille. Le séparateur voyage dans le texte du
+        # morceau qui précède, sinon des virgules orphelines resteraient à
+        # l'écran tant que le serveur n'a pas répondu.
+        self._couverture = ttk.Frame(self._session)
+        self._couverture.pack(fill="x", padx=12, pady=(0, 10))
+        self._couverture_parts = [
+            ttk.Label(
+                self._couverture,
+                text="",
+                foreground=COLORS[balise],
+                background=COLORS["fond"],
+                font=(FAMILY, 9),
+            )
+            for balise in COVERAGE_TAGS
+        ]
+        for morceau in self._couverture_parts:
+            morceau.pack(side="left")
+        self._couverture_etat = ttk.Label(
+            self._couverture, text="couverture : demandée au serveur…", style="Faible.TLabel"
+        )
+        self._couverture_etat.pack(side="left")
 
     def _scrollable(self, parent: ttk.Frame) -> ttk.Frame:
         """Un cadre qui défile, pour que le contenu ne soit jamais coupé.
@@ -695,6 +735,41 @@ class RubinApp:
         self._auto = threading.Thread(target=chercher, daemon=True)
         self._auto.start()
 
+    def _ask_coverage(self) -> None:
+        """Demande au serveur combien de quêtes sont mesurées, dans un fil.
+
+        Dans un fil parce que l'appel dure jusqu'à cinq secondes quand le
+        serveur ne répond pas, et qu'une fenêtre figée cinq secondes au
+        lancement est un défaut bien plus visible que ce compteur n'est utile.
+        Le fil ne touche à aucun composant : il passe par la file, comme le
+        moteur de mesure.
+
+        Une seule fois par lancement, et c'est assumé : rien ne peut bouger
+        pendant la session, puisque les mesures ne partent qu'à son arrêt. Le
+        compteur montre donc l'état au démarrage, et la contribution du jour se
+        voit au lancement suivant.
+        """
+        if self._catalog is None:
+            self._couverture_etat.config(
+                text="couverture inconnue : le référentiel n'est pas chargé"
+            )
+            return
+        if not self._references.enabled:
+            # Sans serveur, rien de faux ne s'affiche : le total des quêtes
+            # principales est connu, mais la part mesurée ne l'est pas, et
+            # afficher « 3 924 jamais mesurées » serait une affirmation.
+            self._couverture_etat.config(
+                text="couverture inconnue : aucun serveur, relancez avec --envoyer"
+            )
+            return
+        catalogue, langue = self._catalog, self._settings.language
+
+        def demander() -> None:
+            total = main_quest_total(catalogue, langue)
+            self.publish("couverture", format_coverage(self._references.coverage(), total))
+
+        threading.Thread(target=demander, daemon=True).start()
+
     def _help(self, which: str) -> Callable[[], None]:
         """Ouvre l'exemple de ce que cette zone doit contenir."""
 
@@ -788,8 +863,37 @@ class RubinApp:
                 self._handle(genre, charge)
         except queue.Empty:
             pass
+        self._refresh_chrono()
         if not self._stop.is_set():
             self.root.after(REFRESH_MS, self._drain)
+
+    def _refresh_chrono(self) -> None:
+        """Le temps qui court sur la quête en cours, huit fois par seconde.
+
+        Rafraîchi ici et nulle part ailleurs. `_drain` est déjà le seul endroit
+        d'où les composants sont touchés, et il tourne déjà à la bonne cadence :
+        un second `after` n'ajouterait qu'un point d'entrée de plus dans Tk,
+        pour rien.
+
+        **Ce n'est pas qu'un confort.** Un bandeau de DÉPART ignoré est
+        aujourd'hui parfaitement silencieux, et le joueur ne s'aperçoit qu'une
+        heure plus tard qu'il manque des quêtes. Un chronomètre qui reste sur
+        « aucune quête chronométrée » alors qu'il vient d'en accepter une le lui
+        dit sur-le-champ.
+
+        L'horloge est `time.monotonic`, la même que celle du journal
+        d'événements. Voir `running_seconds` : mêler les deux horloges donnerait
+        un nombre absurde sans lever la moindre erreur.
+        """
+        moteur = self._engine
+        if moteur is None or not moteur.running or moteur.timeline is None:
+            # Hors session, pas de chronomètre : « aucune quête chronométrée »
+            # sur une fenêtre qui ne mesure pas encore serait un reproche, pas
+            # une information.
+            self._chrono.config(text="")
+            return
+        écoulé = running_seconds(moteur.timeline.pending_since, time.monotonic())
+        self._chrono.config(text=format_running(écoulé))
 
     def _handle(self, genre: str, charge: Any) -> None:
         if genre == "etat":
@@ -815,6 +919,8 @@ class RubinApp:
             self._show_no_chain(str(charge))
         elif genre == "position":
             self._show_upcoming(*charge)
+        elif genre == "couverture":
+            self._show_coverage(charge)
 
     def _set_running(self, running: bool) -> None:
         self._bouton.config(
@@ -944,6 +1050,31 @@ class RubinApp:
             self._liste.insert("end", f"{format_upcoming_line(item)}\n")
             self._liste.insert("end", f"     {format_reference(item)}\n", "faible")
         self._liste.config(state="disabled")
+
+    def _show_coverage(self, parts: tuple[str, str, str] | None) -> None:
+        """Affiche « 0 verte, 11 orange, 3 913 jamais mesurées », ou son absence.
+
+        L'absence se dit. Trois zéros à la place se liraient comme « personne
+        n'a jamais rien mesuré », qui est une affirmation, et une fausse quand
+        c'est seulement le serveur qui n'a pas répondu.
+        """
+        if parts is None:
+            for morceau in self._couverture_parts:
+                morceau.config(text="")
+            # « ne l'a pas donnée » et non « n'a pas répondu ». Éprouvé le
+            # 05/08/2026 : rubin.maxyull.fr répond parfaitement, mais rend 404
+            # sur cette adresse, parce qu'il tourne encore sur une version
+            # antérieure au point d'entrée. Annoncer une panne de réseau aurait
+            # envoyé chercher l'erreur exactement du mauvais côté.
+            self._couverture_etat.config(
+                text="couverture inconnue : le serveur ne l'a pas donnée"
+            )
+            return
+        for index, (morceau, texte) in enumerate(
+            zip(self._couverture_parts, parts, strict=True)
+        ):
+            morceau.config(text=texte + (", " if index < len(parts) - 1 else ""))
+        self._couverture_etat.config(text="")
 
     def publish(self, genre: str, charge: Any) -> None:
         """Dépose un message pour l'affichage. Appelable depuis n'importe quel fil."""

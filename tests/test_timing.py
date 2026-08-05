@@ -124,6 +124,56 @@ class TestEtat:
         timeline.record(lecture(BannerKind.COMPLETED, JERON), at=10.0)
         assert timeline.pending_quest is None
 
+    def test_expose_l_instant_de_depart_de_la_quete_en_cours(
+        self, timeline: Timeline
+    ) -> None:
+        assert timeline.pending_since is None
+        timeline.record(lecture(BannerKind.ACCEPTED, JERON), at=1_000.0)
+        assert timeline.pending_since == pytest.approx(1_000.0)
+        timeline.record(lecture(BannerKind.COMPLETED, JERON), at=1_042.5)
+        assert timeline.pending_since is None
+
+    def test_un_depart_ignore_laisse_le_chronometre_a_l_arret(
+        self, timeline: Timeline
+    ) -> None:
+        """Régression : « ça va trop vite et certaines quêtes ne sont pas comptées ».
+
+        Signalé par Maxime le 05/08/2026. Deux bandeaux consécutifs se
+        ressemblent beaucoup, même fond et même titre « Nouvelle quête », et
+        le second peut être refusé avant lecture comme trop proche du premier.
+        La quête n'est alors jamais comptée, et **rien ne le dit** : le joueur
+        s'en aperçoit une heure plus tard, en comptant.
+
+        Le journal, lui, le sait sur-le-champ : aucune quête n'est ouverte,
+        donc `pending_since` reste vide alors que le joueur vient d'en
+        accepter une. C'est ce que le chronomètre de la fenêtre rend visible.
+
+        Ici, la fin de Jeron est vue mais son départ a été manqué : rien n'est
+        ouvert, donc rien ne se chronomètre, et l'écran doit le dire au lieu
+        d'afficher un temps qui court sur une quête qu'il ne suit pas.
+        """
+        timeline.record(lecture(BannerKind.COMPLETED, JERON), at=1_000.0)
+        assert timeline.pending_since is None
+        assert timeline.pending_quest is None
+
+    def test_l_instant_de_depart_est_celui_de_l_horloge_du_journal(
+        self, catalog: Catalog
+    ) -> None:
+        """Régression : mêler l'heure du jour au temps monotone.
+
+        Les instants du journal viennent de `time.monotonic`, jamais de
+        `time.time` : ce sont des secondes depuis un point arbitraire, pas une
+        heure. Un affichage qui soustrairait l'un de l'autre montrerait un
+        écart de plusieurs milliards de secondes, et rien ne lèverait d'erreur.
+
+        La propriété rend donc exactement ce que l'horloge du journal a produit,
+        sans conversion ni recalage.
+        """
+        instants = iter([12_345.678])
+        timeline = Timeline(catalog=catalog, clock=lambda: next(instants))
+        timeline.record(lecture(BannerKind.ACCEPTED, JERON))
+        assert timeline.pending_since == pytest.approx(12_345.678)
+
     def test_additionne_les_durees(self, timeline: Timeline) -> None:
         timeline.record(lecture(BannerKind.ACCEPTED, JERON), at=0.0)
         timeline.record(lecture(BannerKind.COMPLETED, JERON), at=20.0)

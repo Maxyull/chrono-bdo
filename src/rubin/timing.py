@@ -229,5 +229,26 @@ class Timeline:
         """La quête en cours de mesure, s'il y en a une."""
         return self._pending.quest_id if self._pending else None
 
+    @property
+    def pending_since(self) -> float | None:
+        """L'instant où la quête en cours a été acceptée, s'il y en a une.
+
+        Une propriété plutôt qu'un accès à `_pending` depuis l'affichage : la
+        forme interne du journal n'est l'affaire de personne d'autre, et une
+        fenêtre qui lirait un attribut privé se casserait le jour où il change,
+        sans qu'aucun test du journal ne le voie.
+
+        ⚠️ **C'est un instant en temps monotone**, celui de `clock`, qui vaut
+        `time.monotonic` par défaut. Ce n'est pas une heure du jour : le
+        soustraire d'un `time.time()` donnerait un écart de plusieurs
+        milliards de secondes, et rien ne lèverait d'erreur.
+
+        `None` a un sens fort ici, et pas seulement « pas encore commencé » :
+        aucune quête n'est ouverte, donc rien n'est chronométré. C'est
+        exactement ce qu'un joueur doit voir quand un bandeau de départ a été
+        ignoré, cas aujourd'hui parfaitement silencieux.
+        """
+        return self._pending.at if self._pending else None
+
     def total_seconds(self) -> float:
         return sum(m.seconds for m in self.measures)

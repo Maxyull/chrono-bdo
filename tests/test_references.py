@@ -6,7 +6,7 @@ import pytest
 import requests
 
 from rubin.reference import QuestId
-from rubin.references import ChainReference, QuestReference, ReferenceClient
+from rubin.references import ChainReference, Coverage, QuestReference, ReferenceClient
 
 
 class FakeResponse:
@@ -109,3 +109,64 @@ class TestReferenceClient:
         }
         client = client_with(monkeypatch, [FakeResponse(200, body)])
         assert client.chain(21139) == ChainReference(11, 90.0, 40.0, 1212.0, 11)
+
+
+#: La réponse réelle de https://rubin.maxyull.fr/v1/couverture au 05/08/2026,
+#: sur une base qui contient onze mesures d'un seul joueur.
+COUVERTURE = {
+    "well_measured": 0,
+    "lightly_measured": 11,
+    "threshold": 5,
+    "measured_quests": 11,
+}
+
+
+class TestCouverture:
+    def test_lit_la_couverture(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        client = client_with(monkeypatch, [FakeResponse(200, COUVERTURE)])
+        assert client.coverage() == Coverage(
+            well_measured=0, lightly_measured=11, threshold=5, measured_quests=11
+        )
+
+    def test_ne_la_demande_qu_une_fois(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        client = client_with(monkeypatch, [FakeResponse(200, COUVERTURE)])
+        client.coverage()
+        # Un second appel réseau lèverait StopIteration : la liste est épuisée.
+        # L'affichage relit ce compteur, il ne doit pas retourner sur le réseau.
+        assert client.coverage() is not None
+
+    def test_ne_leve_jamais_quand_le_serveur_est_injoignable(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Régression : un compteur ne doit pas emporter la fenêtre avec lui.
+
+        C'est la règle du module, et elle vaut ici plus qu'ailleurs : la
+        couverture est un décor, la mesure est la fonction. Un serveur
+        injoignable, lent ou incohérent rend une absence d'information, jamais
+        une exception qui remonterait dans la boucle de la fenêtre.
+
+        Le cas est le quotidien du logiciel : `rubin fenetre` se lance sans
+        `--envoyer` la plupart du temps, et le VPS n'est pas toujours joignable.
+        """
+        client = client_with(monkeypatch, [requests.ConnectionError("coupé")])
+        assert client.coverage() is None
+        assert client.failures == 1
+
+    def test_une_reponse_illisible_devient_une_absence(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client = client_with(monkeypatch, [FakeResponse(200, None)])
+        assert client.coverage() is None
+
+    def test_ne_demande_rien_sans_serveur(self) -> None:
+        assert ReferenceClient(None).coverage() is None
+
+    def test_comble_les_champs_absents_sans_broncher(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Un serveur d'une version antérieure, qui ne rendrait pas encore le
+        # seuil. Mieux vaut un zéro lisible qu'une exception de clé.
+        client = client_with(monkeypatch, [FakeResponse(200, {"lightly_measured": 11})])
+        assert client.coverage() == Coverage(
+            well_measured=0, lightly_measured=11, threshold=0, measured_quests=0
+        )
