@@ -9,6 +9,20 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ### Ajouté
 
+- **Une panne qui arrête la session le dit, et propose de reprendre.**
+  Signalé par Maxime le 06/08/2026 : la session se désactivait parfois toute
+  seule, sans qu'il sache pourquoi. `_run` attrapait déjà l'exception mais ne
+  le montrait qu'une seconde, dans une étiquette vite recouverte. Deux
+  correctifs liés :
+
+  - la panne et sa trace complète sont désormais écrites dans
+    `echecs/erreurs.log`, en ajout, pour survivre au message suivant ;
+  - la fenêtre demande, une fois le bouton retombé sur « Je commence mes
+    quêtes » : « Rubin a rencontré un problème… Faites-vous encore des
+    quêtes ? ». Un « oui » relance la mesure tout de suite. Cette question ne
+    se pose **jamais** pour un clic volontaire sur « Arrêter », qui ne publie
+    pas le même signal que la panne.
+
 - **Une note personnelle par quête, dans l'onglet Session.** Demandé par
   Maxime le 05/08/2026 au soir : de quoi noter le monstre à tuer, l'instance
   à faire, le choix pris à un carrefour, ou un mot ou un nombre relevé dans
