@@ -1,13 +1,18 @@
-"""Capture d'une zone de l'écran, en niveaux de gris.
+"""Capture d'une zone de l'écran.
 
 La capture est la partie bon marché du travail : quelques millisecondes pour la
 zone du bandeau. C'est la reconnaissance de caractères qui coûte, entre 300 et
 600 millisecondes, et c'est pour cela qu'on capture souvent mais qu'on ne
 reconnaît que quand l'image a changé.
 
-La conversion en niveaux de gris a lieu ici, une fois, parce que tout ce qui
-suit travaille sur la luminance : la comparaison d'images comme la
+La conversion en niveaux de gris a lieu ici, une fois, parce que presque tout ce
+qui suit travaille sur la luminance : la comparaison d'images comme la
 reconnaissance. Garder la couleur ne servirait qu'à tripler la mémoire.
+
+**Une exception**, et elle a coûté une session à découvrir : le panneau de suivi
+met la quête active en évidence par un bandeau vert, dont la luminance est celle
+des lettres blanches qu'il porte. En gris, ce texte disparaît. `grab_color`
+existe pour ce cas-là, et pour lui seul.
 """
 
 from __future__ import annotations
@@ -24,6 +29,15 @@ if TYPE_CHECKING:
 
 #: Une image en niveaux de gris, valeurs de 0 à 255.
 GrayFrame = npt.NDArray[np.uint8]
+
+#: Une image en couleur, trois canaux rouge, vert, bleu, valeurs de 0 à 255.
+#:
+#: Employée pour une seule chose, et à contre-courant du reste du module : le
+#: panneau de suivi met la quête active en évidence par un **bandeau vert**, et
+#: ce vert a en niveaux de gris la même luminance que les lettres blanches qu'il
+#: porte. Convertir avant de regarder jette donc précisément le signal qui dit
+#: quelle quête est en cours. Voir `tracking.py`.
+ColorFrame = npt.NDArray[np.uint8]
 
 #: Coefficients de luminance de la recommandation UIT-R BT.601. La moyenne
 #: simple des trois canaux donnerait un gris où le texte cyan du bandeau
@@ -68,6 +82,24 @@ class ScreenCapture:
         if pixels.ndim == 2:  # source déjà en niveaux de gris
             return pixels
         return (pixels[..., :3] @ _LUMA).astype(np.uint8)
+
+    def grab_color(self) -> ColorFrame:
+        """Capture la zone en couleur, canaux rouge, vert, bleu.
+
+        Réservée au panneau de suivi, où la couleur porte une information que le
+        gris détruit : le bandeau vert de la quête active. Partout ailleurs, le
+        gris suffit et coûte trois fois moins de mémoire.
+
+        `mss` rend du BGRA ; l'ordre est remis à l'endroit ici, une fois, pour
+        que rien en aval n'ait à s'en souvenir. Une inversion de canaux ne lève
+        aucune erreur, elle donne seulement des couleurs fausses, c'est-à-dire
+        le genre de défaut qui se découvre trois écrans plus loin.
+        """
+        raw = self._ensure_grabber().grab(self._region.to_mss())
+        pixels = np.asarray(raw, dtype=np.uint8)
+        if pixels.ndim == 2:  # source en niveaux de gris : on la répète
+            return np.repeat(pixels[:, :, np.newaxis], 3, axis=2)
+        return np.ascontiguousarray(pixels[..., 2::-1])
 
     def close(self) -> None:
         # Une source fournie de l'extérieur appartient à l'appelant : on ne

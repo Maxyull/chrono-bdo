@@ -20,7 +20,7 @@ from .banner import (
     locate_icon,
 )
 from .region import REFERENCE_SIZE, Rect, banner_region, tracker_region
-from .screen import Grabber, GrayFrame, ScreenCapture
+from .screen import ColorFrame, Grabber, GrayFrame, ScreenCapture
 from .window import TITLE_FRAGMENTS, find_game_window
 
 __all__ = [
@@ -30,6 +30,7 @@ __all__ = [
     "PRESENCE_THRESHOLD",
     "REFERENCE_SIZE",
     "TITLE_FRAGMENTS",
+    "ColorFrame",
     "Grabber",
     "GrayFrame",
     "Rect",
