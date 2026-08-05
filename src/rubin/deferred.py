@@ -33,7 +33,7 @@ from typing import Final
 
 from .capture import GrayFrame
 from .failures import FailureStore
-from .reading import BannerReading, TextReader, parse_banner
+from .reading import BannerReading, TextReader, parse_banner_lines, read_lines
 from .watching import BannerWatcher
 
 #: Cadence de capture. Huit fois par seconde : le bandeau reste affiché
@@ -146,8 +146,11 @@ class DeferredWatcher:
                 self._wake.clear()
             frames = self.take_pending()
             for frame in frames:
-                lines = self._reader.read(frame.image)
-                reading = parse_banner(lines)
+                # Avec les boîtes quand le moteur sait les rendre : c'est le
+                # seul chemin qui en a besoin, et le seul qui voit du chat du
+                # jeu mélangé au bandeau.
+                lines = read_lines(self._reader, frame.image)
+                reading = parse_banner_lines(lines)
                 if reading is not None:
                     yield reading, frame.at
                     continue

@@ -9,7 +9,7 @@ from PIL import Image
 
 from rubin.capture import GrayFrame
 from rubin.deferred import DeferredWatcher
-from rubin.reading import BannerKind
+from rubin.reading import BannerKind, TextLine
 from rubin.watching import BannerWatcher
 
 DATA = Path(__file__).parent / "data"
@@ -129,3 +129,43 @@ class TestDeferredWatcher:
         deferred, _, _ = build(banner, delay=0.01)
         deferred._pending.extend(deferred.take_pending())
         assert deferred.overflowed == 0
+
+
+class ChatEntrelaceReader:
+    """Moteur qui rend le chat du jeu mélangé au bandeau, avec les boîtes.
+
+    Relevé réel du 5 août 2026, vignette `cfbbb896250632c0` : deux lignes de
+    chat s'intercalent entre le nom de la quête et sa dernière ligne.
+    """
+
+    def read(self, image: GrayFrame) -> list[tuple[str, float]]:
+        return [(ligne.text, ligne.score) for ligne in self.read_boxed(image)]
+
+    def read_boxed(self, image: GrayFrame) -> list[TextLine]:
+        return [
+            TextLine("Queteaccomplie", 0.959, 148.5, 288.0, 31.5, 50.5),
+            TextLine("Guer", 0.981, 1.0, 27.5, 39.0, 51.0),
+            TextLine("[Hebdo] Echange d’arme du Voile", 0.943, 103.5, 330.0, 48.5, 68.5),
+            TextLine("finp", 0.969, 1.5, 27.0, 54.5, 69.5),
+            TextLine("noir", 0.997, 103.5, 133.0, 68.5, 83.0),
+        ]
+
+
+def test_la_surveillance_differee_separe_le_chat_du_bandeau(banner: GrayFrame) -> None:
+    """Régression : neuf mesures perdues sur neuf, le 5 août 2026.
+
+    C'est le seul chemin qui voit du chat mélangé au bandeau, donc le seul qui
+    demande les boîtes au moteur. Sans elles, le nom rendu ici serait
+    « Guer [Hebdo] Echange d'arme du Voile finp noir », qui ne se résout en
+    aucune quête : la mesure était perdue alors que chaque ligne était lue entre
+    0,94 et 0,99.
+    """
+    source = LoopingSource(banner)
+    reader = ChatEntrelaceReader()
+    deferred = DeferredWatcher(BannerWatcher(source, reader), reader, interval=0.01)
+
+    with deferred:
+        lecture, _ = next(deferred.readings(timeout=2.0))
+
+    assert lecture.kind is BannerKind.COMPLETED
+    assert lecture.quest_name == "[Hebdo] Echange d’arme du Voile noir"
