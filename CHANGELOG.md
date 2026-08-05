@@ -7,6 +7,8 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+## [0.5.5] - 2026-08-06
+
 ### Ajouté
 
 - **Une panne qui arrête la session le dit, et propose de reprendre.**
