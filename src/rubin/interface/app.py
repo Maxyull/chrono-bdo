@@ -309,7 +309,17 @@ class RubinApp:
         carnet.bind("<<NotebookTabChanged>>", self._tab_changed)
 
     def _build_session(self) -> None:
-        commandes = ttk.Frame(self._session)
+        """L'onglet Session : démarrer, suivre, voir ce qui vient.
+
+        ⚠️ **L'onglet défile**, depuis le 5 août 2026 au soir, même raison que
+        `_build_ranking` : « QUÊTES FAITES » et « LES QUÊTES QUI SUIVENT »
+        s'étoffent avec la partie, et une session déjà bien avancée dépassait
+        la hauteur de la fenêtre sans que rien ne le dise. La légende des
+        couleurs et la couverture, tout en bas, étaient **présentes et
+        invisibles** : vu chez Maxime, qui les croyait absentes.
+        """
+        dedans = self._scrollable(self._session)
+        commandes = ttk.Frame(dedans)
         commandes.pack(fill="x", padx=12, pady=(12, 6))
         self._bouton = ttk.Button(
             commandes,
@@ -320,7 +330,7 @@ class RubinApp:
         self._bouton.pack(side="left")
 
         self._etat = ttk.Label(
-            self._session, text="", style="Faible.TLabel", anchor="w", wraplength=400
+            dedans, text="", style="Faible.TLabel", anchor="w", wraplength=400
         )
         self._etat.pack(fill="x", padx=12, pady=(0, 2))
 
@@ -330,14 +340,14 @@ class RubinApp:
         # ligne-ci dit ce qu'il voit RÉELLEMENT. Le 5 août 2026, les deux se
         # contredisaient pendant quinze minutes et rien ne le montrait.
         self._surveillance = ttk.Label(
-            self._session, text="", style="Faible.TLabel", anchor="w", wraplength=400
+            dedans, text="", style="Faible.TLabel", anchor="w", wraplength=400
         )
         self._surveillance.pack(fill="x", padx=12, pady=(0, 6))
 
         ttk.Label(
-            self._session, text="QUÊTES FAITES", style="Section.TLabel", anchor="w"
+            dedans, text="QUÊTES FAITES", style="Section.TLabel", anchor="w"
         ).pack(fill="x", padx=12, pady=(2, 3))
-        self._faites = self._text_box(self._session, height=6)
+        self._faites = self._text_box(dedans, height=6)
         self._faites.pack(fill="both", expand=True, padx=12)
         # Configuré une seule fois, réutilisé par chaque nom cliquable. Après
         # les tags de couleur posés par `_text_box` : à recouvrement, Tk donne
@@ -348,13 +358,13 @@ class RubinApp:
         self._faites.tag_bind("lien", "<Leave>", lambda _e: self._faites.config(cursor=""))
 
         ttk.Label(
-            self._session, text="LES QUÊTES QUI SUIVENT", style="Section.TLabel", anchor="w"
+            dedans, text="LES QUÊTES QUI SUIVENT", style="Section.TLabel", anchor="w"
         ).pack(fill="x", padx=12, pady=(8, 3))
 
-        self._liste = self._text_box(self._session, height=7)
+        self._liste = self._text_box(dedans, height=7)
         self._liste.pack(fill="both", expand=True, padx=12)
 
-        legende = ttk.Frame(self._session)
+        legende = ttk.Frame(dedans)
         legende.pack(fill="x", padx=12, pady=(8, 4))
         for couleur, texte in (
             (COLORS["sur"], "5 mesures ou plus"),
@@ -367,7 +377,7 @@ class RubinApp:
             pastille.pack(side="left")
             ttk.Label(legende, text=f" {texte}   ", style="Faible.TLabel").pack(side="left")
 
-        self._compteurs = ttk.Label(self._session, text="", style="Faible.TLabel", anchor="w")
+        self._compteurs = ttk.Label(dedans, text="", style="Faible.TLabel", anchor="w")
         self._compteurs.pack(fill="x", padx=12, pady=(0, 2))
 
         # La couverture des 3 924 quêtes principales, juste sous la légende qui
@@ -378,7 +388,7 @@ class RubinApp:
         # chaque compte à sa pastille. Le séparateur voyage dans le texte du
         # morceau qui précède, sinon des virgules orphelines resteraient à
         # l'écran tant que le serveur n'a pas répondu.
-        self._couverture = ttk.Frame(self._session)
+        self._couverture = ttk.Frame(dedans)
         self._couverture.pack(fill="x", padx=12, pady=(0, 10))
         self._couverture_parts = [
             ttk.Label(
@@ -402,7 +412,7 @@ class RubinApp:
         # les mêler donnerait un chiffre décourageant et faux, puisqu'on n'a
         # jamais eu l'intention de mesurer les autres.
         self._autres = ttk.Label(
-            self._session, text="", style="Faible.TLabel", anchor="w", wraplength=420
+            dedans, text="", style="Faible.TLabel", anchor="w", wraplength=420
         )
         self._autres.pack(fill="x", padx=12, pady=(0, 10))
 

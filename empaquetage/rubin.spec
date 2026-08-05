@@ -109,7 +109,13 @@ exe = EXE(
     debug=False,
     strip=False,
     upx=False,  # UPX déclenche des faux positifs d'antivirus, pour peu de gain
-    console=True,
+    # ⚠️ False depuis le 5 août 2026 au soir, sur demande de Maxime : un
+    # double-clic ouvrait une console noire à côté de la fenêtre de Rubin, que
+    # rien ne justifiait pour ce chemin-là. `point_entree.py` se raccroche à la
+    # console du parent quand elle existe (`AttachConsole`), pour que
+    # `rubin.exe verifier` et les autres commandes de terminal continuent
+    # d'afficher leur texte normalement.
+    console=False,
     # Un binaire anonyme est doublement pénalisé : les antivirus s'en méfient
     # davantage, et la signature de code exige un nom de produit et une version.
     version=str(RACINE / "empaquetage" / "metadonnees.txt"),
