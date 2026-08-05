@@ -693,6 +693,8 @@ class RubinApp:
             self._add_measure(*charge)
         elif genre == "vu":
             self._show_seen(*charge)
+        elif genre == "sous_chrono":
+            self._add_split(*charge)
         elif genre == "sans_chaine":
             self._show_no_chain(str(charge))
         elif genre == "position":
@@ -737,14 +739,39 @@ class RubinApp:
         écart = reference.compare(measure.seconds) if reference else ""
         marque = "" if measure.quality is Quality.EXACT else "  (déduite)"
 
-        self._faites.config(state="normal")
-        self._faites.insert("1.0", f"{format_duration(measure.seconds)}  {nom}{marque}\n")
-        self._faites.insert("1.0", "")  # ancre pour la balise de couleur
-        self._faites.tag_add(_tag_for(échantillons), "1.0", "1.end")
-        détail = f"    {score}/100  ({échantillons} mesures)"
+        détail = f"     {score}/100   {échantillons} mesures"
         if écart:
-            détail += f"  {écart}"
-        self._faites.insert("2.0", "")
+            détail += f"   {écart}"
+
+        # Les deux lignes sont insérées en tête, le détail d'abord pour qu'il se
+        # retrouve SOUS son titre une fois celui-ci inséré à son tour. La
+        # dernière quête finie apparaît ainsi en haut, et les précédentes
+        # descendent sans être effacées.
+        #
+        # Le premier jet insérait le titre puis une chaîne vide, et construisait
+        # le détail sans jamais l'écrire : le score, le nombre de mesures et
+        # l'écart aux autres joueurs étaient calculés pour rien. Une insertion
+        # de chaîne vide ne lève aucune erreur, elle ne fait simplement rien.
+        self._faites.config(state="normal")
+        self._faites.insert("1.0", f"{détail}\n", "faible")
+        self._faites.insert("1.0", f"{format_duration(measure.seconds)}  {nom}{marque}\n")
+        self._faites.tag_add(_tag_for(échantillons), "1.0", "1.end")
+        self._faites.config(state="disabled")
+        self._faites.see("1.0")
+
+    def _add_split(self, quest_name: str, index: int, seconds: float) -> None:
+        """Affiche le temps d'un objectif franchi.
+
+        Marqué « objectif » et non simplement chronométré : ces temps ne
+        quittent pas ce poste, contrairement aux mesures de quête, et le joueur
+        doit pouvoir faire la différence en un coup d'œil. Voir `session.py`.
+        """
+        self._faites.config(state="normal")
+        self._faites.insert(
+            "1.0",
+            f"{format_duration(seconds):>10}   objectif {index}   {quest_name}\n",
+            "faible",
+        )
         self._faites.config(state="disabled")
         self._faites.see("1.0")
 

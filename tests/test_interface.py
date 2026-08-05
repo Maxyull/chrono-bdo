@@ -285,3 +285,39 @@ class TestScoreSurCent:
         # plancher. Une quête sans mesure reste à zéro.
         assert confidence_score(0, placed=False) == 0
         assert confidence_score(1, placed=False) == confidence_score(1, placed=True)
+
+
+class TestSousChronosLocaux:
+    def test_le_protocole_ignore_tout_des_objectifs(self) -> None:
+        """Les sous-chronos ne peuvent PAS partir au serveur, par construction.
+
+        Un bandeau d'objectif raté ne produit pas un trou : il fusionne deux
+        segments en un et donne un temps trop long, qui a toutes les apparences
+        d'une vraie mesure. Là où une quête ratée donne un chiffre incomplet, un
+        objectif raté donne un chiffre faux.
+
+        Ils vivent donc entièrement dans la couche d'affichage. Ce test le
+        verrouille : ni le lot envoyé ni la ligne de mesure ne portent le
+        moindre champ d'objectif. Si quelqu'un en ajoute un, il casse ici, et la
+        docstring lui dit pourquoi.
+        """
+        from dataclasses import fields
+
+        from rubin.protocol import MeasurePayload, SessionPayload
+
+        noms = {f.name for f in fields(MeasurePayload)} | {f.name for f in fields(SessionPayload)}
+        interdits = {"objective", "objectives", "split", "splits", "objectif", "objectifs"}
+
+        assert not (noms & interdits), f"un champ d'objectif est apparu : {noms & interdits}"
+
+    def test_le_journal_d_evenements_ne_borne_aucun_objectif(self) -> None:
+        # Le sous-chrono est calculé dans l'interface, à partir des instants de
+        # capture. `Timeline` n'en sait rien et ne doit rien en savoir : c'est
+        # ce qui garantit qu'aucune médiane ne peut être touchée.
+        import inspect
+
+        from rubin import timing
+
+        source = inspect.getsource(timing)
+        assert "sous_chrono" not in source
+        assert "OBJECTIVE_DONE" not in source
