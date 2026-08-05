@@ -8,6 +8,7 @@ dépendances, plus une archive prête à distribuer.
 
 from __future__ import annotations
 
+import hashlib
 import shutil
 import subprocess
 import sys
@@ -55,7 +56,17 @@ def main() -> int:
         for fichier in sorted(cible.rglob("*")):
             if fichier.is_file():
                 zf.write(fichier, fichier.relative_to(cible))
+    # L'empreinte accompagne l'archive : elle ne calme aucun antivirus, mais
+    # elle permet à qui le souhaite de vérifier que le fichier téléchargé est
+    # bien celui qui a été construit ici.
+    empreinte = hashlib.sha256(archive.read_bytes()).hexdigest()
+    # Le format est celui de `sha256sum`, pour que la vérification soit une
+    # commande et non un travail de comparaison à l'œil.
+    (RACINE / "dist" / "chrono-windows.zip.sha256").write_text(
+        f"{empreinte}  chrono-windows.zip" + "\n", encoding="utf-8"
+    )
     print(f"--- {archive.stat().st_size / 1e6:.0f} Mo : {archive}")
+    print(f"--- sha256 : {empreinte}")
     return 0
 
 
