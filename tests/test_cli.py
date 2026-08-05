@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from rubin.__main__ import _format_duration, _print_upcoming, build_parser, main
+from rubin.__main__ import DEFAULT_SERVER, _format_duration, _print_upcoming, build_parser, main
 from rubin.failures import FailureStore
 from rubin.reading import BannerKind
 from rubin.reference import Catalog, QuestId
@@ -215,3 +215,32 @@ class TestCommandeParDefaut:
 
         assert résultat == 0
         assert len(appels) == 1
+
+
+class TestServeurParDefautDeLaFenetre:
+    """`rubin fenetre` se connecte au serveur communautaire sans qu'on le demande.
+
+    Décision de Maxime le 5 août 2026 au soir, juste après la publication de
+    la 0.5.1 : « il faut pas que le joueur ait à envoyer des commandes ».
+    """
+
+    def test_fenetre_sans_argument_se_connecte_deja(self) -> None:
+        assert build_parser().parse_args(["fenetre"]).server == DEFAULT_SERVER
+
+    def test_envoyer_reste_utilisable_pour_viser_un_autre_serveur(self) -> None:
+        # Le défaut change, pas la possibilité de le remplacer : un autre
+        # serveur, de test par exemple, doit rester atteignable.
+        args = build_parser().parse_args(["fenetre", "--envoyer", "http://localhost:9"])
+        assert args.server == "http://localhost:9"
+
+    def test_regression_suivre_garde_son_propre_defaut_sans_envoi(self) -> None:
+        """Régression : `suivre` ne doit PAS hériter du serveur par défaut.
+
+        Cette commande sert aussi à mesurer sans rien envoyer, sur une machine
+        sans interface graphique : c'est le seul chemin qui permet encore de
+        jouer sans se connecter à quoi que ce soit. Lui donner le même défaut
+        que `fenetre` referait, en ligne de commande, exactement ce que ce
+        changement corrige côté fenêtre : une décision prise à la place de
+        qui ne l'a pas demandée.
+        """
+        assert build_parser().parse_args(["suivre"]).server is None

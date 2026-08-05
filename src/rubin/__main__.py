@@ -14,6 +14,7 @@ import sys
 import time
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Final
 
 from platformdirs import user_data_dir
 
@@ -36,6 +37,25 @@ from .watching import BannerWatcher
 #: Cadence de la boucle. Huit fois par seconde suffisent : le bandeau reste
 #: affiché plusieurs secondes, et une capture ne coûte que 4 millisecondes.
 POLL_INTERVAL = 0.125
+
+#: Le serveur communautaire, utilisé par défaut par `rubin fenetre`.
+#:
+#: Décision de Maxime le 5 août 2026 au soir, juste après la publication de la
+#: 0.5.1 : « il faut pas que le joueur ait à envoyer des commandes ». Jusque-là
+#: la fenêtre demandait `--envoyer URL` pour contribuer, ce qui exigeait de
+#: taper une commande même pour la partie double-clic. Il ne suffit donc plus
+#: de connecter, il faut aussi ENVOYER par défaut.
+#:
+#: ⚠️ **Ce n'est pas la même prudence que le reste du projet.** Ailleurs,
+#: « rien n'est envoyé sans --envoyer » protégeait un joueur qui n'a rien
+#: demandé : décider à sa place serait mal venu. Ici, c'est Maxime, qui possède
+#: ce logiciel, qui choisit le comportement par défaut d'un exécutable qu'il
+#: distribue lui-même à des testeurs. La fenêtre reste transparente sur ce
+#: choix : elle affiche « serveur : connecté à … » dès l'ouverture, jamais en
+#: silence. `rubin suivre`, en ligne de commande, garde `--envoyer` requis :
+#: cette commande sert aussi à mesurer sans rien envoyer, sur une machine sans
+#: interface graphique, et ce cas-là doit rester possible.
+DEFAULT_SERVER: Final = "https://rubin.maxyull.fr"
 
 
 def _setup_console() -> None:
@@ -735,7 +755,7 @@ def build_parser() -> argparse.ArgumentParser:
     fenetre.add_argument(
         "--envoyer",
         dest="server",
-        default=None,
+        default=DEFAULT_SERVER,
         metavar="URL",
         help="adresse du serveur : temps des autres joueurs, et envoi en fin de session",
     )
