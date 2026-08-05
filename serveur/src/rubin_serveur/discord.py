@@ -29,6 +29,7 @@ import hashlib
 import hmac
 import os
 import secrets
+import time
 from dataclasses import dataclass
 from typing import Any, Final
 
@@ -44,6 +45,21 @@ _TIMEOUT: Final = 15
 
 #: Seule portée demandée. Voir l'en-tête du module.
 SCOPE: Final = "identify"
+
+#: Durée de validité de l'état signé, en secondes.
+#:
+#: Se connecter à Discord prend moins d'une minute. Passé un quart d'heure,
+#: l'adresse traîne dans un historique de navigation, un journal de serveur
+#: mandataire ou un en-tête `Referer`, et une signature sans date y reste
+#: valable indéfiniment. Or qui rejoue un état valable rattache **son** compte
+#: Discord au numéro du contributeur qui l'a laissé fuiter, et s'attribue ses
+#: mesures. La date bornée ne supprime pas la fuite, elle en ferme la fenêtre.
+STATE_MAX_AGE: Final = 900
+
+#: Tolérance de décalage d'horloge, en secondes. Une date légèrement dans le
+#: futur vient d'une horloge mal réglée, pas d'une attaque : un attaquant qui
+#: sait forger une signature n'a pas besoin de tricher sur l'heure.
+_CLOCK_SKEW: Final = 60
 
 
 @dataclass(frozen=True)
@@ -89,31 +105,56 @@ class DiscordIdentity:
     name: str
 
 
-def sign_state(player: str, secret: str) -> str:
+def _signature(payload: str, secret: str) -> str:
+    return hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def sign_state(player: str, secret: str, issued_at: int | None = None) -> str:
     """Signe l'identifiant du joueur pour le transmettre à Discord et le relire.
 
     Discord renvoie cet état tel quel au retour. Non signé, n'importe qui
     pourrait forger un retour rattachant **son** compte Discord au numéro
     d'un autre contributeur, et s'attribuer ses temps.
 
+    La date d'émission fait partie de ce qui est signé, donc elle ne se retouche
+    pas sans invalider la signature. Elle borne la durée pendant laquelle un
+    état qui a fuité reste rejouable ; voir `STATE_MAX_AGE`.
+
     La signature n'est pas du chiffrement : l'identifiant reste lisible dans
     l'adresse. Ce n'est pas un secret, c'est un numéro tiré au sort qui ne
     désigne personne.
     """
-    signature = hmac.new(secret.encode(), player.encode(), hashlib.sha256).hexdigest()[:32]
-    return f"{player}.{signature}"
+    stamp = int(time.time()) if issued_at is None else issued_at
+    payload = f"{player}.{stamp}"
+    return f"{payload}.{_signature(payload, secret)}"
 
 
-def read_state(state: str, secret: str) -> str | None:
-    """Relit un état signé, ou `None` s'il a été altéré."""
-    player, _, signature = state.partition(".")
-    if not player or not signature:
+def read_state(state: str, secret: str, max_age: int = STATE_MAX_AGE) -> str | None:
+    """Relit un état signé, ou `None` s'il a été altéré, forgé ou périmé.
+
+    Les trois refus rendent la même chose : dire à un visiteur *lequel* des
+    trois lui donnerait de quoi chercher lequel contourner.
+    """
+    player, _, rest = state.partition(".")
+    stamp, _, signature = rest.partition(".")
+    if not player or not stamp or not signature:
         return None
-    expected = hmac.new(secret.encode(), player.encode(), hashlib.sha256).hexdigest()[:32]
     # Comparaison à temps constant : une comparaison ordinaire s'arrête au
     # premier caractère différent, ce qui laisse mesurer la progression et
     # reconstituer une signature valide essai après essai.
-    return player if hmac.compare_digest(signature, expected) else None
+    if not hmac.compare_digest(signature, _signature(f"{player}.{stamp}", secret)):
+        return None
+    try:
+        issued_at = int(stamp)
+    except ValueError:  # pragma: pas de couverture
+        # Inatteignable sans le secret : la signature vient d'être vérifiée, et
+        # nous n'émettons que des dates entières. Le garde reste, parce qu'une
+        # exception non rattrapée ici rendrait une trace à un visiteur.
+        return None
+    age = int(time.time()) - issued_at
+    if age > max_age or age < -_CLOCK_SKEW:
+        return None
+    return player
 
 
 def authorize_url(config: DiscordConfig, player: str) -> str:

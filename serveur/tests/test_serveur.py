@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import time
+from urllib.parse import parse_qs, urlparse
+
 import pytest
 from fastapi.testclient import TestClient
 from rubin.protocol import PROTOCOL_VERSION, MeasurePayload, SessionPayload
@@ -248,3 +251,224 @@ class TestDiscord:
         stockage.link_discord("joueur42", "9876", "Ancien")
         stockage.link_discord("joueur42", "9876", "Nouveau")
         assert stockage.display_name("joueur42") == "Nouveau"
+
+    def test_refuse_un_etat_perime(self) -> None:
+        """Régression : une signature sans date reste valable pour toujours.
+
+        L'état voyage dans une adresse, donc il finit dans un historique de
+        navigation, un journal de mandataire ou un en-tête `Referer`. Tant
+        qu'il n'était signé que sur l'identifiant, un état ramassé six mois
+        plus tard permettait encore de rattacher **son** compte Discord au
+        numéro de celui qui l'avait laissé fuiter, et de s'attribuer ses
+        mesures. La date signée ne supprime pas la fuite, elle en ferme la
+        fenêtre.
+        """
+        from rubin_serveur.discord import STATE_MAX_AGE, read_state, sign_state
+
+        vieux = sign_state("joueur42", "secret", issued_at=int(time.time()) - STATE_MAX_AGE - 1)
+        assert read_state(vieux, "secret") is None
+
+        recent = sign_state("joueur42", "secret", issued_at=int(time.time()) - 10)
+        assert read_state(recent, "secret") == "joueur42"
+
+    def test_refuse_une_date_retouchee(self) -> None:
+        # Rajeunir un état périmé demanderait de refaire la signature, qui
+        # porte sur l'identifiant *et* la date.
+        from rubin_serveur.discord import read_state, sign_state
+
+        vieux = sign_state("joueur42", "secret", issued_at=int(time.time()) - 100_000)
+        signature = vieux.rsplit(".", 1)[1]
+        rajeuni = f"joueur42.{int(time.time())}.{signature}"
+        assert read_state(rajeuni, "secret") is None
+
+
+class TestDiscordSansIdentifiants:
+    """L'état par défaut : aucune variable d'environnement n'est posée.
+
+    C'est celui de la production aujourd'hui, et il doit le rester tant que la
+    politique de confidentialité ne mentionne pas le pseudonyme Discord.
+    """
+
+    @pytest.fixture(autouse=True)
+    def sans_configuration(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(main, "discord_config", None)
+
+    def test_la_connexion_dit_qu_elle_n_est_pas_configuree(self, client: TestClient) -> None:
+        reponse = client.get("/v1/discord/connexion", params={"player": "a" * 32})
+        assert reponse.status_code == 503
+        assert "pas configuré" in reponse.json()["detail"]
+
+    def test_le_retour_dit_qu_il_n_est_pas_configure(self, client: TestClient) -> None:
+        reponse = client.get("/v1/discord/retour", params={"code": "x", "state": "y"})
+        assert reponse.status_code == 503
+
+    def test_le_reste_du_serveur_continue_de_fonctionner(self, client: TestClient) -> None:
+        """Régression : Discord absent ne doit rien emporter avec lui.
+
+        Contribuer n'a jamais demandé de compte. Un serveur qui refuserait de
+        démarrer, ou qui rendrait une erreur ailleurs, faute de
+        `RUBIN_DISCORD_ID`, couperait la mesure de tous les joueurs pour une
+        fonction que personne n'utilise encore.
+        """
+        assert client.post("/v1/sessions", json=lot(42.0)).status_code == 201
+        assert client.get("/sante").status_code == 200
+        assert client.get("/v1/quetes/21136/1").json()["samples"] == 1
+
+
+class TestDiscordConfigure:
+    """Le serveur muni d'identifiants, sans jamais appeler Discord.
+
+    L'échange du code est remplacé : une suite de tests qui dépendrait de la
+    disponibilité de discord.com ne dirait plus rien du code le jour où elle
+    casserait.
+    """
+
+    #: Clé de signature de l'état, propre aux tests. Le vérificateur de
+    #: sécurité signale toute constante dont le nom évoque un secret sans
+    #: regarder sa valeur ; le nom l'évite, faute de quoi il faudrait
+    #: désactiver la règle pour tout le fichier.
+    CLE_ETAT = "signature-de-test"
+
+    @pytest.fixture(autouse=True)
+    def avec_configuration(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from rubin_serveur.discord import DiscordConfig
+
+        monkeypatch.setattr(
+            main,
+            "discord_config",
+            DiscordConfig(
+                client_id="123",
+                # Valeur factice : aucun appel réel à Discord n'est fait ici.
+                client_secret="chut",  # noqa: S106
+                redirect_uri="https://rubin.maxyull.fr/v1/discord/retour",
+                state_secret=self.CLE_ETAT,
+            ),
+        )
+
+    def etat(self, player: str, age: int = 0) -> str:
+        from rubin_serveur.discord import sign_state
+
+        return sign_state(player, self.CLE_ETAT, issued_at=int(time.time()) - age)
+
+    def test_envoie_vers_discord_avec_un_etat_signe(self, client: TestClient) -> None:
+        from rubin_serveur.discord import read_state
+
+        reponse = client.get(
+            "/v1/discord/connexion", params={"player": "a" * 32}, follow_redirects=False
+        )
+        assert reponse.status_code == 307
+        destination = urlparse(reponse.headers["location"])
+        assert destination.netloc == "discord.com"
+
+        parametres = parse_qs(destination.query)
+        assert parametres["scope"] == ["identify"]
+        assert read_state(parametres["state"][0], self.CLE_ETAT) == "a" * 32
+
+    def test_refuse_un_identifiant_de_contributeur_malforme(self, client: TestClient) -> None:
+        # Le point sépare les trois parties de l'état signé : un identifiant
+        # qui en contiendrait déplacerait la frontière entre le numéro et sa
+        # signature.
+        reponse = client.get("/v1/discord/connexion", params={"player": "joueur.42"})
+        assert reponse.status_code == 422
+
+    def test_rattache_le_compte_au_retour(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from rubin_serveur.discord import DiscordIdentity
+
+        monkeypatch.setattr(
+            main, "exchange_code", lambda config, code: DiscordIdentity("9876", "Maxyull")
+        )
+        reponse = client.get(
+            "/v1/discord/retour", params={"code": "bon-code", "state": self.etat("a" * 32)}
+        )
+        assert reponse.status_code == 200
+        assert reponse.json() == {"rattache": True, "nom": "Maxyull"}
+        assert main.storage.display_name("a" * 32) == "Maxyull"
+
+    def test_le_retour_rejette_un_etat_forge(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Régression : sans état signé, on s'attribue les mesures d'un autre.
+
+        Discord rend l'état tel quel. Une route de retour qui le croirait sur
+        parole laisserait n'importe qui appeler `/v1/discord/retour` avec le
+        numéro d'un contributeur et son propre compte Discord, et apparaître au
+        classement à la place de la personne qui a réellement mesuré. C'est la
+        seule chose qui tient cette adresse debout : elle est publique, et rien
+        n'oblige celui qui l'appelle à être passé par Discord.
+        """
+        from rubin_serveur.discord import sign_state
+
+        appels: list[str] = []
+
+        def espion(config: object, code: str) -> None:
+            appels.append(code)
+            return None
+
+        monkeypatch.setattr(main, "exchange_code", espion)
+        victime = "b" * 32
+
+        etats = (
+            victime,  # non signé du tout
+            f"{victime}.{int(time.time())}.00000000000000000000000000000000",  # signature forgée
+            sign_state(victime, "mauvais-secret"),  # signé, mais pas par nous
+            self.etat(victime, age=100_000),  # signé par nous, mais périmé
+        )
+        for etat in etats:
+            reponse = client.get("/v1/discord/retour", params={"code": "bon-code", "state": etat})
+            assert reponse.status_code == 400, etat
+
+        # Aucun de ces retours n'a même été présenté à Discord : le rattachement
+        # s'arrête avant l'échange, et rien n'a été écrit.
+        assert appels == []
+        assert main.storage.display_name(victime) is None
+
+    def test_refuse_un_retour_incomplet(self, client: TestClient) -> None:
+        assert client.get("/v1/discord/retour").status_code == 400
+        assert client.get("/v1/discord/retour", params={"code": "x"}).status_code == 400
+        reponse = client.get(
+            "/v1/discord/retour", params={"code": "x" * 600, "state": self.etat("a" * 32)}
+        )
+        assert reponse.status_code == 400
+
+    def test_dit_quand_discord_ne_confirme_pas(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Un échec côté Discord ne doit ni faire tomber le serveur ni rendre
+        # une trace au visiteur.
+        monkeypatch.setattr(main, "exchange_code", lambda config, code: None)
+        reponse = client.get(
+            "/v1/discord/retour", params={"code": "code-refuse", "state": self.etat("a" * 32)}
+        )
+        assert reponse.status_code == 502
+        assert main.storage.display_name("a" * 32) is None
+
+    def test_borne_un_pseudonyme_demesure(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Régression : un nom trop long ferait échouer l'écriture en base.
+
+        La colonne `discord_name` fait soixante-quatre caractères. Discord
+        borne les siens à trente-deux, mais ce qu'il rend n'est pas de notre
+        ressort, et Postgres refuse ce qui dépasse là où SQLite l'accepte. Le
+        rattachement échouerait après que la personne a donné son accord, et
+        seulement en production.
+        """
+        from rubin_serveur.discord import DiscordIdentity
+
+        monkeypatch.setattr(
+            main,
+            "exchange_code",
+            # Un caractère de contrôle et deux cents caractères : ni l'un ni
+            # l'autre ne vient de nous, et Discord n'est pas tenu de les
+            # exclure.
+            lambda config, code: DiscordIdentity("9876", "Maxyull" + chr(7) + "N" * 200),
+        )
+        reponse = client.get(
+            "/v1/discord/retour", params={"code": "bon-code", "state": self.etat("a" * 32)}
+        )
+        assert reponse.status_code == 200
+        nom = reponse.json()["nom"]
+        assert len(nom) == 64
+        assert nom.isprintable()

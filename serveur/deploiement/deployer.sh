@@ -47,6 +47,25 @@ fi
 # shellcheck disable=SC1090
 set -a; source "$CONF_RUBIN"; set +a
 
+# Le rattachement Discord est **éteint par défaut**, et doit le rester tant que
+# la politique de confidentialité publiée ne mentionne pas le pseudonyme
+# Discord : l'activer stocke une donnée personnelle que le texte actuel promet
+# de ne pas transmettre. Tant que ces deux variables sont absentes du fichier de
+# secrets, le serveur tourne exactement comme aujourd'hui et les deux adresses
+# du rattachement répondent « non configuré ».
+RUBIN_DISCORD_ID="${RUBIN_DISCORD_ID:-}"
+RUBIN_DISCORD_SECRET="${RUBIN_DISCORD_SECRET:-}"
+RUBIN_DISCORD_RETOUR="${RUBIN_DISCORD_RETOUR:-https://${RUBIN_DOMAINE}/v1/discord/retour}"
+if [[ -n "$RUBIN_DISCORD_ID" && -z "${RUBIN_DISCORD_ETAT:-}" ]]; then
+  # La clé qui signe l'état est tirée au sort par le serveur quand elle manque,
+  # mais elle change alors à chaque redémarrage : toute connexion en cours à ce
+  # moment-là échoue sans raison visible. On la fige une fois, dans le fichier
+  # de secrets, hors de tout dépôt git.
+  echo "-> génération de la clé de signature de l'état Discord"
+  RUBIN_DISCORD_ETAT="$(python -c 'import secrets; print(secrets.token_hex(32))')"
+  echo "RUBIN_DISCORD_ETAT=$RUBIN_DISCORD_ETAT" >>"$CONF_RUBIN"
+fi
+
 DEPOT="https://github.com/Maxyull/rubin-bdo.git"
 CIBLE="/opt/rubin"
 
@@ -58,6 +77,10 @@ ssh -i "$VPS_SSH_KEY" -o StrictHostKeyChecking=no "${VPS_USER}@${VPS_HOST}" \
   RUBIN_PG_DATABASE="$RUBIN_PG_DATABASE" \
   RUBIN_PORT="$RUBIN_PORT" \
   RUBIN_DOMAINE="$RUBIN_DOMAINE" \
+  RUBIN_DISCORD_ID="$RUBIN_DISCORD_ID" \
+  RUBIN_DISCORD_SECRET="$RUBIN_DISCORD_SECRET" \
+  RUBIN_DISCORD_RETOUR="$RUBIN_DISCORD_RETOUR" \
+  RUBIN_DISCORD_ETAT="${RUBIN_DISCORD_ETAT:-}" \
   DEPOT="$DEPOT" CIBLE="$CIBLE" 'bash -s' <<'DISTANT'
 set -euo pipefail
 
@@ -98,6 +121,22 @@ sudo "${CIBLE}/.venv/bin/pip" install --quiet -e "${CIBLE}" -e "${CIBLE}/serveur
 # pas au passage dans un document en ligne, et rendaient ici un caractère de
 # contrôle au lieu du numéro de version.
 VERSION="$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+' "${CIBLE}/src/rubin/__init__.py" | head -1)"
+
+# Le bloc Discord n'est écrit que si les identifiants existent. Poser les
+# variables à vide reviendrait au même pour le serveur, qui les traite comme
+# absentes, mais laisserait croire en lisant l'unité que le rattachement est
+# gréé alors qu'il ne l'est pas.
+DISCORD_ENV=""
+if [[ -n "${RUBIN_DISCORD_ID}" && -n "${RUBIN_DISCORD_SECRET}" ]]; then
+  DISCORD_ENV="Environment=RUBIN_DISCORD_ID=${RUBIN_DISCORD_ID}
+Environment=RUBIN_DISCORD_SECRET=${RUBIN_DISCORD_SECRET}
+Environment=RUBIN_DISCORD_RETOUR=${RUBIN_DISCORD_RETOUR}
+Environment=RUBIN_DISCORD_ETAT=${RUBIN_DISCORD_ETAT}"
+  echo "--- rattachement Discord : activé"
+else
+  echo "--- rattachement Discord : éteint (aucun identifiant fourni)"
+fi
+
 echo "--- service (version annoncée : ${VERSION})"
 sudo tee /etc/systemd/system/rubin.service >/dev/null <<UNIT
 [Unit]
@@ -115,6 +154,7 @@ Environment=RUBIN_LATEST=${VERSION}
 # c'est indispensable, sinon chaque publication couperait les joueurs qui
 # n'ont pas encore retéléchargé.
 Environment=RUBIN_MIN_CLIENT=0.1.0
+${DISCORD_ENV}
 ExecStart=${CIBLE}/.venv/bin/uvicorn rubin_serveur.main:app --host 127.0.0.1 --port ${RUBIN_PORT}
 WorkingDirectory=${CIBLE}/serveur
 Restart=always

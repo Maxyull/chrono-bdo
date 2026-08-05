@@ -25,7 +25,7 @@ les temps de référence des autres. La chaîne complète tient debout.
 | Exécutable Windows | ✅ 59 Mo |
 | Vérification de version | ✅ |
 | Rétention des lectures ratées | ✅ local, envoi manuel |
-| Rattachement Discord | ⏸ écrit, en attente d'identifiants |
+| Rattachement Discord | ⏸ branché et testé, éteint faute d'identifiants |
 
 ## En ligne
 
@@ -137,12 +137,35 @@ quel que soit son intérêt.
 
 ## Ce qui reste
 
-### Prêt à brancher
+### Branché, mais éteint
 
-- **Le rattachement Discord.** Le code est écrit et testé. Il attend
-  `RUBIN_DISCORD_ID` et `RUBIN_DISCORD_SECRET`, et l'URL de retour à déclarer
-  est `https://rubin.maxyull.fr/v1/discord/retour`. ⚠️ Activer implique
-  d'ajouter le pseudonyme Discord à la politique de confidentialité.
+- **Le rattachement Discord.** Ce fichier a longtemps annoncé « écrit et
+  testé » ; c'était faux sur un point qui comptait. Le module
+  `serveur/src/rubin_serveur/discord.py` existait bien, avec ses tests
+  unitaires, mais **aucune adresse ne l'appelait** : rien ne l'importait dans
+  l'application, et `https://rubin.maxyull.fr/v1/discord/retour` rendait 404.
+  Un module non branché ressemble à s'y méprendre à une fonctionnalité prête.
+
+  C'est fait depuis : `GET /v1/discord/connexion` envoie vers Discord,
+  `GET /v1/discord/retour` reçoit le code et rattache le compte. Les deux
+  rendent **503** tant que `RUBIN_DISCORD_ID` et `RUBIN_DISCORD_SECRET` sont
+  absents, ce qui est l'état de la production aujourd'hui, et le reste du
+  serveur n'en sait rien.
+
+  Reste à faire, dans cet ordre, et rien de tout cela n'est du code :
+
+  1. ⚠️ **ajouter le pseudonyme Discord à la politique de confidentialité**,
+     qui promet aujourd'hui qu'aucun pseudonyme n'est transmis. La politique
+     vit dans un autre dépôt, celui de `maxyull.fr` ;
+  2. créer l'application sur le portail développeur Discord, portée `identify`
+     seule, et y déclarer l'URL de retour
+     `https://rubin.maxyull.fr/v1/discord/retour` ;
+  3. poser les identifiants dans `D:\DEV\secrets\rubin-bdo.env` et rejouer
+     `bash serveur/deploiement/deployer.sh`, qui les porte jusqu'au service.
+
+  Et ce que ce n'est pas : un **robot** Discord. Il n'y a ici ni jeton de
+  robot, ni passerelle, ni présence dans un salon. C'est un rattachement de
+  compte par OAuth2, qui lit un pseudonyme une fois et jette le jeton.
 
 ### À écrire
 
