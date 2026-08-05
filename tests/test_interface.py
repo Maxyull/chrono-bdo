@@ -1038,3 +1038,15 @@ class TestZonesVerrouilleesPendantLaMesure:
 
         assert "calculée à son démarrage" in raison
         assert "croiriez avoir corrigé" in raison
+
+    def test_l_onglet_entier_porte_le_cadenas_pas_seulement_ses_boutons(self) -> None:
+        """L'étiquette de l'onglet elle-même, pour que le refus se voie fermé.
+
+        Demandé par Maxime : un bouton verrouillé au milieu d'un onglet ouvert
+        invite encore à essayer, et laisse croire que le RESTE de l'onglet agit
+        sur la session en cours. Ce n'est le cas d'aucune de ses commandes : les
+        six écrivent une zone ou lancent une reconnaissance, et la zone de la
+        session est figée à son démarrage.
+        """
+        assert lock_label("Zones", locked=True) == f"{LOCK_MARK} Zones"
+        assert lock_label("Zones", locked=False) == "Zones"
