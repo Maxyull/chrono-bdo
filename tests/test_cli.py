@@ -178,3 +178,40 @@ class TestMain:
         assert "archive écrite" in sortie
         assert f"{204800} Ko" in sortie  # le plafond annoncé par catbox.moe
         assert list((tmp_path / "echecs").glob("*.zip"))
+
+
+class TestCommandeParDefaut:
+    """Ce qui se lance quand aucune sous-commande n'est donnée.
+
+    C'est exactement ce qui arrive quand un joueur double-clique sur
+    l'exécutable : `sys.argv` ne contient rien d'autre que son propre nom.
+    """
+
+    def test_sans_argument_le_parseur_ne_choisit_aucun_gestionnaire(self) -> None:
+        # `handler` n'existe même pas sur l'espace de noms : il n'est posé que
+        # par la sous-commande choisie, via `set_defaults`. C'est `main()` qui
+        # décide quoi faire de cette absence, avec `getattr(..., None)`.
+        assert getattr(build_parser().parse_args([]), "handler", None) is None
+
+    def test_regression_le_defaut_etait_le_referentiel_en_ligne_de_commande(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Régression : un joueur qui double-clique ne voyait jamais la fenêtre.
+
+        Avant ce correctif, `main()` sans sous-commande retombait sur
+        `referentiel`, un reste de l'époque où seule la ligne de commande
+        existait. La 0.5.0 a beau publier la fenêtre dans l'exécutable, un
+        joueur qui double-cliquait sans avoir lu la moindre instruction
+        n'atteignait jamais la fenêtre. Demandé par Maxime le 5 août 2026 au
+        soir : « il faut pas que le joueur ait à envoyer des commandes ».
+        """
+        appels: list[object] = []
+        monkeypatch.setattr(
+            "rubin.__main__.command_interface",
+            lambda args: appels.append(args) or 0,
+        )
+
+        résultat = main([])
+
+        assert résultat == 0
+        assert len(appels) == 1
