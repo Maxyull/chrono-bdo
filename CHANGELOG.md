@@ -7,6 +7,13 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+Rien pour l'instant.
+
+## [0.4.0] - 2026-08-05
+
+La version à mettre entre les mains d'un premier testeur : elle ne peut plus
+échouer en silence.
+
 ### Ajouté
 
 - **Les lectures ratées laissent une trace.** Une image jugée digne d'être lue
