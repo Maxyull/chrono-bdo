@@ -458,6 +458,27 @@ def quest_display_name(
     return quest.name if quest else str(quest_id)
 
 
+def format_measure_line(
+    duration_text: str, name: str, marque: str, score: int
+) -> tuple[str, int, int]:
+    """La ligne « temps · nom · score » d'une quête faite, et les bornes du nom.
+
+    Demandé par Maxime le 05/08/2026 : un visuel plus lisible que les deux
+    lignes précédentes, temps et nom d'un côté, score et détail de l'autre,
+    et le nom cliquable pour rejoindre sa fiche.
+
+    Les bornes sont en index de **caractères** dans la ligne rendue, pour que
+    l'appelant les recopie tel quel dans un index Tk `"1.{début}"` sans refaire
+    le calcul de largeur : un second calcul, ailleurs, finirait par diverger du
+    premier le jour où l'un des deux formats change, et la zone cliquable
+    tomberait à côté du texte qu'elle est censée couvrir.
+    """
+    préfixe = f"{duration_text}  ·  "
+    nom_affiché = f"{name}{marque}"
+    ligne = f"{préfixe}{nom_affiché}  ·  {score}/100"
+    return ligne, len(préfixe), len(préfixe) + len(nom_affiché)
+
+
 def format_ranked_quest(rank: int, item: RankedQuest, name: str) -> str:
     """Une ligne du classement : son rang, son temps, son nom, son assise.
 

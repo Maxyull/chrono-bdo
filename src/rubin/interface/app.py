@@ -65,6 +65,7 @@ from .presentation import (
     format_duration,
     format_gap,
     format_link,
+    format_measure_line,
     format_other_quests,
     format_quest_times,
     format_ranking,
@@ -178,6 +179,12 @@ class RubinApp:
         #: affichée. Gardées à part parce qu'une ligne de liste est du texte, et
         #: qu'on a besoin de l'identifiant pour interroger le serveur.
         self._found: tuple[Quest, ...] = ()
+        #: Compteur pour donner à chaque nom cliquable de « QUÊTES FAITES » une
+        #: étiquette Tk unique. Un tag partagé entre plusieurs lignes déclenche
+        #: le clic sur TOUTES en même temps ; en principe inoffensif ici, le nom
+        #: étant le même, mais fragile le jour où deux quêtes homonymes de
+        #: chaînes différentes coexistent dans la liste.
+        self._compteur_liens = 0
 
         self.root = tk.Tk()
         self.root.title("Rubin, chronomètre de quêtes")
@@ -291,6 +298,13 @@ class RubinApp:
         ).pack(fill="x", padx=12, pady=(2, 3))
         self._faites = self._text_box(self._session, height=6)
         self._faites.pack(fill="both", expand=True, padx=12)
+        # Configuré une seule fois, réutilisé par chaque nom cliquable. Après
+        # les tags de couleur posés par `_text_box` : à recouvrement, Tk donne
+        # priorité au tag configuré le plus récemment, donc la couleur du lien
+        # gagne sur la couleur de confiance pour la portion du nom.
+        self._faites.tag_configure("lien", foreground=COLORS["accent"], underline=True)
+        self._faites.tag_bind("lien", "<Enter>", lambda _e: self._faites.config(cursor="hand2"))
+        self._faites.tag_bind("lien", "<Leave>", lambda _e: self._faites.config(cursor=""))
 
         ttk.Label(
             self._session, text="LES QUÊTES QUI SUIVENT", style="Section.TLabel", anchor="w"
@@ -1104,17 +1118,23 @@ class RubinApp:
             )
 
     def _result_chosen(self, _event: object = None) -> None:
-        """Demande au serveur les temps de la quête choisie, dans un fil.
-
-        Dans un fil comme tout le reste du réseau : un serveur lent ne doit pas
-        figer la fenêtre pendant qu'on clique. Le fil ne touche à aucun
-        composant, il passe par la file.
-        """
         # Sans type dans les stubs de tkinter, comme `Notebook.select`.
         choix = self._resultats.curselection()  # type: ignore[no-untyped-call]
         if not choix or choix[0] >= len(self._found):
             return
-        quest = self._found[choix[0]]
+        self._query_reference(self._found[choix[0]])
+
+    def _query_reference(self, quest: Quest) -> None:
+        """Demande au serveur les temps d'une quête connue, dans un fil.
+
+        Dans un fil comme tout le reste du réseau : un serveur lent ne doit pas
+        figer la fenêtre pendant qu'on clique. Le fil ne touche à aucun
+        composant, il passe par la file.
+
+        Extraite de `_result_chosen`, pour servir aussi le clic sur un nom dans
+        « QUÊTES FAITES » : la quête y est déjà connue avec certitude, il n'y a
+        pas de recherche à refaire, seulement la même requête à poser.
+        """
         self._temps.config(text=f"{quest.name} : interrogation du serveur…")
         if not self._references.enabled:
             self._temps.config(
@@ -1126,6 +1146,28 @@ class RubinApp:
             self.publish("temps", (quest, self._references.quest(quest.id)))
 
         threading.Thread(target=demander, daemon=True).start()
+
+    def _go_to_ranking(self, quest: Quest) -> Callable[[object], None]:
+        """Le clic sur un nom de « QUÊTES FAITES » : direction sa fiche.
+
+        Vers la **recherche individuelle**, jamais vers « les plus rapides » :
+        ce second classement exige `MIN_SAMPLES_PER_QUEST` (trois) avant d'y
+        faire apparaître une quête, exprès, pour ne pas donner la première
+        place à une quête mesurée une seule fois par chance. Une quête tout
+        juste mesurée n'y figure donc jamais tant que deux autres joueurs ne
+        l'ont pas mesurée aussi, et un joueur qui vient de la terminer et qui
+        la chercherait là ne la trouverait jamais, sans qu'aucune interface ne
+        lui dise pourquoi. La fiche de recherche, elle, montre une quête dès sa
+        première mesure, avec la mention « peu sûr » si l'assise est faible :
+        c'est l'information, pas son absence.
+        """
+
+        def cliquer(_event: object = None) -> None:
+            self._carnet.select(self._classement)  # type: ignore[no-untyped-call]
+            self._recherche.set(quest.name)
+            self._query_reference(quest)
+
+        return cliquer
 
     def _show_times(self, quest: Quest, reference: Any) -> None:
         """Affiche ce que le serveur sait d'une quête, absence comprise."""
@@ -1481,7 +1523,12 @@ class RubinApp:
         self._sous_titre.config(text=quoi)
 
     def _add_measure(self, measure: Any, language: str) -> None:
-        """Ajoute une quête terminée en haut de la liste des faites."""
+        """Ajoute une quête terminée en haut de la liste des faites.
+
+        Le nom est cliquable, s'il a pu être résolu en une vraie quête : voir
+        `_go_to_ranking`. Demandé par Maxime le 05/08/2026, une fois les
+        mesures enfin revenues après la panne du jour.
+        """
         quest = self._catalog.get(measure.quest_id, language) if self._catalog else None
         nom = quest.name if quest else str(measure.quest_id)
         reference = self._references.quest(measure.quest_id) if self._references else None
@@ -1490,7 +1537,10 @@ class RubinApp:
         écart = reference.compare(measure.seconds) if reference else ""
         marque = "" if measure.quality is Quality.EXACT else "  (déduite)"
 
-        détail = f"     {score}/100   {échantillons} mesures"
+        ligne, début_nom, fin_nom = format_measure_line(
+            format_duration(measure.seconds), nom, marque, score
+        )
+        détail = f"     {échantillons} mesures"
         if écart:
             détail += f"   {écart}"
 
@@ -1505,8 +1555,17 @@ class RubinApp:
         # de chaîne vide ne lève aucune erreur, elle ne fait simplement rien.
         self._faites.config(state="normal")
         self._faites.insert("1.0", f"{détail}\n", "faible")
-        self._faites.insert("1.0", f"{format_duration(measure.seconds)}  {nom}{marque}\n")
+        self._faites.insert("1.0", f"{ligne}\n")
         self._faites.tag_add(_tag_for(échantillons), "1.0", "1.end")
+        if quest is not None:
+            # « lien » porte le style et le curseur, commun à tous les noms ;
+            # le tag numéroté porte le clic, propre à CETTE ligne : deux tags
+            # qui se recouvrent, Tk applique les deux.
+            self._compteur_liens += 1
+            tag_lien = f"lien_{self._compteur_liens}"
+            self._faites.tag_add("lien", f"1.{début_nom}", f"1.{fin_nom}")
+            self._faites.tag_add(tag_lien, f"1.{début_nom}", f"1.{fin_nom}")
+            self._faites.tag_bind(tag_lien, "<Button-1>", self._go_to_ranking(quest))
         self._faites.config(state="disabled")
         self._faites.see("1.0")
 

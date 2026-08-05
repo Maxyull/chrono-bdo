@@ -30,6 +30,7 @@ from rubin.interface import (
     format_duration,
     format_gap,
     format_link,
+    format_measure_line,
     format_other_quests,
     format_quest_times,
     format_ranking,
@@ -1148,3 +1149,46 @@ class TestZoneEgareeSansTaille:
         assert état.chosen is False
         assert état.stray is True
         assert "Reprendre l'ancien tracé" in describe_zone(état)
+
+
+class TestLigneDeQueteFaite:
+    """La ligne « temps · nom · score », et les bornes cliquables du nom.
+
+    Demandé par Maxime le 05/08/2026 : un visuel plus lisible, avec le nom
+    cliquable pour rejoindre sa fiche de temps. Les bornes sont en index de
+    caractères, à recopier tel quel dans un index Tk, pour que la zone
+    cliquable ne se désynchronise jamais du texte affiché.
+    """
+
+    def test_assemble_les_trois_champs_avec_le_bon_separateur(self) -> None:
+        ligne, *_bornes = format_measure_line("1 min 05 s", "Les fanatiques", "", 82)
+
+        assert ligne == "1 min 05 s  ·  Les fanatiques  ·  82/100"
+
+    def test_les_bornes_encadrent_exactement_le_nom_et_sa_marque(self) -> None:
+        ligne, début, fin = format_measure_line(
+            "33 s", "Rapport des ressources", "  (déduite)", 40
+        )
+
+        assert ligne[début:fin] == "Rapport des ressources  (déduite)"
+
+    def test_un_nom_vide_donne_des_bornes_egales_pas_negatives(self) -> None:
+        # Cas limite pur : jamais rencontré en vrai, mais un calcul qui
+        # produirait des bornes inversées casserait l'appelant Tk sans dire
+        # pourquoi.
+        _ligne, début, fin = format_measure_line("0 s", "", "", 0)
+
+        assert 0 <= début <= fin
+
+    def test_regression_le_score_a_quitte_la_ligne_de_detail(self) -> None:
+        """Régression : le score doublait sur les deux lignes avant #71.
+
+        Le premier jet affichait `{score}/100` à la fois sur la ligne
+        principale et sur la ligne de détail en dessous. La ligne principale
+        est la source de vérité désormais ; le détail ne garde que ce qu'elle
+        ne dit pas, le nombre de mesures et l'écart aux autres joueurs.
+        """
+        ligne, *_bornes = format_measure_line("2 min 00 s", "Les fanatiques", "", 55)
+
+        assert "55/100" in ligne
+        assert ligne.count("/100") == 1
