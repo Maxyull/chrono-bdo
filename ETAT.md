@@ -167,6 +167,28 @@ aider fabrique une archive et l'envoie lui-même, ce qui rend la question du
 consentement sans objet. Les plafonds des trois destinations sont dans
 `failures.py`, en une seule table.
 
+### Piste ouverte, pas confirmée : une alerte de boss mondial se pose sur le bandeau
+
+Constaté en jouant le 5 août 2026, vers 18h32, pendant une session qui ne
+mesurait déjà plus rien depuis 18h04. Une notification du jeu, « [Vell]
+apparaîtra dans 30 min », s'est affichée en bas à droite de l'écran, avec une
+icône et une croix de fermeture, **exactement sur la zone du bandeau**.
+
+⚠️ **Elle n'explique pas la panne principale** : la zone était aveugle vingt-
+huit minutes avant que cette notification apparaisse. Elle a pu s'ajouter
+par-dessus un défaut déjà présent, sans en être la cause.
+
+Ce que ça vaut quand même : les alertes de boss mondial reviennent
+régulièrement, calées sur l'horaire du jeu, et occupent ce coin de l'écran
+pendant qu'elles sont affichées. Contrairement au piège n°8, ce n'est pas une
+fenêtre externe posée sur le jeu, c'est une superposition **du jeu lui-même**,
+donc `mss` la capture normalement ; le problème serait que le vrai bandeau, s'il
+apparaît au même instant, se trouve masqué ou décalé par elle.
+
+À vérifier la prochaine fois qu'une alerte de ce type apparaît : est-ce qu'un
+bandeau attendu à ce moment-là est bien manqué, ou la coïncidence du 5 août
+était-elle sans rapport.
+
 ### En prime : le panneau de suivi est illisible de nuit
 
 Il n'a aucun fond opaque, contrairement au bandeau. La luminance de toute la
