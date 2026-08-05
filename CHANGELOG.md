@@ -49,6 +49,40 @@ datée le jour de la release.
 
 ### Corrigé
 
+- 🔴 **Le navigateur était pris pour le jeu.** `find_game_window` retenait la
+  première fenêtre visible dont le **titre** contient « black desert », et
+  s'arrêtait là. Chrome affichant une vidéo « RETOUR SUR BLACK DESERT ! ... -
+  YouTube » gagnait donc contre le jeu qui tournait à côté.
+
+  La conséquence était la pire possible : `rubin verifier` répondait « fenêtre
+  du jeu... 2560x1392 » puis « tout est en ordre » en pointant un navigateur, et
+  la session qui suivait ne mesurait jamais rien sans dire pourquoi. Un joueur
+  de Black Desert qui regarde une vidéo de Black Desert n'est pas un cas tordu.
+
+  C'est désormais le **programme propriétaire** de la fenêtre qui tranche, lu
+  par le système, et jamais le titre. Une fenêtre dont on a su lire le programme
+  et qui n'est pas le jeu est écartée quel que soit son titre ; une fenêtre dont
+  le programme est illisible, ce qui arrive quand le client tourne avec plus de
+  privilèges que Rubin, reste un candidat de dernier recours. `rubin verifier`
+  liste ce qu'il a retenu et ce qu'il a écarté : une vérification qui ne dit pas
+  sur quoi elle a porté ne vérifie rien.
+
+- **Le panneau de suivi annonçait la mauvaise chaîne.** Il retenait toutes les
+  quêtes reconnues, puis prenait la chaîne la plus représentée. Or ce sont les
+  quêtes de métier que le joueur épingle, et il en garde plusieurs. Sur un
+  panneau réel, « Tissu haut de gamme » (type 5) et « Vie citadine » (type 2)
+  mettaient en minorité la seule quête principale présente : le panneau annonçait
+  la chaîne 3500 là où le joueur était dans la 21139.
+
+  Seules les quêtes principales sont désormais retenues, seul périmètre que le
+  produit mesure, et le panneau se tait quand il n'en reconnaît aucune.
+
+- **La liste des quêtes à venir n'apparaissait qu'à la deuxième quête.** Elle
+  était branchée sur « une mesure vient de se clore ». Or la première quête
+  acceptée d'une session n'en clôt aucune, faute de quête précédente à borner.
+  Elle suit désormais la **position**, ce qui l'affiche aussi quand on démarre
+  le logiciel au milieu d'une chaîne déjà entamée, cas le plus courant.
+
 - **Un pictogramme pouvait interrompre une session.** Les symboles hors ASCII
   employés dans les messages, comme « ⚠ », n'existent pas dans la page de codes
   cp1252 de la console Windows. Leur affichage lève une erreur d'encodage quand

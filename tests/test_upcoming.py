@@ -14,8 +14,10 @@ from __future__ import annotations
 
 import pytest
 
+from rubin.reading import BannerKind, BannerReading
 from rubin.reference import Catalog, QuestId
 from rubin.references import QuestReference, ReferenceClient
+from rubin.timing import Timeline
 from rubin.upcoming import DEFAULT_COUNT, crossroads_ahead, upcoming
 
 #: Chaîne contiguë, celle des captures qui ont servi à concevoir le logiciel.
@@ -176,6 +178,39 @@ class TestTempsDeReference:
         suivantes = upcoming(catalog, CONTIGUE, after_position=1)
         assert suivantes
         assert all(item.reference is None for item in suivantes)
+
+
+class TestDebutDeSession:
+    def test_la_liste_existe_des_la_premiere_quete(self, catalog: Catalog) -> None:
+        """Régression : l'écran restait vide jusqu'à la deuxième quête.
+
+        L'affichage était branché sur « une mesure vient de se clore ». Or la
+        première quête acceptée d'une session n'en clôt aucune, faute de quête
+        précédente à borner : `Timeline.record` rend `None`.
+
+        Le joueur lançait donc le logiciel, acceptait sa première quête, et ne
+        voyait rien, alors que la position était déjà connue. Même chose en
+        démarrant le logiciel au milieu d'une chaîne déjà commencée, qui est le
+        cas le plus courant.
+
+        La liste suit désormais la **position**, pas la mesure.
+        """
+        timeline = Timeline(catalog=catalog, language="fr")
+        premiere = BannerReading(
+            kind=BannerKind.ACCEPTED,
+            quest_name="[Calpheon] Jeron, la tacticienne",
+            confidence=0.95,
+            name_lines=("[Calpheon] Jeron, la tacticienne",),
+        )
+
+        mesure = timeline.record(premiere, at=100.0)
+
+        # Aucune mesure, et pourtant on sait parfaitement où l'on est.
+        assert mesure is None
+        assert timeline.current_chain == CONTIGUE
+        assert timeline.current_position == 1
+        suivantes = upcoming(catalog, CONTIGUE, after_position=timeline.current_position)
+        assert [item.quest.id.position for item in suivantes] == [2, 3]
 
 
 class TestReglages:

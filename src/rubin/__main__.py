@@ -17,7 +17,8 @@ from pathlib import Path
 
 from platformdirs import user_data_dir
 
-from .capture import ScreenCapture, banner_region, find_game_window
+from .capture import Rect, ScreenCapture, banner_region, find_game_window, tracker_region
+from .capture.window import TITLE_FRAGMENTS, _candidates
 from .deferred import DeferredWatcher
 from .failures import DESTINATIONS, FailureStore, find_destination, larger_than
 from .protocol import PlayerIdentity, build_session
@@ -26,6 +27,7 @@ from .reference import Catalog
 from .reference.source import catalog_date, load
 from .references import ReferenceClient
 from .timing import Measure, Quality, Timeline
+from .tracking import TrackedQuests, read_tracker
 from .upcoming import DEFAULT_COUNT, UpcomingQuest, crossroads_ahead, upcoming
 from .updates import check_for_update
 from .upload import save_session, send_session
@@ -153,9 +155,37 @@ def command_watch(args: argparse.Namespace) -> int:
     failures = FailureStore(_home() / "echecs")
     failures.purge()
     deferred = None
+    # Dernière position pour laquelle la liste a été montrée. Sert à ne pas la
+    # réafficher à l'identique sur les bandeaux d'objectif, qui racontent ce qui
+    # se passe pendant une quête sans faire avancer d'un cran.
+    last_seen: tuple[int | None, int | None] = (None, None)
     # Les références sont lues sur le serveur d'envoi, sans qu'envoyer soit
     # nécessaire pour les consulter : la lecture est publique.
     references = ReferenceClient(args.server or args.references)
+
+    # Où en est le joueur, tout de suite, sans attendre le premier bandeau.
+    # Le panneau sous la minimap est affiché en permanence, contrairement au
+    # bandeau qui n'apparaît qu'aux transitions.
+    tracked = _locate_from_tracker(window, args.ui_scale, reader, catalog, args.language)
+    if tracked is not None and tracked.chain is not None:
+        active = tracked.active
+        print(f"panneau de suivi : {len(tracked)} quêtes suivies, chaîne {tracked.chain}")
+        if active is not None:
+            en_cours = catalog.get(active, args.language)
+            print(f"en cours : {en_cours.name if en_cours else active}")
+            _print_upcoming_from(
+                active.chain,
+                active.position,
+                catalog,
+                references,
+                args.language,
+                args.upcoming,
+            )
+            # Mémorisée pour que le premier bandeau ne réaffiche pas la même
+            # liste juste après.
+            last_seen = (active.chain, active.position)
+        print()
+
     try:
         with ScreenCapture(region) as capture:
             watcher = BannerWatcher(capture, reader)
@@ -174,11 +204,18 @@ def command_watch(args: argparse.Namespace) -> int:
                         measure = timeline.record(reading, at=at)
                         if measure is not None:
                             _print_measure(measure, catalog, args.language, references)
-                            # Juste après la mesure, parce que c'est le moment
-                            # où le joueur décide de la suite.
+                        # La liste suit la POSITION, pas la mesure. La première
+                        # quête d'une session n'en clôt aucune, faute de quête
+                        # précédente : l'écran restait vide alors qu'on savait
+                        # déjà où était le joueur. Suivre la position affiche
+                        # aussi la liste sans attendre, quand on démarre le
+                        # logiciel au milieu d'une chaîne déjà commencée.
+                        here = (timeline.current_chain, timeline.current_position)
+                        if here != last_seen and here[0] is not None:
                             _print_upcoming(
                                 timeline, catalog, references, args.language, args.upcoming
                             )
+                            last_seen = here
     except KeyboardInterrupt:
         pass
 
@@ -232,6 +269,66 @@ def _print_failures(deferred: DeferredWatcher | None, failures: FailureStore) ->
     print("« rubin echecs --archiver » en fait une archive, si vous voulez aider à corriger")
 
 
+def _print_window_candidates() -> None:
+    """Dit quel programme a été retenu, et lesquels ont été écartés.
+
+    Sans cette ligne, la vérification annonçait « fenêtre du jeu... 2560x1392 »
+    puis « tout est en ordre » en pointant un navigateur, et rien à l'écran ne
+    permettait de s'en apercevoir. Une vérification qui ne dit pas **sur quoi**
+    elle a porté ne vérifie rien.
+    """
+    for fragment in TITLE_FRAGMENTS:
+        for candidate in _candidates(fragment.lower()):
+            programme = candidate.executable or "programme inconnu"
+            if candidate.is_other_program:
+                verdict = "écarté, ce n'est pas le jeu"
+            elif candidate.is_game:
+                verdict = "retenu"
+            else:
+                verdict = "retenu faute de mieux"
+            print(
+                f"  {programme:<22} {candidate.rect.width}x{candidate.rect.height}  {verdict}"
+            )
+
+
+def _locate_from_tracker(
+    window: Rect,
+    ui_scale: float,
+    reader: RapidOcrReader,
+    catalog: Catalog,
+    language: str,
+) -> TrackedQuests | None:
+    """Lit le panneau de suivi pour savoir où en est le joueur, sans attendre.
+
+    Le bandeau ne dit où l'on est qu'au moment d'une transition. Le panneau
+    sous la minimap, lui, est affiché **en permanence** : il répond dès le
+    lancement, y compris quand on démarre le logiciel au milieu d'une chaîne
+    déjà entamée, qui est le cas le plus courant.
+
+    Lu **une seule fois**, au démarrage. La zone est six fois plus grande que
+    celle du bandeau, donc la reconnaissance y coûte 1,9 seconde contre 0,3 :
+    la relire en boucle mangerait le fil de lecture pour une information qui ne
+    change qu'entre deux quêtes, et que le bandeau annonce déjà.
+
+    Ce que la lecture apprend ne sert qu'à **afficher** la liste des quêtes à
+    venir. Elle n'entre ni dans le journal d'événements, ni dans les mesures :
+    le panneau tronque les noms trop longs, donc une ligne mal reconnue y est
+    normale. Une position lue de travers qui servirait à identifier une quête
+    lui attribuerait un temps qui n'est pas le sien, et ce chiffre faux entrerait
+    dans les médianes. Un affichage faux se remarque et ne coûte rien.
+
+    Rend `None` sur la moindre difficulté : cette lecture est un confort, elle
+    ne doit jamais empêcher une session de démarrer.
+    """
+    try:
+        with ScreenCapture(tracker_region(window, ui_scale=ui_scale)) as capture:
+            lines = reader.read(capture.grab_gray())
+    except Exception:  # pragma: pas de couverture
+        return None
+    tracked = read_tracker(lines, catalog, language)
+    return tracked if tracked.quests else None
+
+
 def _print_upcoming(
     timeline: Timeline,
     catalog: Catalog,
@@ -250,9 +347,28 @@ def _print_upcoming(
     """
     chain = timeline.current_chain
     position = timeline.current_position
-    if count <= 0 or chain is None or position is None:
+    if chain is None or position is None:
         return
+    _print_upcoming_from(chain, position, catalog, references, language, count)
 
+
+def _print_upcoming_from(
+    chain: int,
+    position: int,
+    catalog: Catalog,
+    references: ReferenceClient,
+    language: str,
+    count: int,
+) -> None:
+    """Le cœur de l'affichage, depuis une position connue d'où qu'elle vienne.
+
+    Séparé pour que le panneau de suivi, lu au démarrage, et le journal
+    d'événements, alimenté par les bandeaux, produisent exactement le même
+    affichage. Deux rendus qui divergeraient finiraient par se contredire à
+    l'écran, sur les trous ou sur les branches.
+    """
+    if count <= 0:
+        return
     suivantes = upcoming(
         catalog, chain, position, language=language, count=count, references=references
     )
@@ -532,6 +648,8 @@ def command_check(args: argparse.Namespace) -> int:
     # L'absence du jeu n'est pas une panne : on doit pouvoir vérifier son
     # installation sans avoir lancé Black Desert.
     print(f"{window.width}x{window.height}" if window else "non lancé (sans gravité)")
+    if window is not None:
+        _print_window_candidates()
 
     print()
     print("tout est en ordre" if ok else "installation incomplète")
