@@ -101,7 +101,14 @@ from .tooltip import Tooltip
 
 #: Taille de la fenêtre. Assez large pour un nom de quête complet, assez étroite
 #: pour tenir à côté du panneau de suivi sans mordre dessus.
-WINDOW_SIZE: Final = (470, 700)
+#:
+#: 700 de haut, la valeur d'origine, coupait le bas des onglets Session et
+#: Classement même une fois le défilement ajouté (`_scrollable`) : la
+#: molette rattrape ce qui dépasse, mais Maxime voyait trop peu d'un coup
+#: sans faire défiler. Signalé le 06/08/2026. 820 reste raisonnable à côté
+#: du jeu sur un écran 1080p ; `choose` refuse de toute façon toute position
+#: qui recouvrirait une zone lue, quelle que soit la taille demandée ici.
+WINDOW_SIZE: Final = (470, 820)
 
 #: Période de rafraîchissement de l'affichage, en millisecondes. Huit fois par
 #: seconde suffisent : c'est déjà la cadence de capture, et l'œil n'en demande
