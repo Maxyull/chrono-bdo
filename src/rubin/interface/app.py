@@ -44,7 +44,7 @@ from ..history import personal_best
 from ..notes import load_notes, save_note
 from ..placement import choose, conflicts
 from ..protocol import PlayerIdentity
-from ..reference import Catalog, Quest, QuestId
+from ..reference import Catalog, Chain, Quest, QuestId
 from ..references import RANKING_LIMIT, RankedQuest, ReferenceClient
 from ..settings import LANGUAGES, LIMITS, WindowSize, load, save
 from ..timing import Quality
@@ -53,27 +53,26 @@ from .autozone import search as search_banner_zone
 from .help import EXAMPLES, HelpWindow
 from .picker import ZonePicker, png_data
 from .presentation import (
-    ALPHABET_QUEST_LIMIT,
     COVERAGE_TAGS,
     DEMO_BANNER,
     LOCKED_WHILE_MEASURING,
+    QUEST_LIST_LIMIT,
     SEARCH_MIN_LENGTH,
-    LettredQuest,
+    ListedQuest,
     ZoneState,
-    alphabet_cap_warning,
-    alphabet_sections,
+    chain_sections,
     demo_active,
     demo_ranking,
     describe_conflict,
     describe_reading,
     describe_zone,
+    format_chain_header,
     format_coverage,
     format_current_reference,
     format_duration,
     format_gap,
-    format_letter_header,
-    format_lettred_quest,
     format_link,
+    format_listed_quest,
     format_measure_line,
     format_note_placeholder,
     format_other_quests,
@@ -88,6 +87,7 @@ from .presentation import (
     lock_label,
     main_quest_total,
     other_quest_total,
+    quest_list_cap_warning,
     ranking_message,
     running_seconds,
     samples_by_quest,
@@ -101,7 +101,14 @@ from .tooltip import Tooltip
 
 #: Taille de la fenêtre. Assez large pour un nom de quête complet, assez étroite
 #: pour tenir à côté du panneau de suivi sans mordre dessus.
-WINDOW_SIZE: Final = (470, 700)
+#:
+#: 700 de haut, la valeur d'origine, coupait le bas des onglets Session et
+#: Classement même une fois le défilement ajouté (`_scrollable`) : la
+#: molette rattrape ce qui dépasse, mais Maxime voyait trop peu d'un coup
+#: sans faire défiler. Signalé le 06/08/2026. 820 reste raisonnable à côté
+#: du jeu sur un écran 1080p ; `choose` refuse de toute façon toute position
+#: qui recouvrirait une zone lue, quelle que soit la taille demandée ici.
+WINDOW_SIZE: Final = (470, 820)
 
 #: Période de rafraîchissement de l'affichage, en millisecondes. Huit fois par
 #: seconde suffisent : c'est déjà la cadence de capture, et l'œil n'en demande
@@ -198,24 +205,25 @@ class RubinApp:
         #: chaînes différentes coexistent dans la liste.
         self._compteur_liens = 0
 
-        #: Les 3 924 quêtes principales, groupées par lettre, telles que
-        #: `alphabet_sections` les a rendues la dernière fois. Vide tant que le
-        #: serveur n'a rien dit : `_show_alphabet` la remplit, `_alphabet_open`
-        #: la lit pour peupler une lettre à son ouverture, jamais avant.
-        self._alphabet_sections: dict[str, tuple[LettredQuest, ...]] = {}
+        #: Les 3 924 quêtes principales, groupées par chaîne, telles que
+        #: `chain_sections` les a rendues la dernière fois. Vide tant que le
+        #: serveur n'a rien dit : `_show_chains` la remplit, `_chains_open` la
+        #: lit pour peupler une chaîne à son ouverture, jamais avant. Indexée
+        #: par `str(chain.number)`, l'identifiant employé comme iid Tk.
+        self._chain_sections: dict[str, tuple[Chain, tuple[ListedQuest, ...]]] = {}
         #: Le classement brut à l'origine de la table ci-dessus, gardé pour ne
         #: reconstruire l'arbre que si le serveur a vraiment dit autre chose :
-        #: sinon, chaque quête finie replierait les lettres que le joueur vient
-        #: d'ouvrir, `_ask_server` étant rappelée après chacune.
-        self._alphabet_ranked: tuple[RankedQuest, ...] | None = None
-        #: Les lettres déjà peuplées dans l'arbre Tk, pour ne le faire qu'une
-        #: fois par lettre : voir l'en-tête de `LettredQuest`.
-        self._alphabet_loaded: set[str] = set()
+        #: sinon, chaque quête finie replierait les chaînes que le joueur
+        #: vient d'ouvrir, `_ask_server` étant rappelée après chacune.
+        self._chains_ranked: tuple[RankedQuest, ...] | None = None
+        #: Les chaînes déjà peuplées dans l'arbre Tk, pour ne le faire qu'une
+        #: fois chacune : voir l'en-tête de `ListedQuest`.
+        self._chains_loaded: set[str] = set()
         #: La quête derrière chaque ligne cliquable de l'arbre, par identifiant
         #: Tk. Même raison que `_compteur_liens` : une ligne de l'arbre est du
         #: texte, retrouver la quête qu'elle désigne demande cette table.
-        self._alphabet_quest_for_item: dict[str, Quest] = {}
-        self._compteur_alphabet_liens = 0
+        self._chain_quest_for_item: dict[str, Quest] = {}
+        self._compteur_chain_liens = 0
 
         #: Les notes du joueur, chargées une fois au démarrage et tenues à
         #: jour à chaque écriture par `_save_note` : voir `notes.py`. Purement
@@ -561,66 +569,69 @@ class RubinApp:
         self._classement_texte = self._text_box(dedans, height=8)
         self._classement_texte.pack(fill="both", expand=True, padx=12, pady=(4, 6))
 
-        self._build_alphabet(dedans)
+        self._build_chains(dedans)
 
-    def _build_alphabet(self, dedans: ttk.Frame) -> None:
-        """Toutes les quêtes principales, repliées par lettre, une pastille au bout.
+    def _build_chains(self, dedans: ttk.Frame) -> None:
+        """Toutes les quêtes principales, repliées par chaîne, une pastille au bout.
 
-        Demandée par Maxime le 05/08/2026 : voir d'un coup d'œil lesquelles
-        ont encore besoin d'être timées, et lesquelles le sont déjà. Sous
-        « LES QUÊTES LES PLUS RAPIDES », dans le même onglet et le même
-        `dedans` défilant : les deux répondent à la même question de
-        consultation, et ouvrir un onglet à part pour celle-ci aurait touché
-        à la taille de la fenêtre et à la logique de verrouillage des onglets,
-        pour rien de plus qu'une troisième façon de lire les mêmes temps.
+        Demandée par Maxime le 05/08/2026, revue le 06/08/2026 : le premier
+        jet groupait par lettre du nom, ce qui n'est PAS ce que montre le
+        journal du jeu. Celui-ci liste des chaînes, chacune avec son propre
+        décompte, du type « [Abyss One] Magnus : 0/104 » : c'est cette forme
+        qui est reprise ici, voir `format_chain_header`. Sous « LES QUÊTES LES
+        PLUS RAPIDES », dans le même onglet et le même `dedans` défilant : les
+        deux répondent à la même question de consultation, et ouvrir un
+        onglet à part pour celle-ci aurait touché à la taille de la fenêtre et
+        à la logique de verrouillage des onglets, pour rien de plus qu'une
+        troisième façon de lire les mêmes temps.
 
-        ⚠️ **Peuplée par lettre, jamais d'un coup.** Un `ttk.Treeview` qui
+        ⚠️ **Peuplée par chaîne, jamais d'un coup.** Un `ttk.Treeview` qui
         recevrait 3 924 lignes de quête à la construction referait l'erreur
         que ce projet a déjà commise ailleurs, un coût certain payé pour un
         bénéfice hypothétique : personne n'aura peut-être jamais déplié la
-        moitié de ces lettres. Seules les ~30 lettres sont posées ici ; le
-        contenu de chacune arrive à l'ouverture, voir `_alphabet_open`.
+        moitié de ces 349 chaînes. Seules les chaînes elles-mêmes sont posées
+        ici ; le contenu de chacune arrive à l'ouverture, voir `_chains_open`.
         """
         ttk.Label(
             dedans,
-            text="TOUTES LES QUÊTES, PAR LETTRE",
+            text="TOUTES LES QUÊTES, PAR CHAÎNE",
             style="Section.TLabel",
             anchor="w",
         ).pack(fill="x", padx=12, pady=(10, 2))
         ttk.Label(
             dedans,
             text=(
-                "Dépliez une lettre pour voir ses quêtes, chacune avec sa\n"
+                "Dépliez une chaîne pour voir ses quêtes, chacune avec sa\n"
                 "pastille de couverture. Sert à repérer ce qui manque encore."
             ),
             style="Faible.TLabel", anchor="w", justify="left",
         ).pack(fill="x", padx=12)
 
-        self._alphabet_etat = ttk.Label(
+        self._chains_etat = ttk.Label(
             dedans, text="arbre : demandé au serveur…",
             style="Faible.TLabel", anchor="w", justify="left", wraplength=400,
         )
-        self._alphabet_etat.pack(fill="x", padx=12, pady=(2, 0))
-        self._alphabet_avertissement = ttk.Label(
+        self._chains_etat.pack(fill="x", padx=12, pady=(2, 0))
+        self._chains_avertissement = ttk.Label(
             dedans, text="", style="Alerte.TLabel", anchor="w",
             justify="left", wraplength=400,
         )
-        self._alphabet_avertissement.pack(fill="x", padx=12)
+        self._chains_avertissement.pack(fill="x", padx=12)
 
         cadre = ttk.Frame(dedans)
         cadre.pack(fill="both", expand=True, padx=12, pady=(4, 12))
         # `show="tree"` : pas de colonne supplémentaire ni d'en-tête, une
         # seule colonne d'arbre comme le veut cette liste.
-        self._alphabet = ttk.Treeview(cadre, show="tree", height=14, selectmode="none")
-        barre = ttk.Scrollbar(cadre, orient="vertical", command=self._alphabet.yview)
-        self._alphabet.configure(yscrollcommand=barre.set)
-        self._alphabet.pack(side="left", fill="both", expand=True)
+        self._chains = ttk.Treeview(cadre, show="tree", height=14, selectmode="none")
+        barre = ttk.Scrollbar(cadre, orient="vertical", command=self._chains.yview)
+        self._chains.configure(yscrollcommand=barre.set)
+        self._chains.pack(side="left", fill="both", expand=True)
         barre.pack(side="right", fill="y")
         # Les mêmes trois balises que partout ailleurs dans ce projet : voir
         # `_tag_for` et la légende de l'onglet Session. Aucune couleur neuve.
         for balise in COVERAGE_TAGS:
-            self._alphabet.tag_configure(balise, foreground=COLORS[balise])
-        self._alphabet.bind("<<TreeviewOpen>>", self._alphabet_open)
+            self._chains.tag_configure(balise, foreground=COLORS[balise])
+        self._chains.bind("<<TreeviewOpen>>", self._chains_open)
 
     def _scrollable(self, parent: ttk.Frame) -> ttk.Frame:
         """Un cadre qui défile, pour que le contenu ne soit jamais coupé.
@@ -1226,7 +1237,7 @@ class RubinApp:
             self._couverture_etat.config(
                 text="couverture inconnue : le référentiel n'est pas chargé"
             )
-            self._alphabet_etat.config(
+            self._chains_etat.config(
                 text="arbre indisponible : le référentiel n'est pas chargé"
             )
         elif not self._references.enabled:
@@ -1241,7 +1252,7 @@ class RubinApp:
                 text="classement indisponible : aucun serveur, relancez avec --envoyer"
             )
             if self._catalog is not None:
-                self._alphabet_etat.config(
+                self._chains_etat.config(
                     text="arbre indisponible : aucun serveur, relancez avec --envoyer"
                 )
         catalogue, langue = self._catalog, self._settings.language
@@ -1259,13 +1270,13 @@ class RubinApp:
                 total = main_quest_total(catalogue, langue)
                 self.publish("couverture", format_coverage(self._references.coverage(), total))
                 # Une seule requête en masse, jamais une par quête : voir
-                # l'en-tête de `LettredQuest`. `min_samples=1` et non le
+                # l'en-tête de `ListedQuest`. `min_samples=1` et non le
                 # défaut à trois : l'arbre veut TOUTE quête mesurée, même une
                 # seule fois, la nuance « peu sûr » se lisant déjà sur
-                # `format_lettred_quest`.
+                # `format_listed_quest`.
                 self.publish(
-                    "alphabet",
-                    self._references.fastest_quests(ALPHABET_QUEST_LIMIT, min_samples=1),
+                    "chaines",
+                    self._references.fastest_quests(QUEST_LIST_LIMIT, min_samples=1),
                 )
 
         threading.Thread(target=demander, daemon=True).start()
@@ -1385,10 +1396,10 @@ class RubinApp:
             message = "les vraies lignes remplaceront celles-ci dès qu'il y en aura assez"
         self._classement_etat.config(text=message or "")
 
-    def _show_alphabet(self, ranked: tuple[RankedQuest, ...] | None) -> None:
-        """Reçoit le classement brut et pose les lettres de l'arbre, jamais leur contenu.
+    def _show_chains(self, ranked: tuple[RankedQuest, ...] | None) -> None:
+        """Reçoit le classement brut et pose les chaînes de l'arbre, jamais leur contenu.
 
-        `ranked` vient de `ReferenceClient.fastest_quests(ALPHABET_QUEST_LIMIT,
+        `ranked` vient de `ReferenceClient.fastest_quests(QUEST_LIST_LIMIT,
         min_samples=1)`, la même méthode que « LES QUÊTES LES PLUS RAPIDES »
         avec un seuil et une limite différents : voir l'en-tête de
         `_ask_server`. `None` veut dire que le serveur n'a rien répondu, une
@@ -1399,65 +1410,68 @@ class RubinApp:
         est rappelée après chaque quête finie, et `ReferenceClient` garde ses
         réponses en mémoire pour la durée de la session : la plupart des
         rappels rendront donc exactement le même classement. Le reconstruire
-        quand même replierait sous les doigts du joueur la lettre qu'il vient
+        quand même replierait sous les doigts du joueur la chaîne qu'il vient
         d'ouvrir, pour rien.
         """
         if self._catalog is None:
-            self._alphabet_etat.config(text="arbre indisponible : le référentiel n'est pas chargé")
-            self._alphabet_avertissement.config(text="")
+            self._chains_etat.config(text="arbre indisponible : le référentiel n'est pas chargé")
+            self._chains_avertissement.config(text="")
             return
         if ranked is None:
-            self._alphabet_etat.config(text="arbre indisponible : le serveur ne l'a pas donné")
-            self._alphabet_avertissement.config(text="")
+            self._chains_etat.config(text="arbre indisponible : le serveur ne l'a pas donné")
+            self._chains_avertissement.config(text="")
             return
-        self._alphabet_etat.config(text="")
-        self._alphabet_avertissement.config(text=alphabet_cap_warning(ranked) or "")
-        if ranked == self._alphabet_ranked:
+        self._chains_etat.config(text="")
+        self._chains_avertissement.config(text=quest_list_cap_warning(ranked) or "")
+        if ranked == self._chains_ranked:
             return
-        self._alphabet_ranked = ranked
-        self._alphabet_sections = alphabet_sections(
-            self._catalog, self._settings.language, samples_by_quest(ranked)
-        )
-        self._alphabet_loaded.clear()
-        self._alphabet_quest_for_item.clear()
-        self._alphabet.delete(*self._alphabet.get_children())
-        for lettre in sorted(self._alphabet_sections):
-            entrées = self._alphabet_sections[lettre]
-            nœud = self._alphabet.insert(
-                "", "end", iid=lettre, text=format_letter_header(lettre, entrées), open=False
+        self._chains_ranked = ranked
+        self._chain_sections = {
+            str(chain.number): (chain, entrées)
+            for chain, entrées in chain_sections(
+                self._catalog, self._settings.language, samples_by_quest(ranked)
+            )
+        }
+        self._chains_loaded.clear()
+        self._chain_quest_for_item.clear()
+        self._chains.delete(*self._chains.get_children())
+        for iid, (chain, entrées) in self._chain_sections.items():
+            nœud = self._chains.insert(
+                "", "end", iid=iid, text=format_chain_header(chain, entrées), open=False
             )
             # Un enfant vide, pour que la flèche de dépliage apparaisse sans
-            # peupler la lettre : voir l'en-tête de `_build_alphabet`.
-            # `_alphabet_open` le remplace par le vrai contenu à l'ouverture,
+            # peupler la chaîne : voir l'en-tête de `_build_chains`.
+            # `_chains_open` le remplace par le vrai contenu à l'ouverture,
             # jamais avant.
-            self._alphabet.insert(nœud, "end", text="")
+            self._chains.insert(nœud, "end", text="")
 
-    def _alphabet_open(self, _event: object = None) -> None:
-        """Peuple une lettre de l'arbre à son ouverture, jamais avant.
+    def _chains_open(self, _event: object = None) -> None:
+        """Peuple une chaîne de l'arbre à son ouverture, jamais avant.
 
         C'est tout l'intérêt de l'arbre lazy : voir l'en-tête de
-        `_build_alphabet`. `<<TreeviewOpen>>` place la lettre ouverte au
-        focus avant de lever l'événement, ce qui évite d'avoir à retrouver
-        laquelle des ~30 lettres vient d'être dépliée autrement qu'en le
-        demandant à Tk.
+        `_build_chains`. `<<TreeviewOpen>>` place la chaîne ouverte au focus
+        avant de lever l'événement, ce qui évite d'avoir à retrouver laquelle
+        des 349 chaînes vient d'être dépliée autrement qu'en le demandant à
+        Tk.
         """
-        lettre = self._alphabet.focus()
-        if lettre not in self._alphabet_sections or lettre in self._alphabet_loaded:
+        iid = self._chains.focus()
+        if iid not in self._chain_sections or iid in self._chains_loaded:
             return
-        self._alphabet.delete(*self._alphabet.get_children(lettre))
-        for entrée in self._alphabet_sections[lettre]:
-            self._compteur_alphabet_liens += 1
-            tag_lien = f"alphabet_lien_{self._compteur_alphabet_liens}"
-            enfant = self._alphabet.insert(
-                lettre, "end",
-                text=format_lettred_quest(entrée),
+        _chain, entrées = self._chain_sections[iid]
+        self._chains.delete(*self._chains.get_children(iid))
+        for entrée in entrées:
+            self._compteur_chain_liens += 1
+            tag_lien = f"chaine_lien_{self._compteur_chain_liens}"
+            enfant = self._chains.insert(
+                iid, "end",
+                text=format_listed_quest(entrée),
                 tags=(_tag_for(entrée.samples), tag_lien),
             )
-            self._alphabet_quest_for_item[enfant] = entrée.quest
+            self._chain_quest_for_item[enfant] = entrée.quest
             # Même geste que le nom cliquable de « QUÊTES FAITES » : direction
             # la fiche de recherche individuelle. Voir `_go_to_ranking`.
-            self._alphabet.tag_bind(tag_lien, "<Button-1>", self._go_to_ranking(entrée.quest))
-        self._alphabet_loaded.add(lettre)
+            self._chains.tag_bind(tag_lien, "<Button-1>", self._go_to_ranking(entrée.quest))
+        self._chains_loaded.add(iid)
 
     def _help(self, which: str) -> Callable[[], None]:
         """Ouvre l'exemple de ce que cette zone doit contenir."""
@@ -1667,8 +1681,8 @@ class RubinApp:
         elif genre == "classement":
             self._ranking = charge
             self._refresh_ranking()
-        elif genre == "alphabet":
-            self._show_alphabet(charge)
+        elif genre == "chaines":
+            self._show_chains(charge)
         elif genre == "temps":
             self._show_times(*charge)
         elif genre == "zone_lue":

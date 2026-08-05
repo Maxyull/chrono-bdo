@@ -7,6 +7,20 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+### Modifié
+
+- **« Toutes les quêtes » se range désormais par CHAÎNE, plus par lettre du
+  nom.** Revu par Maxime le 06/08/2026 : le premier jet groupait par lettre,
+  ce qui n'est pas ce que montre l'onglet « Principales » du journal du jeu.
+  Celui-ci liste des chaînes, chacune avec son propre décompte, du type
+  « [Abyss One] Magnus : 0/104 » : c'est cette forme qui est reprise, avec
+  « mesurées » plutôt que la progression du joueur, que Rubin ne connaît pas.
+
+  Les quêtes d'une chaîne dépliée gardent l'ordre du jeu (leur position),
+  jamais un tri alphabétique qui mélangerait le début et la fin d'une même
+  histoire. Les 349 chaînes elles-mêmes sont triées par nom, faute d'un ordre
+  de scénario dans le référentiel.
+
 ## [0.5.5] - 2026-08-06
 
 ### Ajouté

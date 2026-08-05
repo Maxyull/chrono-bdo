@@ -11,7 +11,6 @@ import pytest
 
 from rubin.capture import Rect, banner_region, tracker_region
 from rubin.interface import (
-    ALPHABET_QUEST_LIMIT,
     COVERAGE_TAGS,
     DEMO_BANNER,
     DEMO_MARK,
@@ -19,25 +18,24 @@ from rubin.interface import (
     LINK_TAGS,
     LOCK_MARK,
     LOCKED_WHILE_MEASURING,
+    QUEST_LIST_LIMIT,
     RANKING_UNAVAILABLE,
-    LettredQuest,
+    ListedQuest,
     Watching,
     ZoneState,
-    alphabet_cap_warning,
-    alphabet_key,
-    alphabet_sections,
+    chain_sections,
     demo_active,
     demo_ranking,
     describe_conflict,
     describe_reading,
     describe_zone,
+    format_chain_header,
     format_coverage,
     format_current_reference,
     format_duration,
     format_gap,
-    format_letter_header,
-    format_lettred_quest,
     format_link,
+    format_listed_quest,
     format_measure_line,
     format_note_placeholder,
     format_other_quests,
@@ -53,6 +51,7 @@ from rubin.interface import (
     main_quest_total,
     other_quest_total,
     quest_display_name,
+    quest_list_cap_warning,
     ranking_message,
     running_seconds,
     samples_by_quest,
@@ -68,7 +67,7 @@ from rubin.interface.theme import (
     confidence_colour,
     confidence_score,
 )
-from rubin.reference import Catalog, Quest, QuestId
+from rubin.reference import Catalog, Chain, Quest, QuestId
 from rubin.references import (
     MIN_SAMPLES_PER_QUEST,
     RANKING_LIMIT,
@@ -1313,86 +1312,86 @@ def _lq(position: int, title: str, chain: int = 21136, prefix: str | None = "Cal
     )
 
 
-class TestArbreAlphabetique:
-    """La liste alphabétique des 3 924 quêtes principales, pastille au bout.
+class TestListeParChaine:
+    """Toutes les quêtes principales, groupées par chaîne, pastille au bout.
 
-    Demandée par Maxime le 05/08/2026 : voir d'un coup d'œil quelles quêtes
-    ont encore besoin d'être timées. `ReferenceClient.fastest_quests` fait
+    Demandée par Maxime le 05/08/2026, revue le 06/08/2026 : voir d'un coup
+    d'œil quelles quêtes ont encore besoin d'être timées. Le premier jet
+    groupait par lettre du nom ; ce n'est pas ce que montre le journal du
+    jeu, qui liste des CHAÎNES, chacune avec son propre décompte, du type
+    « [Abyss One] Magnus : 0/104 ». `ReferenceClient.fastest_quests` fait
     déjà tout le travail réseau ; ce module-ci se contente de grouper ce
     qu'elle rend, et le seul point délicat est son plafond à 200 lignes.
     """
 
-    def test_alphabet_key_ignore_les_accents(self) -> None:
-        assert (
-            alphabet_key(_lq(1, "École de commerce"))
-            == alphabet_key(_lq(2, "Ecole de commerce"))
-            == "E"
+    def test_chain_sections_garde_l_ordre_des_positions_dans_une_chaine(self) -> None:
+        # L'ordre du jeu, pas un tri alphabétique : « II » doit suivre « I »,
+        # jamais l'inverse, sans quoi la liste raconterait la chaîne à
+        # l'envers.
+        catalogue = Catalog(
+            {"fr": [_lq(2, "Zamak II"), _lq(1, "Zamak I"), _lq(3, "Zamak III")]}
         )
 
-    def test_alphabet_key_range_une_apostrophe_de_tete_sous_sa_lettre(self) -> None:
-        assert alphabet_key(_lq(1, "L'appel du sang")) == "L"
+        sections = chain_sections(catalogue, "fr", {})
 
-    def test_alphabet_key_range_un_titre_qui_commence_par_un_chiffre_sous_diese(self) -> None:
-        assert alphabet_key(_lq(1, "1000 questions pour un noble")) == "#"
+        entrées = sections[0][1]
+        assert [e.quest.title for e in entrées] == ["Zamak I", "Zamak II", "Zamak III"]
 
-    def test_regression_alphabet_key_ignore_le_prefixe_de_region(self) -> None:
-        """Régression : le cinquième piège de `ETAT.md`, sous un autre angle.
+    def test_chain_sections_trie_les_chaines_par_nom(self) -> None:
+        catalogue = Catalog(
+            {
+                "fr": [
+                    _lq(1, "Zoulou", chain=1),
+                    _lq(1, "Abricot", chain=2),
+                    _lq(1, "Melon", chain=3),
+                ]
+            }
+        )
 
-        Le panneau de choix coupe le préfixe de région : l'écran affiche
-        « [Carrefour] Du côté de Valks » là où le catalogue porte
-        « [Calpheon][Carrefour] Du côté de Valks ». Grouper sur `name`, qui
-        PORTE ce préfixe entre crochets, aurait rangé la quasi-totalité du
-        catalogue sous « # » ou sous « [ », puisque tous les noms
-        commencent par un crochet. `alphabet_key` doit partir de `title`,
-        débarrassé du préfixe, jamais de `name`.
-        """
-        quete = _lq(1, "Du côté de Valks", prefix="Calpheon")
-        assert quete.name.startswith("[")
+        sections = chain_sections(catalogue, "fr", {})
 
-        assert alphabet_key(quete) == "D"
+        assert [chaîne.name for chaîne, _entrées in sections] == [
+            "[Calpheon] Abricot",
+            "[Calpheon] Melon",
+            "[Calpheon] Zoulou",
+        ]
 
-    def test_alphabet_sections_trie_a_l_interieur_d_une_lettre(self) -> None:
-        catalogue = Catalog({"fr": [_lq(1, "Zoulou"), _lq(2, "Abricot"), _lq(3, "Zamak")]})
-
-        sections = alphabet_sections(catalogue, "fr", {})
-
-        assert [entrée.quest.title for entrée in sections["Z"]] == ["Zamak", "Zoulou"]
-
-    def test_alphabet_sections_zero_mesure_par_defaut(self) -> None:
+    def test_chain_sections_zero_mesure_par_defaut(self) -> None:
         quete = _lq(1, "Abricot")
         catalogue = Catalog({"fr": [quete]})
 
-        sections = alphabet_sections(catalogue, "fr", {})
+        sections = chain_sections(catalogue, "fr", {})
 
-        assert sections["A"] == (LettredQuest(quete, 0),)
+        assert sections[0][1] == (ListedQuest(quete, 0),)
 
-    def test_alphabet_sections_reprend_le_compte_fourni_en_masse(self) -> None:
+    def test_chain_sections_reprend_le_compte_fourni_en_masse(self) -> None:
         quete = _lq(1, "Abricot")
         catalogue = Catalog({"fr": [quete]})
 
-        sections = alphabet_sections(catalogue, "fr", {quete.id: 7})
+        sections = chain_sections(catalogue, "fr", {quete.id: 7})
 
-        assert sections["A"][0].samples == 7
+        assert sections[0][1][0].samples == 7
 
-    def test_format_letter_header_accorde_le_pluriel(self) -> None:
-        une = (LettredQuest(_lq(1, "Abricot"), 3),)
-        deux = (LettredQuest(_lq(1, "Abricot"), 0), LettredQuest(_lq(2, "Amande"), 2))
+    def test_format_chain_header_accorde_le_pluriel(self) -> None:
+        chaîne = Chain(21136, (_lq(1, "Abricot"),))
+        une = (ListedQuest(_lq(1, "Abricot"), 3),)
+        deux = (ListedQuest(_lq(1, "Abricot"), 0), ListedQuest(_lq(2, "Amande"), 2))
 
-        assert format_letter_header("A", une) == "A   —   1 quête, 1 mesurée"
-        assert format_letter_header("A", deux) == "A   —   2 quêtes, 1 mesurée"
+        assert format_chain_header(chaîne, une) == "[Calpheon] Abricot   —   1/1 mesurée"
+        assert format_chain_header(chaîne, deux) == "[Calpheon] Abricot   —   1/2 mesurée"
 
-    def test_format_lettred_quest_dit_jamais_mesuree(self) -> None:
+    def test_format_listed_quest_dit_jamais_mesuree(self) -> None:
         assert (
-            format_lettred_quest(LettredQuest(_lq(1, "Abricot"), 0))
+            format_listed_quest(ListedQuest(_lq(1, "Abricot"), 0))
             == "Abricot   —   jamais mesurée"
         )
 
-    def test_format_lettred_quest_accorde_mesure_au_singulier(self) -> None:
+    def test_format_listed_quest_accorde_mesure_au_singulier(self) -> None:
         assert (
-            format_lettred_quest(LettredQuest(_lq(1, "Abricot"), 1)) == "Abricot   —   1 mesure"
+            format_listed_quest(ListedQuest(_lq(1, "Abricot"), 1)) == "Abricot   —   1 mesure"
         )
         assert (
-            format_lettred_quest(LettredQuest(_lq(1, "Abricot"), 4)) == "Abricot   —   4 mesures"
+            format_listed_quest(ListedQuest(_lq(1, "Abricot"), 4)) == "Abricot   —   4 mesures"
         )
 
     def test_samples_by_quest_vide_quand_le_serveur_n_a_rien_dit(self) -> None:
@@ -1403,17 +1402,17 @@ class TestArbreAlphabetique:
 
         assert samples_by_quest((ligne,)) == {QuestId(21136, 1): 9}
 
-    def test_alphabet_cap_warning_se_tait_sous_le_plafond(self) -> None:
+    def test_quest_list_cap_warning_se_tait_sous_le_plafond(self) -> None:
         loin_du_plafond = tuple(
             RankedQuest(chain=1, position=i, median_seconds=1.0, samples=1) for i in range(29)
         )
 
-        assert alphabet_cap_warning(loin_du_plafond) is None
+        assert quest_list_cap_warning(loin_du_plafond) is None
 
-    def test_alphabet_cap_warning_se_tait_quand_le_serveur_n_a_rien_dit(self) -> None:
-        assert alphabet_cap_warning(None) is None
+    def test_quest_list_cap_warning_se_tait_quand_le_serveur_n_a_rien_dit(self) -> None:
+        assert quest_list_cap_warning(None) is None
 
-    def test_regression_alphabet_cap_warning_au_plafond_de_v1_quetes(self) -> None:
+    def test_regression_quest_list_cap_warning_au_plafond_de_v1_quetes(self) -> None:
         """Régression : `/v1/quetes` plafonne à 200 lignes, sans le dire.
 
         `serveur/src/rubin_serveur/main.py` applique
@@ -1421,7 +1420,7 @@ class TestArbreAlphabetique:
         trie par temps médian croissant. Si la base compte un jour plus de
         200 quêtes distinctes mesurées, ce sont les plus LENTES qui sortent
         silencieusement du lot renvoyé : une quête réellement mesurée
-        apparaîtrait alors « jamais mesurée » dans l'arbre alphabétique,
+        apparaîtrait alors « jamais mesurée » dans la liste par chaîne,
         exactement le chiffre faux que ce projet refuse d'inventer. La base
         du 05/08/2026, avec 29 quêtes mesurées en tout, est bien trop petite
         pour déclencher ce cas ; ce test le fabrique pour vérifier que le
@@ -1429,10 +1428,10 @@ class TestArbreAlphabetique:
         """
         plafonné = tuple(
             RankedQuest(chain=1, position=i, median_seconds=float(i), samples=1)
-            for i in range(ALPHABET_QUEST_LIMIT)
+            for i in range(QUEST_LIST_LIMIT)
         )
 
-        avertissement = alphabet_cap_warning(plafonné)
+        avertissement = quest_list_cap_warning(plafonné)
 
         assert avertissement is not None
-        assert str(ALPHABET_QUEST_LIMIT) in avertissement
+        assert str(QUEST_LIST_LIMIT) in avertissement
