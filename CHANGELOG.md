@@ -351,6 +351,22 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ### Corrigé
 
+- **La fenêtre pouvait geler à la première quête inconnue mesurée dans une
+  session**, jusqu'à cinq secondes.
+
+  `_add_measure` tourne sur le fil de Tk, celui qui vide la file de messages et
+  redessine la fenêtre. Elle appelait `ReferenceClient.quest(...)` en direct
+  pour afficher le nombre de mesures et l'écart aux autres joueurs, un GET HTTP
+  **synchrone** dès que la quête n'était pas déjà en cache, avec le même délai
+  que documenté sur `_ask_server` : jusqu'à cinq secondes quand le serveur ne
+  répond pas. Toutes les autres requêtes réseau de la fenêtre passaient déjà
+  par un fil séparé (`_ask_server`, `_query_reference`,
+  `_ask_current_reference`), celle-ci était la seule exception.
+
+  La requête part désormais dans un fil démon, et publie la référence obtenue
+  sur la file de messages : `_finish_measure` termine l'affichage sur le fil de
+  Tk une fois la réponse connue, exactement comme le reste du réseau.
+
 - **L'onglet Zones lit tout seul quand on y entre**, au lieu d'exiger un clic
   sur « Lire maintenant » pour montrer quoi que ce soit. Ouvrir un onglet devait
   suffire à voir l'état.
