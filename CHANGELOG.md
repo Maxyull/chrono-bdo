@@ -201,6 +201,46 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
   rejouer la reconnaissance sur les neuf vignettes pour retrouver une
   information que le logiciel jetait deux fois de suite.
 
+- **Les zones de lecture sont retenues par taille de fenêtre.** `reglages.json`
+  porte désormais un bloc `zones_par_taille`, dont les clés se lisent
+  « 2560x1440 ». Une zone tracée en plein écran ne s'applique plus qu'en plein
+  écran, une zone tracée en fenêtré qu'en fenêtré, et les deux cohabitent : le
+  joueur qui alterne retrouve chaque fois son tracé au lieu de le refaire.
+
+  ⚠️ **Une zone n'a de sens qu'avec la résolution où elle a été tracée.** Le
+  bandeau de quête est ancré au coin bas-droit de la fenêtre du jeu, donc un
+  rectangle relevé en 2560 x 1440 tombe en plein décor dès que la fenêtre fait
+  1920 x 1080. Jusqu'ici Rubin gardait UN rectangle, sans clé : changer de
+  résolution ou passer en fenêtré laissait une zone devenue fausse **et
+  enregistrée**, donc survivant au redémarrage. C'était le seul réglage du
+  projet capable de rester faux d'une session à l'autre sans que rien ne
+  l'annonce.
+
+  Rien n'est mis à l'échelle d'une résolution à l'autre. Sur une taille de
+  fenêtre inconnue, on retombe sur le calcul d'origine, qui suit la fenêtre :
+  une zone extrapolée serait une zone inventée, et le principe du projet vaut
+  ici comme ailleurs. La propriété qui autorise à exposer ces réglages est
+  préservée, et même renforcée : un réglage faux produit une mesure
+  **manquante**, jamais une mesure fausse.
+
+  **Un fichier écrit avant ce bloc se relit sans rien perdre.** Ses trois zones
+  n'ont pas de résolution connue, et cela ne se devine pas. Les jeter aurait
+  effacé le travail du joueur, en particulier la zone du panneau de choix, dont
+  le calcul d'origine n'est qu'une **estimation** et dont son tracé est la seule
+  source fiable. Les appliquer partout aurait refait le défaut qu'on corrige,
+  en le rendant permanent. Elles sont donc conservées et réécrites, mais
+  attendent d'être attribuées à une taille de fenêtre par `adopted_for` : un
+  geste, pas une supposition.
+
+  La table est traitée comme le reste du fichier, c'est-à-dire comme hostile :
+  une taille illisible, un nom de zone inconnu ou un rectangle plat coûtent la
+  zone concernée et rien d'autre, jamais le démarrage ni les zones voisines.
+
+  C'est le premier des deux étages décrits dans `CLAUDE.md`, et il est utile
+  seul. Le second, envoyer les zones au serveur pour en tirer la zone habituelle
+  d'une résolution, n'est **pas** fait : c'est un envoi nouveau, il tombe sous
+  la règle « rien n'est envoyé sans `--envoyer` ».
+
 ## [0.4.0] - 2026-08-05
 
 La première version qu'on peut mettre entre les mains d'un testeur : elle ne
