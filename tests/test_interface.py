@@ -27,6 +27,7 @@ from rubin.interface import (
     describe_reading,
     describe_zone,
     format_coverage,
+    format_current_reference,
     format_duration,
     format_gap,
     format_link,
@@ -276,6 +277,57 @@ class TestTempsDeReference:
         item = _a_venir(reference=QuestReference(97.5, samples=1, fastest_seconds=97.5))
         assert "1 mesure " in format_reference(item) or "1 mesure)" in format_reference(item)
         assert "1 mesures" not in format_reference(item)
+
+
+class TestMeilleurTempsEnCours:
+    """Le meilleur temps connu de la quête EN COURS, pendant qu'on la joue.
+
+    Demandé par Maxime le 05/08/2026, une fois les mesures revenues après la
+    panne du jour : voir une référence pendant qu'on joue, pas seulement une
+    fois la quête finie.
+    """
+
+    def test_une_quete_jamais_mesuree_le_dit_positivement(self) -> None:
+        # « Personne encore » plutôt que « pas de temps », pour que ce soit une
+        # invitation et non un reproche : c'est la seule mesure qui manque
+        # vraiment à ce projet, la base ne contenant que très peu de joueurs.
+        texte = format_current_reference(None)
+
+        assert "premier" in texte or "première" in texte
+
+    def test_montre_le_record_pas_la_mediane(self) -> None:
+        """Régression : cet affichage-ci classe sur le record, exprès.
+
+        Partout ailleurs le projet interdit le record comme critère de
+        classement, un tricheur s'en emparant en un seul envoi. Ici, personne
+        n'est classé : on montre une référence à battre pendant qu'on joue, et
+        c'est le record qui répond à « en combien de temps ça peut se faire »,
+        la médiane répondant à « en combien de temps ça se fait d'habitude ».
+        Confondre les deux ici serait montrer la mauvaise réponse à la question
+        posée par ce widget précis.
+        """
+        référence = QuestReference(median_seconds=252.0, samples=8, fastest_seconds=180.0)
+
+        texte = format_current_reference(référence)
+
+        assert "4 min 12 s" not in texte  # la médiane, absente
+        assert "3 min 00 s" in texte  # le record, présent
+        assert "8 mesures" in texte
+
+    def test_marque_un_record_qui_repose_sur_trop_peu(self) -> None:
+        référence = QuestReference(median_seconds=97.5, samples=1, fastest_seconds=97.5)
+
+        texte = format_current_reference(référence)
+
+        assert "1 mesure" in texte
+        assert "peu sûr" in texte
+
+    def test_ne_marque_pas_un_record_suffisamment_assis(self) -> None:
+        référence = QuestReference(
+            median_seconds=252.0, samples=FRAGILE_BELOW, fastest_seconds=201.0
+        )
+
+        assert "peu sûr" not in format_current_reference(référence)
 
 
 class TestLignesAVenir:

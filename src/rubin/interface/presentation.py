@@ -367,6 +367,36 @@ def format_reference(item: UpcomingQuest) -> str:
     return texte
 
 
+def format_current_reference(reference: QuestReference | None) -> str:
+    """Le meilleur temps connu de la quête EN COURS, pendant qu'on la joue.
+
+    Demandé par Maxime le 05/08/2026, une fois les mesures revenues : voir le
+    meilleur temps pendant qu'on joue, pas seulement une fois la quête finie.
+
+    ⚠️ Le **record**, pas la médiane, et c'est un choix délibéré, propre à cet
+    affichage : ailleurs le projet ne classe que sur la médiane, un record se
+    falsifiant en un seul envoi. Ici on ne classe personne, on montre une
+    référence à battre pendant qu'on joue, et c'est le record qui répond à
+    « en combien de temps ça peut se faire », la médiane répondant à une autre
+    question, « en combien de temps ça se fait d'habitude ».
+
+    ⚠️ **« Ton meilleur temps » personnel n'existe pas encore.** Le serveur ne
+    garde aucune donnée liée à un joueur dans ses réponses, par conception, et
+    le client ne tient pas non plus d'historique récapitulatif par quête. Ce
+    serait une vraie fonctionnalité à construire, pas une ligne de plus ici.
+    """
+    if reference is None or reference.samples <= 0:
+        return "jamais mesurée avant, vous seriez le·la premier·ère"
+    mesures = "mesure" if reference.samples == 1 else "mesures"
+    texte = (
+        f"meilleur temps connu : {format_duration(reference.fastest_seconds)}"
+        f"  ({reference.samples} {mesures})"
+    )
+    if reference.samples < FRAGILE_BELOW:
+        texte += "  peu sûr"
+    return texte
+
+
 def format_upcoming_line(item: UpcomingQuest) -> str:
     """Une ligne de la liste des quêtes à venir."""
     marque = "   (branche d'un choix)" if item.is_crossroad else ""

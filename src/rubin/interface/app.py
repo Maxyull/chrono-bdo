@@ -42,7 +42,7 @@ from ..capture import (
 )
 from ..placement import choose, conflicts
 from ..protocol import PlayerIdentity
-from ..reference import Catalog, Quest
+from ..reference import Catalog, Quest, QuestId
 from ..references import RANKING_LIMIT, RankedQuest, ReferenceClient
 from ..settings import LANGUAGES, LIMITS, WindowSize, load, save
 from ..timing import Quality
@@ -62,6 +62,7 @@ from .presentation import (
     describe_reading,
     describe_zone,
     format_coverage,
+    format_current_reference,
     format_duration,
     format_gap,
     format_link,
@@ -226,6 +227,11 @@ class RubinApp:
         # jamais hors de la fenêtre.
         self._chrono = ttk.Label(cadre, text="", style="Valeur.TLabel")
         self._chrono.pack(anchor="w", pady=(4, 0))
+        # Le meilleur temps connu de la quête EN COURS, sous le chronomètre qui
+        # tourne : voir une référence pendant qu'on joue, pas seulement une fois
+        # la quête finie. Voir `format_current_reference`.
+        self._record_en_cours = ttk.Label(cadre, text="", style="Faible.TLabel")
+        self._record_en_cours.pack(anchor="w", pady=(0, 0))
         # Le témoin de connexion, sous le chronomètre : visible depuis n'importe
         # quel onglet, parce que la question « est-ce que je suis relié ? » se
         # pose de partout. Un mot **et** une couleur, jamais la couleur seule.
@@ -1393,6 +1399,8 @@ class RubinApp:
             self._show_no_chain(str(charge))
         elif genre == "position":
             self._show_upcoming(*charge)
+        elif genre == "reference_en_cours":
+            self._show_current_reference(*charge)
         elif genre == "couverture":
             self._show_coverage(charge)
         elif genre == "autres_quetes":
@@ -1428,6 +1436,7 @@ class RubinApp:
             self._titre.config(text="En attente du jeu")
             self._sous_titre.config(text="lancez Black Desert, puis jouez")
             self._surveillance.config(text="")
+            self._record_en_cours.config(text="")
         self._lock_zone_controls(running)
 
     def _over_zones_tab(self, x: int, y: int) -> bool:
@@ -1613,6 +1622,7 @@ class RubinApp:
 
     def _show_upcoming(self, chain: int, position: int, references: Any) -> None:
         """Réaffiche la liste des quêtes à venir, avec leur score."""
+        self._ask_current_reference(chain, position, references)
         if self._catalog is None:
             return
         suivantes = upcoming(
@@ -1638,6 +1648,39 @@ class RubinApp:
             self._liste.insert("end", f"{format_upcoming_line(item)}\n")
             self._liste.insert("end", f"     {format_reference(item)}\n", "faible")
         self._liste.config(state="disabled")
+
+    def _ask_current_reference(self, chain: int, position: int, references: Any) -> None:
+        """Demande, dans un fil, le meilleur temps connu de la quête en cours.
+
+        Sur le même signal que `_show_upcoming`, « position » : c'est lui qui
+        change exactement quand une quête vient d'être acceptée. Dans un fil,
+        comme tout le reste du réseau : un serveur lent ne doit pas figer la
+        fenêtre pendant qu'une quête vient de démarrer.
+        """
+        quest_id = QuestId(chain, position)
+
+        def demander() -> None:
+            reference = references.quest(quest_id) if references is not None else None
+            self.publish("reference_en_cours", (quest_id, reference))
+
+        threading.Thread(target=demander, daemon=True).start()
+
+    def _show_current_reference(self, quest_id: QuestId, reference: Any) -> None:
+        """Affiche le meilleur temps connu, s'il concerne toujours la quête en cours.
+
+        ⚠️ La requête part dans un fil et peut répondre après que le joueur ait
+        déjà avancé : sans ce contrôle, la réponse d'une quête abandonnée
+        s'afficherait sous le nom d'une autre, silencieusement fausse.
+        """
+        moteur = self._engine
+        if (
+            moteur is None
+            or moteur.timeline is None
+            or (moteur.timeline.current_chain, moteur.timeline.current_position)
+            != (quest_id.chain, quest_id.position)
+        ):
+            return
+        self._record_en_cours.config(text=format_current_reference(reference))
 
     def _show_coverage(self, parts: tuple[str, str, str] | None) -> None:
         """Affiche « 0 verte, 11 orange, 3 913 jamais mesurées », ou son absence.
