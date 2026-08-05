@@ -197,7 +197,12 @@ class MeasuringSession:
         envoyables: list[MeasurePayload] = []
         écartées = 0
 
-        zone = self._settings.banner or banner_region(window, ui_scale=self._settings.ui_scale)
+        # `zone_for` : voir l'en-tête de `RubinApp.zones`, même défaut. Une
+        # session lancée en ligne de commande passait par le même vieux champ
+        # sans condition de taille que la fenêtre graphique.
+        zone = self._settings.zone_for(
+            "banner", (window.width, window.height)
+        ) or banner_region(window, ui_scale=self._settings.ui_scale)
         self._publish("etat", f"mesure en cours, zone {zone.width}x{zone.height}")
         self._publish("demarre", True)
         début = time.monotonic()

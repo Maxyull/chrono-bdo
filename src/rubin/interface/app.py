@@ -44,7 +44,7 @@ from ..placement import choose, conflicts
 from ..protocol import PlayerIdentity
 from ..reference import Catalog, Quest
 from ..references import RANKING_LIMIT, RankedQuest, ReferenceClient
-from ..settings import LANGUAGES, LIMITS, load, save
+from ..settings import LANGUAGES, LIMITS, WindowSize, load, save
 from ..timing import Quality
 from ..upcoming import upcoming
 from .autozone import search as search_banner_zone
@@ -565,6 +565,21 @@ class RubinApp:
         commande(boutons, "reset", "Zones calculées", self.reset_zones)
         self._zone_buttons["reset"].pack_configure(padx=8)
         commande(boutons, "auto", "Choix automatique", self.auto_zone)
+
+        # Sur sa propre ligne, pas serré dans `boutons` avec les trois autres :
+        # à la largeur minimale de la fenêtre (470 px), quatre boutons
+        # dépassaient du bord, invisibles et injoignables sans l'élargir à la
+        # main. Cette ligne-ci ne le fait pas non plus, contrairement à
+        # l'aperçu des zones plus bas, mais un seul bouton tient toujours dans
+        # 470 px, vu et vérifié.
+        reprise = ttk.Frame(self._zones)
+        reprise.pack(fill="x", padx=12, pady=(0, 6))
+        # Désactivé par défaut : `refresh_zones`, appelé à la fin de cette
+        # méthode, décide s'il y a quelque chose à reprendre. Le bouton EST le
+        # « geste » que `Settings.adopted_for` attend avant d'appliquer un
+        # ancien tracé, voir son en-tête dans `settings.py`.
+        commande(reprise, "adopt", "Reprendre l'ancien tracé", self.adopt_zones, state="disabled")
+
         tracer = ttk.Frame(self._zones)
         tracer.pack(fill="x", padx=12, pady=(0, 6))
         for clé, libellé in (
@@ -779,11 +794,26 @@ class RubinApp:
 
         Dans l'ordre de `ZONE_ROLES` : bandeau, suivi, choix. Les deux premières
         reposent sur des mesures, la troisième sur une estimation.
+
+        La zone tracée n'est rendue que pour la taille EXACTE de `window`, via
+        `Settings.zone_for` : voir l'en-tête de `settings.py`. C'est le chemin
+        que #58 avait construit sans jamais le brancher ici, laissant les vieux
+        champs `banner`/`tracker`/`choice` s'appliquer sans condition. Une zone
+        tracée à une résolution restait donc active à toutes les autres, y
+        compris fausse et coupant le titre du bandeau : c'est le défaut qui a
+        coûté une matinée de mesures le 5 août 2026.
         """
         échelle = self._settings.ui_scale
-        bandeau = self._settings.banner or banner_region(window, ui_scale=échelle)
-        suivi = self._settings.tracker or tracker_region(window, ui_scale=échelle)
-        choix = self._settings.choice or choice_region(window, ui_scale=échelle)
+        taille = (window.width, window.height)
+        bandeau = self._settings.zone_for("banner", taille) or banner_region(
+            window, ui_scale=échelle
+        )
+        suivi = self._settings.zone_for("tracker", taille) or tracker_region(
+            window, ui_scale=échelle
+        )
+        choix = self._settings.zone_for("choice", taille) or choice_region(
+            window, ui_scale=échelle
+        )
         return bandeau, suivi, choix
 
     # ------------------------------------------------------------------ actions
@@ -794,16 +824,46 @@ class RubinApp:
         if fenêtre is None:
             for étiquette in self._zone_labels.values():
                 étiquette.config(text="jeu introuvable")
+            # ⚠️ Avant le `return`, pas après : la disponibilité du bouton
+            # d'adoption ne dépend que de `Settings.unkeyed`, jamais de la
+            # taille de fenêtre. Le placer après aurait laissé le bouton inerte
+            # tant que le jeu n'est pas détecté, alors qu'il n'a besoin de rien
+            # savoir de la fenêtre pour SAVOIR s'il y a quelque chose à offrir,
+            # seulement pour agir une fois cliqué.
+            mesure_en_cours = self._engine is not None and self._engine.running
+            if not mesure_en_cours:
+                self._refresh_adopt_button()
             return
         bandeau, suivi, choix = self.zones(fenêtre)
+        taille = (fenêtre.width, fenêtre.height)
+
+        def état(clé: str, nom: str, rect: Rect) -> ZoneState:
+            return ZoneState(
+                nom,
+                rect,
+                chosen=self._settings.zone_for(clé, taille) is not None,
+                # Un tracé existe (`unkeyed`) mais ne s'applique à AUCUNE
+                # taille, donc pas à celle-ci non plus : c'est le cas exact du
+                # 5 août 2026, et la seule raison de le montrer est de le
+                # rendre visible avant qu'il coûte une session.
+                stray=self._settings.unkeyed(clé) is not None
+                and self._settings.zone_for(clé, taille) is None,
+            )
+
         états = {
-            "banner": ZoneState("Bandeau", bandeau, chosen=self._settings.banner is not None),
-            "tracker": ZoneState("Suivi", suivi, chosen=self._settings.tracker is not None),
-            "choice": ZoneState("Choix", choix, chosen=self._settings.choice is not None),
+            "banner": état("banner", "Bandeau", bandeau),
+            "tracker": état("tracker", "Suivi", suivi),
+            "choice": état("choice", "Choix", choix),
         }
-        for clé, état in états.items():
-            self._zone_labels[clé].config(text=describe_zone(état))
+        for clé, état_zone in états.items():
+            self._zone_labels[clé].config(text=describe_zone(état_zone))
         self._warn_if_blinding(bandeau, suivi)
+
+        # Seulement hors mesure : pendant une session, `_lock_zone_controls` a
+        # déjà tranché, et le recroiser ici lui ferait perdre son cadenas.
+        mesure_en_cours = self._engine is not None and self._engine.running
+        if not mesure_en_cours:
+            self._refresh_adopt_button()
 
     def _warn_if_blinding(self, bandeau: Rect, suivi: Rect) -> None:
         """Prévient si la fenêtre couvre une zone dont dépend la mesure.
@@ -1129,22 +1189,22 @@ class RubinApp:
             # aurait fini par contredire celle de la fenêtre d'aide sans que
             # rien ne le signale.
             titre = EXAMPLES[which][0]
-            ZonePicker(self.root, fenêtre, titre, self._zone_chosen(which))
+            ZonePicker(
+                self.root, fenêtre, titre, self._zone_chosen(which, (fenêtre.width, fenêtre.height))
+            )
 
         return ouvrir
 
-    def _zone_chosen(self, which: str) -> Callable[[Rect], None]:
+    def _zone_chosen(self, which: str, size: WindowSize) -> Callable[[Rect], None]:
+        """`size` est la taille de fenêtre où le tracé vient d'être fait.
+
+        Sans elle, le rectangle s'appliquerait à toutes les tailles, ce qui est
+        exactement le défaut que #58 avait corrigé côté réglages sans jamais le
+        brancher ici : voir l'en-tête de `Settings.with_zone`.
+        """
+
         def retenir(zone: Rect) -> None:
-            # Deux branches explicites plutôt qu'un nom de champ calculé :
-            # le vérificateur de types ne sait rien d'une clé construite à
-            # l'exécution, et une faute de frappe y passerait inaperçue
-            # jusqu'au moment où le réglage ne s'enregistre pas.
-            if which == "banner":
-                self._settings = replace(self._settings, banner=zone)
-            elif which == "tracker":
-                self._settings = replace(self._settings, tracker=zone)
-            else:
-                self._settings = replace(self._settings, choice=zone)
+            self._settings = self._settings.with_zone(which, size, zone)
             save(self._settings, self._home)
             self.refresh_zones()
             # Lire tout de suite : le seul moyen de savoir si le tracé est bon
@@ -1155,16 +1215,46 @@ class RubinApp:
         return retenir
 
     def reset_zones(self) -> None:
-        """Oublie les zones choisies, et revient au calcul qui suit la fenêtre.
+        """Oublie les zones choisies **pour la taille de fenêtre courante**.
 
         ⚠️ Pour le panneau de choix, « revenir au calcul » revient à revenir à
         une estimation. C'est un recul assumé, et le même que pour les autres :
         un rectangle tracé sur une fenêtre qui a changé de taille est pire
         qu'un rectangle calculé.
+
+        Les tracés faits pour d'AUTRES tailles ne sont pas touchés : c'est tout
+        l'intérêt de la table de #58, et l'effacer en bloc referait le défaut
+        qu'elle corrige. Si le jeu est introuvable, seuls les champs hérités
+        d'avant #58 sont effacés : sans taille de fenêtre, la table indexée ne
+        peut rien cibler.
         """
-        self._settings = replace(self._settings, banner=None, tracker=None, choice=None)
+        fenêtre = find_game_window()
+        if fenêtre is None:
+            self._settings = replace(self._settings, banner=None, tracker=None, choice=None)
+        else:
+            taille = (fenêtre.width, fenêtre.height)
+            réglages = self._settings
+            for nom in ZONE_KEYS:
+                réglages = réglages.with_zone(nom, taille, None)
+            self._settings = réglages
         save(self._settings, self._home)
         self.refresh_zones()
+
+    def adopt_zones(self) -> None:
+        """Reprend les tracés d'avant #58, pour la taille de fenêtre courante.
+
+        Le seul chemin par lequel une zone tracée dans un ancien fichier
+        redevient active : voir `Settings.adopted_for`, qui refuse de le faire
+        toute seule, exprès. Ce bouton EST le geste que ce refus attend.
+        """
+        fenêtre = find_game_window()
+        if fenêtre is None:
+            self._avertissement.config(text="jeu introuvable, impossible de reprendre le tracé")
+            return
+        self._settings = self._settings.adopted_for((fenêtre.width, fenêtre.height))
+        save(self._settings, self._home)
+        self.refresh_zones()
+        self.read_zones_now()
 
     def save_settings(self) -> None:
         """Enregistre les réglages, bornés, et applique ce qui est immédiat."""
@@ -1244,8 +1334,15 @@ class RubinApp:
         elif genre == "etat_zone":
             self._avertissement.config(text=str(charge))
         elif genre == "zone_trouvee":
-            self._settings = replace(self._settings, banner=charge)
-            save(self._settings, self._home)
+            # La fenêtre trouvée à l'instant, pas celle du début de la
+            # recherche : `search` a pu tourner jusqu'à deux minutes, la
+            # fenêtre a pu changer de taille entre-temps.
+            fenêtre = find_game_window()
+            if fenêtre is not None:
+                self._settings = self._settings.with_zone(
+                    "banner", (fenêtre.width, fenêtre.height), charge
+                )
+                save(self._settings, self._home)
             self.refresh_zones()
             self.read_zones_now()
         elif genre == "sous_chrono":
@@ -1339,6 +1436,26 @@ class RubinApp:
             )
             self._zone_tips[clé].update(raison)
         self._zones_verrou.config(text=raison)
+        # « adopt » n'a pas deux états mais trois : verrouillé pendant la
+        # mesure, désactivé s'il n'y a rien à reprendre, actif sinon. La boucle
+        # au-dessus vient de le mettre à "normal" sans le savoir ; ce troisième
+        # état corrige seulement le cas où il n'y a rien à reprendre, sans
+        # jamais réactiver un bouton verrouillé.
+        if not locked:
+            self._refresh_adopt_button()
+
+    def _refresh_adopt_button(self) -> None:
+        """Active « Reprendre l'ancien tracé » seulement s'il y a un tracé à reprendre.
+
+        Appelée d'ici et de `refresh_zones`, jamais dupliquée : un bouton qui
+        reste cliquable sans rien à faire est le même défaut que celui que
+        #65 corrigeait, en plus discret puisqu'il ne casse rien au clic, il ne
+        fait juste rien.
+        """
+        if "adopt" not in self._zone_buttons:  # pragma: pas de couverture
+            return
+        à_reprendre = any(self._settings.unkeyed(nom) is not None for nom in ZONE_KEYS)
+        self._zone_buttons["adopt"].config(state="normal" if à_reprendre else "disabled")
 
     def _show_progress(self, progress: Any) -> None:
         morceaux = [f"{progress.measured} mesurées"]

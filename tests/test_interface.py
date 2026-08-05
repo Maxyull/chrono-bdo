@@ -988,12 +988,15 @@ class TestZonesVerrouilleesPendantLaMesure:
     n'aurait aucun effet sur la session vivante.
     """
 
-    def test_les_six_commandes_qui_ecrivent_ou_lisent_sont_verrouillees(self) -> None:
+    def test_les_sept_commandes_qui_ecrivent_ou_lisent_sont_verrouillees(self) -> None:
         # Toutes celles qui écrivent une zone ou lancent une reconnaissance.
+        # « adopt » en fait partie depuis #70 : reprendre un ancien tracé écrit
+        # une zone comme les autres, pour la session qui, elle, ne changera pas.
         assert set(LOCKED_WHILE_MEASURING) == {
             "read_now",
             "reset",
             "auto",
+            "adopt",
             "pick_banner",
             "pick_tracker",
             "pick_choice",
@@ -1092,3 +1095,56 @@ class TestImagesRepeteesDansLaLigneDeSurveillance:
 
         assert "⚠" in texte
         assert "images répétées" in texte
+
+
+class TestZoneEgareeSansTaille:
+    """Un tracé qui existe mais ne s'applique à aucune taille de fenêtre.
+
+    #58 a construit la table `zones` de `Settings`, indexée par taille, sans
+    jamais la brancher dans l'interface : `app.py` lisait toujours l'ancien
+    champ `banner`/`tracker`/`choice`, qui s'appliquait sans condition. Le
+    5 août 2026, une zone tracée à y=1224 est ainsi restée active toute une
+    matinée, coupant la ligne du titre du bandeau, alors que `zone_for`
+    répondait déjà « non » depuis la fusion de #58 : personne ne l'appelait.
+    """
+
+    def test_decrit_le_tracé_perdu_avec_le_bon_bouton(self) -> None:
+        état = ZoneState("Bandeau", Rect(2211, 1186, 349, 115), chosen=False, stray=True)
+
+        texte = describe_zone(état)
+
+        assert "Reprendre l'ancien tracé" in texte
+
+    def test_une_zone_choisie_ne_se_dit_pas_egaree(self) -> None:
+        état = ZoneState("Bandeau", Rect(2211, 1186, 349, 115), chosen=True, stray=False)
+
+        assert "Reprendre" not in describe_zone(état)
+
+    def test_regression_le_cas_du_5_aout_zone_a_y1224_jamais_reprise(self) -> None:
+        """Régression : le fichier réel de Maxime, avant qu'il ne soit corrigé.
+
+        `{"zone_bandeau": {"x": 2211, "y": 1224, "largeur": 349, "hauteur": 115}}`,
+        sans `zones_par_taille`. `Settings.from_dict` le relit tel quel, dans
+        le champ hérité : `zone_for` ne le rend pour AUCUNE taille, c'est le
+        comportement voulu depuis #58. Le test fige ce que l'interface doit en
+        faire : afficher la zone comme égarée, jamais comme active.
+        """
+        réglages = Settings.from_dict(
+            {"zone_bandeau": {"x": 2211, "y": 1224, "largeur": 349, "hauteur": 115}}
+        )
+        taille = (2560, 1440)
+
+        assert réglages.zone_for("banner", taille) is None
+        assert réglages.unkeyed("banner") == Rect(2211, 1224, 349, 115)
+
+        état = ZoneState(
+            "Bandeau",
+            Rect(2211, 1186, 349, 115),  # la zone CALCULÉE, celle qui doit s'appliquer
+            chosen=réglages.zone_for("banner", taille) is not None,
+            stray=réglages.unkeyed("banner") is not None
+            and réglages.zone_for("banner", taille) is None,
+        )
+
+        assert état.chosen is False
+        assert état.stray is True
+        assert "Reprendre l'ancien tracé" in describe_zone(état)
