@@ -33,6 +33,7 @@ permettre de remonter à une personne.
 |---|---|
 | `GET /sante` | état du serveur et compteurs |
 | `POST /v1/sessions` | reçoit un lot de mesures |
+| `GET /v1/quetes` | **les quêtes les plus rapides**, au temps médian |
 | `GET /v1/quetes/{chaine}/{position}` | temps médian d'une quête |
 | `GET /v1/chaines/{chaine}` | débit d'une chaîne |
 | `GET /v1/chaines` | **les chaînes les plus rapides**, en quêtes par heure |
@@ -42,6 +43,35 @@ permettre de remonter à une personne.
 
 `GET /v1/chaines` est la réponse à la question qui a fait naître le projet : par
 où commencer quand il reste des milliers de quêtes à faire.
+
+## Le classement par quête, et son seuil
+
+`GET /v1/quetes` classe les quêtes une par une, de la plus rapide à la plus
+lente, sur leur **temps médian**. C'est une autre unité que `/v1/chaines`, pas un
+raffinement : une chaîne moyenne ses quêtes rapides et ses quêtes lentes, alors
+qu'on choisit quête par quête. C'est aussi ce que le planificateur consommera.
+
+⚠️ **`min_samples` vaut trois par défaut, et jamais un.** Un classement de
+chaînes sur peu de mesures est vague ; un classement de quêtes sur peu de mesures
+est **faux et convaincant**. Relevé en production le 05/08/2026 : la chaîne 21403
+tenait la tête du classement des chaînes à 198,8 quêtes/heure, sur **une seule
+mesure**. À la quête, la première place irait toujours à celle qu'une personne a
+mesurée une fois en ayant eu de la chance.
+
+Le raisonnement derrière le trois : sur une mesure, la « médiane » est cette
+mesure ; sur deux, c'est leur moyenne, donc un passage chanceux tire le résultat
+de la moitié de son écart ; à partir de trois, la médiane est une valeur
+réellement observée, au milieu, qu'aucune mesure isolée ne peut devenir.
+
+La base contient aujourd'hui vingt-et-une mesures, presque toutes uniques par
+quête : la réponse est donc une **liste vide**, et c'est la bonne. « Personne n'a
+encore assez mesuré » est vrai ; un classement sans seuil trierait le bruit en
+paraissant précis.
+
+⚠️ **Aucun nom de quête n'est rendu**, seulement `chaine/position`. Les noms sont
+un fait du catalogue, que le client porte et que le serveur n'a jamais vu : rien
+ne lui garantit que tous les clients lisent le même référentiel, ni la même
+langue. C'est la même frontière que pour la couverture.
 
 ## La couverture ne compte que deux tranches sur trois
 

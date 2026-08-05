@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from rubin.protocol import PROTOCOL_VERSION, MeasurePayload, SessionPayload
 
 from rubin_serveur import main
-from rubin_serveur.storage import WELL_MEASURED_AT, Storage
+from rubin_serveur.storage import MIN_SAMPLES_PER_QUEST, WELL_MEASURED_AT, Storage
 
 
 @pytest.fixture(autouse=True)
@@ -126,6 +126,124 @@ class TestStatistiques:
         # telle ligne en tête décrédibiliserait tout le classement.
         client.post("/v1/sessions", json=lot(10.0, quest="100/1"))
         assert client.get("/v1/chaines?min_samples=5").json()["chaines"] == []
+
+
+class TestClassementParQuete:
+    def test_classe_les_quetes_de_la_plus_rapide_a_la_plus_lente(
+        self, client: TestClient
+    ) -> None:
+        # Trois mesures par quête, le minimum pour entrer au classement.
+        client.post("/v1/sessions", json=lot(600.0, 600.0, 600.0, quest="21139/29"))
+        client.post("/v1/sessions", json=lot(30.0, 30.0, 30.0, quest="21139/46"))
+
+        quetes = client.get("/v1/quetes").json()["quetes"]
+
+        assert [q["quete"] for q in quetes] == ["21139/46", "21139/29"]
+        # Le nombre de mesures voyage avec chaque ligne, comme partout ailleurs
+        # dans ce projet : un temps sans son assise se croit plus solide qu'il
+        # n'est.
+        assert [q["samples"] for q in quetes] == [3, 3]
+
+    def test_ne_rend_aucun_nom_de_quete(self, client: TestClient) -> None:
+        """Le serveur ne connaît que `chaine/position`, et s'y tient.
+
+        Les noms sont un fait du catalogue, que le client porte. Rien ne
+        garantit au serveur que tous les clients lisent le même référentiel, ni
+        la même langue : afficher un nom ici serait affirmer ce qu'il ne peut pas
+        vérifier.
+        """
+        client.post("/v1/sessions", json=lot(30.0, 30.0, 30.0, quest="21139/46"))
+
+        ligne = client.get("/v1/quetes").json()["quetes"][0]
+
+        assert ligne["quete"] == "21139/46"
+        assert set(ligne) == {
+            "chain",
+            "position",
+            "median_seconds",
+            "samples",
+            "fastest_seconds",
+            "quete",
+        }
+
+    def test_classe_sur_la_mediane_et_non_sur_le_record(self, client: TestClient) -> None:
+        # `ETAT.md` tranche : le classement se fait sur la médiane, jamais sur le
+        # record. Une quête faite une fois en une seconde ne double personne.
+        client.post("/v1/sessions", json=lot(1.0, 300.0, 300.0, quest="21139/29"))
+        client.post("/v1/sessions", json=lot(60.0, 60.0, 60.0, quest="21139/46"))
+
+        quetes = client.get("/v1/quetes").json()["quetes"]
+
+        assert [q["quete"] for q in quetes] == ["21139/46", "21139/29"]
+        # Le record existe dans la réponse, il ne commande simplement pas l'ordre.
+        assert quetes[1]["fastest_seconds"] == 1.0
+
+    def test_ecarte_les_quetes_mesurees_une_seule_fois(self, client: TestClient) -> None:
+        """Régression : 198,8 quêtes/heure sur UNE mesure, vu en production.
+
+        Relevé réel sur https://rubin.maxyull.fr le 05/08/2026 : la chaîne 21403
+        tenait la tête du classement des chaînes à **198,8 quêtes/heure**, sur
+        une seule mesure de 18,1 secondes. Un classement de chaînes sur peu de
+        mesures est vague ; le même classement à la quête serait faux et
+        convaincant, puisque la première place irait toujours à la quête mesurée
+        une fois par quelqu'un de chanceux.
+
+        La quête lente ci-dessous porte trois mesures, la rapide une seule. Sans
+        seuil, la rapide passerait devant sur la foi d'un unique passage.
+        """
+        client.post("/v1/sessions", json=lot(18.1, quest="21403/1"))
+        client.post("/v1/sessions", json=lot(300.0, 300.0, 300.0, quest="21139/29"))
+
+        quetes = client.get("/v1/quetes").json()["quetes"]
+
+        assert [q["quete"] for q in quetes] == ["21139/29"]
+
+    def test_le_seuil_par_defaut_est_strictement_superieur_a_un(
+        self, client: TestClient
+    ) -> None:
+        # Deux mesures ne suffisent pas non plus : la médiane de deux valeurs est
+        # leur moyenne, donc un passage chanceux tire le résultat de la moitié de
+        # son écart. À trois, la médiane est une valeur réellement observée.
+        assert MIN_SAMPLES_PER_QUEST > 1
+        client.post("/v1/sessions", json=lot(30.0, 30.0, quest="21139/46"))
+
+        reponse = client.get("/v1/quetes").json()
+
+        assert reponse["quetes"] == []
+        assert reponse["min_echantillons"] == MIN_SAMPLES_PER_QUEST
+
+    def test_rend_une_liste_vide_plutot_que_de_baisser_le_seuil(
+        self, client: TestClient
+    ) -> None:
+        """La base réelle du 05/08/2026 : vingt-et-une mesures, aucune classable.
+
+        Quatre sessions, deux joueurs, vingt-et-une mesures réparties sur cinq
+        chaînes, et presque une seule mesure par quête. La réponse honnête est
+        une liste vide, et c'est au client de la dire en toutes lettres plutôt
+        que d'afficher un tableau désert.
+        """
+        for position in range(1, 12):
+            client.post("/v1/sessions", json=lot(60.0, quest=f"21139/{position}"))
+
+        assert client.get("/v1/quetes").json()["quetes"] == []
+        # Le seuil abaissé à la main montre bien qu'il y avait de la matière :
+        # ce n'est pas la base qui est vide, c'est le seuil qui protège.
+        assert len(client.get("/v1/quetes?min_samples=1&limit=50").json()["quetes"]) == 11
+
+    def test_borne_le_nombre_de_lignes(self, client: TestClient) -> None:
+        for position in range(1, 6):
+            client.post("/v1/sessions", json=lot(60.0, 60.0, 60.0, quest=f"21139/{position}"))
+        assert len(client.get("/v1/quetes?limit=2").json()["quetes"]) == 2
+
+    def test_departage_deux_temps_egaux_toujours_pareil(self, client: TestClient) -> None:
+        # Une liste qui change d'ordre sans que rien n'ait changé se lit comme
+        # une liste qui ment. À durée égale, la chaîne puis la position tranchent.
+        for chaine in (21403, 21139, 21402):
+            client.post("/v1/sessions", json=lot(60.0, 60.0, 60.0, quest=f"{chaine}/1"))
+
+        quetes = client.get("/v1/quetes").json()["quetes"]
+
+        assert [q["quete"] for q in quetes] == ["21139/1", "21402/1", "21403/1"]
 
 
 class TestStockage:

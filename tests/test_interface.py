@@ -12,19 +12,34 @@ import pytest
 from rubin.capture import Rect, banner_region, tracker_region
 from rubin.interface import (
     COVERAGE_TAGS,
+    DEMO_BANNER,
+    DEMO_MARK,
     FRAGILE_BELOW,
+    LINK_TAGS,
+    RANKING_UNAVAILABLE,
     ZoneState,
+    demo_active,
+    demo_ranking,
     describe_conflict,
     describe_reading,
     describe_zone,
     format_coverage,
     format_duration,
     format_gap,
+    format_link,
+    format_other_quests,
+    format_quest_times,
+    format_ranking,
     format_reference,
     format_running,
+    format_search_result,
     format_upcoming_line,
     main_quest_total,
+    other_quest_total,
+    quest_display_name,
+    ranking_message,
     running_seconds,
+    search_quests,
 )
 from rubin.interface.app import ZONE_KEYS, ZONE_ROLES
 from rubin.interface.help import EXAMPLES
@@ -36,7 +51,14 @@ from rubin.interface.theme import (
     confidence_score,
 )
 from rubin.reference import Catalog, Quest, QuestId
-from rubin.references import Coverage, QuestReference
+from rubin.references import (
+    MIN_SAMPLES_PER_QUEST,
+    RANKING_LIMIT,
+    Coverage,
+    QuestReference,
+    RankedQuest,
+    ServerHealth,
+)
 from rubin.settings import Settings
 from rubin.upcoming import UpcomingQuest
 
@@ -550,3 +572,325 @@ class TestChoixAutomatiqueDeZone:
         attendus = titles_folded()
         assert "nouvellequete" in attendus
         assert all(isinstance(t, str) for t in attendus)
+
+
+class TestQuetesHorsPerimetre:
+    def test_compte_a_part_les_quetes_que_rubin_ne_mesure_pas(
+        self, catalog: Catalog
+    ) -> None:
+        # L'échantillon porte trente-trois quêtes, dont quatorze principales :
+        # dix-neuf sont hors périmètre. Sur le vrai catalogue, c'est 18 999
+        # moins 3 924, soit 15 075.
+        assert main_quest_total(catalog, "fr") == 14
+        assert other_quest_total(catalog, "fr") == 19
+        assert main_quest_total(catalog, "fr") + other_quest_total(catalog, "fr") == len(
+            catalog
+        )
+
+    def test_le_denominateur_de_la_couverture_reste_les_principales(
+        self, catalog: Catalog
+    ) -> None:
+        """Régression : mêler les deux totaux donnerait un chiffre faux.
+
+        Rubin ne mesure que les quêtes principales, et c'est délibéré :
+        chronométrer une quête répétable n'a aucun sens puisqu'on la refait
+        indéfiniment. Compter les 15 075 autres comme « jamais mesurées »
+        annoncerait un arriéré de travail qui n'existe pas, et découragerait
+        pour rien.
+
+        Les grises se comptent donc sur les 3 924 principales, jamais sur les
+        18 999 du catalogue.
+        """
+        couverture = Coverage(
+            well_measured=0, lightly_measured=21, threshold=5, measured_quests=21
+        )
+        parts = format_coverage(couverture, main_quest_total(catalog, "fr"))
+        assert parts is not None
+        # Quatorze principales moins vingt-et-une mesurées : le plancher à zéro
+        # tient, et surtout le total n'a pas gonflé des dix-neuf autres.
+        assert parts[2] == "0 jamais mesurée"
+
+    def test_dit_pourquoi_ces_quetes_ne_sont_pas_comptees(self) -> None:
+        texte = format_other_quests(15_075)
+        assert texte is not None
+        assert texte.startswith("+ 15 075")
+        assert "que Rubin ne mesure pas" in texte
+
+    def test_ne_dit_rien_quand_il_n_y_en_a_aucune(self) -> None:
+        assert format_other_quests(0) is None
+
+
+class TestTemoinDeConnexion:
+    def test_distingue_les_trois_etats(self) -> None:
+        sans = format_link(None, None)
+        coupé = format_link("https://rubin.maxyull.fr", None)
+        relié = format_link(
+            "https://rubin.maxyull.fr",
+            ServerHealth(protocol=1, sessions=4, measures=21, players=2),
+        )
+
+        # Trois messages distincts, parce qu'ils appellent trois gestes
+        # différents : ne rien faire, réparer, ou continuer.
+        assert len({sans[0], coupé[0], relié[0]}) == 3
+        assert len({sans[1], coupé[1], relié[1]}) == 3
+
+    def test_aucun_serveur_n_est_pas_une_panne(self) -> None:
+        texte, balise = format_link(None, None)
+        assert "--envoyer" in texte
+        assert "injoignable" not in texte
+        assert balise == LINK_TAGS["absent"]
+
+    def test_annonce_l_adresse_et_ce_que_le_serveur_a_recu(self) -> None:
+        texte, balise = format_link(
+            "https://rubin.maxyull.fr",
+            ServerHealth(protocol=1, sessions=4, measures=21, players=2),
+        )
+        assert "https://rubin.maxyull.fr" in texte
+        assert "21 mesures" in texte
+        assert balise == LINK_TAGS["connecte"]
+
+    def test_un_serveur_perime_reste_connecte(self) -> None:
+        """Régression : un point d'entrée manquant n'est pas une panne.
+
+        Cas réel du 05/08/2026 : `rubin.maxyull.fr` répondait parfaitement, mais
+        rendait 404 sur `/v1/couverture`, faute d'avoir été redéployé depuis
+        l'ajout du compteur. Écrire « serveur injoignable » aurait envoyé
+        chercher l'erreur du côté du réseau, alors que le remède était un
+        déploiement.
+
+        Le témoin ne lit que `/sante`. Le serveur est donc **connecté**, et
+        c'est le compteur, séparément, qui dit qu'il n'a pas eu sa réponse.
+        """
+        santé = ServerHealth(protocol=1, sessions=4, measures=21, players=2)
+
+        texte, balise = format_link("https://rubin.maxyull.fr", santé)
+
+        assert texte.startswith("connecté")
+        assert balise == LINK_TAGS["connecte"]
+        # Et pendant ce temps, les deux compteurs disent leur propre absence.
+        assert format_coverage(None, 3_924) is None
+        assert ranking_message(None) == RANKING_UNAVAILABLE
+
+    def test_les_trois_couleurs_existent_dans_l_habillage(self) -> None:
+        # Aucune couleur nouvelle : celles de la légende suffisent, et un
+        # quatrième vert voisin du premier ne se distinguerait de rien.
+        for balise in LINK_TAGS.values():
+            assert balise in COLORS
+
+
+def _classee(chain: int, position: int, seconds: float, samples: int = 3) -> RankedQuest:
+    return RankedQuest(
+        chain=chain, position=position, median_seconds=seconds, samples=samples
+    )
+
+
+class TestClassementParQuete:
+    def test_le_nom_vient_du_catalogue_et_non_du_serveur(self, catalog: Catalog) -> None:
+        """Le serveur ne connaît que `chaine/position`, et c'est voulu.
+
+        Les noms sont un fait du catalogue, que ce client porte : rien ne
+        garantit au serveur que tous les clients lisent le même référentiel, ni
+        la même langue.
+        """
+        assert (
+            quest_display_name(catalog, QuestId(21136, 2), "fr")
+            == "[Calpheon] Cris stridents des harpies"
+        )
+
+    def test_une_quete_inconnue_du_catalogue_montre_son_identifiant(
+        self, catalog: Catalog
+    ) -> None:
+        # « 21403/1 » est laid mais vrai, et il se cherche dans le référentiel.
+        # Un blanc ne se cherche pas.
+        assert quest_display_name(catalog, QuestId(21403, 1), "fr") == "21403/1"
+        assert quest_display_name(None, QuestId(21403, 1), "fr") == "21403/1"
+
+    def test_affiche_le_nombre_de_mesures_a_cote_de_chaque_ligne(
+        self, catalog: Catalog
+    ) -> None:
+        lignes = format_ranking(
+            [_classee(21136, 2, 90.0, samples=11), _classee(21139, 46, 252.0, samples=3)],
+            catalog,
+        )
+
+        assert lignes[0].startswith(" 1.")
+        assert "1 min 30 s" in lignes[0]
+        assert "Cris stridents des harpies" in lignes[0]
+        assert "(11 mesures)" in lignes[0]
+        assert "(3 mesures)" in lignes[1]
+
+    def test_dit_qu_aucune_quete_n_a_assez_de_mesures(self) -> None:
+        """Régression : 198,8 quêtes/heure sur UNE mesure, vu en production.
+
+        Relevé réel sur https://rubin.maxyull.fr le 05/08/2026 : la chaîne 21403
+        tenait la tête du classement des chaînes à 198,8 quêtes/heure, sur une
+        seule mesure. À la quête, un classement sans seuil trierait le bruit, et
+        la première place irait toujours à celle qu'une personne a mesurée une
+        fois en ayant eu de la chance.
+
+        Le serveur écarte donc ces lignes, et rend aujourd'hui une liste
+        **vide** sur ses vingt-et-une mesures. Un tableau vide et muet se lirait
+        comme « aucune quête n'est rapide », ce qui ne veut rien dire : la
+        fenêtre dit la vraie raison.
+        """
+        message = ranking_message(())
+
+        assert message is not None
+        assert "assez de mesures" in message
+        assert f"{MIN_SAMPLES_PER_QUEST} mesures" in message
+        assert format_ranking((), None) == ()
+
+    def test_ne_confond_pas_une_liste_vide_avec_un_serveur_muet(self) -> None:
+        # Le même jour, le serveur en production ne connaissait pas encore le
+        # point d'entrée et rendait 404. Dire « aucune quête assez mesurée »
+        # aurait été une affirmation à la place d'un « je ne sais pas ».
+        assert ranking_message(None) == RANKING_UNAVAILABLE
+        assert ranking_message(()) != RANKING_UNAVAILABLE
+
+    def test_se_tait_quand_il_y_a_quelque_chose_a_montrer(self) -> None:
+        assert ranking_message([_classee(21136, 2, 90.0)]) is None
+
+
+class TestModeDemonstration:
+    def test_chaque_ligne_porte_le_mot_test(self, catalog: Catalog) -> None:
+        lignes = demo_ranking(catalog, "fr")
+
+        assert len(lignes) == RANKING_LIMIT
+        for ligne in lignes:
+            assert DEMO_MARK in ligne
+        assert "FABRIQUÉES" in DEMO_BANNER
+
+    def test_s_efface_de_lui_meme_quand_le_vrai_classement_est_plein(self) -> None:
+        plein = [_classee(21136, position, 60.0) for position in range(RANKING_LIMIT)]
+        partiel = plein[:2]
+
+        assert demo_active(None, wanted=True)
+        assert demo_active(partiel, wanted=True)
+        assert not demo_active(plein, wanted=True)
+        # Et il ne s'allume jamais tout seul : c'est un geste.
+        assert not demo_active(None, wanted=False)
+
+    def test_aucune_donnee_fabriquee_ne_peut_atteindre_le_reseau(self) -> None:
+        """Verrou : une mesure inventée n'entre jamais dans les médianes.
+
+        C'est le principe fondateur du projet : rater une mesure donne un
+        chiffre incomplet, en inventer une donne un chiffre faux, et un chiffre
+        faux entre dans les médianes sans jamais en ressortir.
+
+        La proposition initiale était « un faux temps par quête, nommé test, qui
+        disparaîtra à dix vraies entrées ». Ce qui disparaît d'un affichage reste
+        en base et continue de peser : le garde-fou n'aurait rien gardé.
+
+        La démonstration vit donc entièrement dans la couche d'affichage, et sa
+        forme **est** la garantie : elle rend des chaînes de caractères déjà
+        mises en forme, jamais des mesures. Ce test le verrouille de trois
+        façons. Si quelqu'un branche un jour ces lignes sur le réseau, il casse
+        ici, et cette docstring lui dit pourquoi.
+        """
+        import inspect
+        from dataclasses import fields
+
+        from rubin import protocol, upload
+        from rubin.protocol import MeasurePayload, SessionPayload
+
+        # 1. Rien de fabriqué n'a de place où se ranger dans un lot.
+        noms = {f.name for f in fields(MeasurePayload)} | {
+            f.name for f in fields(SessionPayload)
+        }
+        interdits = {"demo", "demonstration", "fake", "test", "factice", "fabrique"}
+        assert not (noms & interdits), f"champ de démonstration : {noms & interdits}"
+
+        # 2. Ni le protocole ni l'envoi ne connaissent la démonstration.
+        for module in (protocol, upload):
+            source = inspect.getsource(module)
+            assert "demo" not in source.lower()
+            assert DEMO_MARK not in source
+
+        # 3. Ce que la démonstration produit n'est pas une mesure, mais du
+        #    texte : il n'existe à aucun instant un objet qui pourrait se
+        #    glisser dans un lot.
+        for ligne in demo_ranking(None):
+            assert isinstance(ligne, str)
+
+
+class TestRechercheDeQuete:
+    def test_trouve_sans_accents_ni_crochets(self, catalog: Catalog) -> None:
+        """La comparaison passe par `fold`, des deux côtés.
+
+        Le catalogue porte « [Calpheon] Ce qui s'est passé jusqu'à présent », et
+        personne ne tape cela. C'est la même forme pliée que celle imposée par
+        la reconnaissance, qui avale les espaces et la ponctuation.
+        """
+        trouvées = search_quests(catalog, "ce qui sest passe", "fr")
+
+        assert [q.id for q in trouvées] == [QuestId(21139, 29)]
+
+    def test_ne_cherche_pas_sur_deux_lettres(self, catalog: Catalog) -> None:
+        # Deux lettres rendraient des centaines de quêtes, donc une liste
+        # inutile, et replieraient le catalogue entier à chaque frappe.
+        assert search_quests(catalog, "ca", "fr") == ()
+
+    def test_ne_propose_que_des_quetes_principales(self, catalog: Catalog) -> None:
+        """Régression : une recherche qui rend des impasses.
+
+        Rubin ne mesure que les quêtes principales. Proposer les 15 075 autres
+        ferait cliquer sur des quêtes qui n'auront jamais de temps, et une
+        recherche qui rend des impasses est pire qu'une recherche qui rend peu.
+        """
+        principales = {
+            quest.id for chain in catalog.chains("fr").values() for quest in chain.quests
+        }
+
+        for quest in search_quests(catalog, "calpheon", "fr") + search_quests(
+            catalog, "les", "fr"
+        ):
+            assert quest.id in principales
+
+    def test_range_les_resultats_dans_l_ordre_du_jeu(self, catalog: Catalog) -> None:
+        trouvées = search_quests(catalog, "calpheon", "fr")
+        identifiants = [(q.id.chain, q.id.position) for q in trouvées]
+        assert identifiants == sorted(identifiants)
+
+    def test_montre_ou_se_trouve_la_quete(self, catalog: Catalog) -> None:
+        quête = search_quests(catalog, "cris stridents", "fr")[0]
+        assert (
+            format_search_result(quête)
+            == "[Calpheon] Cris stridents des harpies   [21136/2]"
+        )
+
+    def test_une_quete_jamais_mesuree_le_dit_en_toutes_lettres(
+        self, catalog: Catalog
+    ) -> None:
+        """Régression : une colonne vide se lit comme « instantané ».
+
+        C'est l'inverse de ce qu'on veut dire, et c'est le cas le plus fréquent :
+        la base contient vingt-et-une mesures pour 3 924 quêtes principales, donc
+        presque toutes les recherches tomberont sur une quête jamais mesurée.
+        """
+        quête = search_quests(catalog, "cris stridents", "fr")[0]
+
+        texte = format_quest_times(quête, None)
+
+        assert "jamais mesurée" in texte
+        assert "0 s" not in texte
+
+    def test_montre_la_mediane_le_record_et_l_assise(self, catalog: Catalog) -> None:
+        quête = search_quests(catalog, "cris stridents", "fr")[0]
+
+        texte = format_quest_times(
+            quête, QuestReference(median_seconds=252.0, samples=14, fastest_seconds=201.0)
+        )
+
+        assert "médiane : 4 min 12 s" in texte
+        assert "14 mesures" in texte
+        # Le record est rendu à côté de la médiane, jamais à sa place : il
+        # renseigne, il ne classe pas.
+        assert "3 min 21 s" in texte
+        assert "peu sûr" not in texte
+
+    def test_marque_un_temps_qui_repose_sur_trop_peu(self, catalog: Catalog) -> None:
+        quête = search_quests(catalog, "cris stridents", "fr")[0]
+        texte = format_quest_times(
+            quête, QuestReference(median_seconds=97.5, samples=1, fastest_seconds=97.5)
+        )
+        assert "peu sûr" in texte

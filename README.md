@@ -153,10 +153,18 @@ Ouvrir la fenêtre :
 python -m rubin fenetre
 ```
 
-Trois onglets. **Session** dit où vous en êtes et ce qui vient. **Zones** montre
-les trois rectangles que Rubin lit **et ce qu'il y lit à l'instant**, ce qui
-répond en une seconde à « pourquoi ça ne mesure rien ». **Réglages** porte les
-curseurs, la langue du client et l'opacité.
+Quatre onglets. **Session** dit où vous en êtes et ce qui vient. **Classement**
+cherche une quête par son nom et liste les plus rapides, au temps médian.
+**Zones** montre les trois rectangles que Rubin lit **et ce qu'il y lit à
+l'instant**, ce qui répond en une seconde à « pourquoi ça ne mesure rien ».
+**Réglages** porte les curseurs, la langue du client et l'opacité.
+
+Le classement se fait **par quête** et sur la **médiane**, à partir de trois
+mesures. Une chaîne moyenne ses quêtes rapides et ses quêtes lentes, or on
+choisit quête par quête ; et en dessous de trois mesures, la première place
+irait toujours à une quête mesurée une seule fois par quelqu'un de chanceux.
+Tant que rien n'atteint le seuil, la fenêtre le dit plutôt que d'afficher un
+tableau vide.
 
 Deux de ces rectangles ont été mesurés sur un écran réel : le bandeau, en bas à
 droite, et le panneau de suivi, sous la minimap. Le troisième, le **panneau de

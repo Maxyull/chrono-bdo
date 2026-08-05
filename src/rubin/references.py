@@ -33,6 +33,26 @@ from .reference import QuestId
 _TIMEOUT: Final = 5
 _USER_AGENT: Final = "rubin-bdo"
 
+#: Nombre de mesures en dessous duquel une quête n'est pas classée.
+#:
+#: **Recopié du serveur plutôt qu'importé**, comme `WELL_MEASURED_AT` l'est dans
+#: l'autre sens : ce client ne dépend pas du paquet du serveur, et il ne peut de
+#: toute façon pas connaître le seuil avant de l'avoir demandé. La valeur voyage
+#: dans la requête, et la réponse la répète, donc un écart entre les deux se
+#: verrait plutôt que de se deviner.
+#:
+#: Trois, et jamais un : sur une mesure, la « médiane » est cette mesure ; sur
+#: deux, c'est leur moyenne, donc un passage chanceux tire le résultat de la
+#: moitié de son écart. À partir de trois, la médiane est une valeur réellement
+#: observée, qu'aucune mesure isolée ne peut devenir. Relevé en production le
+#: 05/08/2026 : une chaîne en tête à 198,8 quêtes/heure sur une seule mesure.
+MIN_SAMPLES_PER_QUEST: Final = 3
+
+#: Longueur du classement affiché. Un top dix se lit d'un coup d'œil ; une liste
+#: de cinquante demanderait de la chercher, et ce n'est pas ce qu'on vient y
+#: faire pendant qu'on joue.
+RANKING_LIMIT: Final = 10
+
 
 @dataclass(frozen=True)
 class QuestReference:
@@ -69,6 +89,48 @@ class ChainReference:
 
 
 @dataclass(frozen=True)
+class RankedQuest:
+    """Une ligne du classement des quêtes par temps médian.
+
+    ⚠️ **Aucun nom de quête ici, et ce n'est pas un oubli.** Le serveur ne
+    connaît que `chaine/position` : les noms appartiennent au catalogue, que ce
+    client porte. La résolution se fait donc à l'affichage, dans
+    `interface.presentation`, et jamais côté serveur.
+    """
+
+    chain: int
+    position: int
+    #: La médiane, jamais le record, comme partout dans ce projet.
+    median_seconds: float
+    #: Sur combien de mesures. Affiché à côté de chaque ligne : un temps sans son
+    #: assise se croit plus solide qu'il n'est, et c'est pire à la quête qu'à la
+    #: chaîne.
+    samples: int
+
+    @property
+    def quest_id(self) -> QuestId:
+        return QuestId(self.chain, self.position)
+
+
+@dataclass(frozen=True)
+class ServerHealth:
+    """Ce que `/sante` rend, quand le serveur répond.
+
+    Sert au témoin de connexion de la fenêtre. Trois états doivent se
+    distinguer, parce qu'ils appellent trois gestes différents : aucun serveur
+    configuré, serveur configuré mais injoignable, et connecté. Une instance de
+    cette classe est le troisième ; `None` ne dit à lui seul rien des deux
+    autres, et c'est l'affichage qui les sépare, en sachant si une adresse avait
+    été donnée.
+    """
+
+    protocol: int
+    sessions: int
+    measures: int
+    players: int
+
+
+@dataclass(frozen=True)
 class Coverage:
     """Combien de quêtes le serveur voit bien mesurées, et combien peu.
 
@@ -95,6 +157,36 @@ class Coverage:
     measured_quests: int
 
 
+def _as_int(value: Any) -> int:
+    """Un entier, quoi qu'on lui donne. Zéro plutôt qu'une exception.
+
+    Le serveur est censé rendre des nombres, mais ce module a pour règle de ne
+    jamais lever : un champ absent, nul ou rendu en texte par une version
+    antérieure ne doit pas emporter la fenêtre pour un compteur d'affichage.
+    """
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _read_ranked(row: dict[str, Any]) -> RankedQuest | None:
+    """Une ligne du classement, ou `None` si elle est inexploitable.
+
+    Une ligne écartée coûte une ligne ; une exception coûterait tout le
+    classement, et par ricochet le fil qui l'a demandé.
+    """
+    try:
+        return RankedQuest(
+            chain=int(row["chain"]),
+            position=int(row["position"]),
+            median_seconds=float(row["median_seconds"]),
+            samples=int(row.get("samples", 0)),
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 class ReferenceClient:
     """Lit les références sur le serveur, sans jamais faire échouer l'appelant."""
 
@@ -107,6 +199,9 @@ class ReferenceClient:
         self._chains: dict[int, ChainReference | None] = {}
         self._coverage: Coverage | None = None
         self._coverage_asked = False
+        self._rankings: dict[tuple[int, int], tuple[RankedQuest, ...] | None] = {}
+        self._health: ServerHealth | None = None
+        self._health_asked = False
         #: Nombre d'appels qui n'ont pas abouti. Utile pour dire à la fin que
         #: les références manquaient, plutôt que de laisser croire qu'aucune
         #: quête n'avait jamais été mesurée.
@@ -173,6 +268,68 @@ class ReferenceClient:
         )
         self._chains[number] = reference
         return reference
+
+    def fastest_quests(
+        self, limit: int = RANKING_LIMIT, min_samples: int = MIN_SAMPLES_PER_QUEST
+    ) -> tuple[RankedQuest, ...] | None:
+        """Les quêtes les plus rapides, ou `None` si le serveur n'a rien dit.
+
+        ⚠️ **Une liste vide et `None` ne veulent pas dire la même chose**, et
+        c'est le seul point délicat de cette méthode. Une liste vide est une
+        réponse : aucune quête n'atteint le seuil, ce qui est l'état du jour
+        puisque la base porte vingt-et-une mesures presque toutes uniques.
+        `None` est une absence de réponse : serveur injoignable, ou serveur d'une
+        version antérieure qui ne connaît pas encore cette adresse, ce qui est
+        exactement le cas de la production au moment où ces lignes s'écrivent.
+        Les confondre afficherait « aucune quête assez mesurée » sur un serveur
+        muet, c'est-à-dire une affirmation à la place d'un « je ne sais pas ».
+
+        Comme le reste du module, elle **ne lève jamais** : une ligne malformée
+        est écartée, et le reste de la liste passe. Un classement est un décor,
+        la mesure est la fonction.
+        """
+        key = (limit, min_samples)
+        if key in self._rankings:
+            return self._rankings[key]
+        body = self._get(f"/v1/quetes?limit={limit}&min_samples={min_samples}")
+        ranking: tuple[RankedQuest, ...] | None = None
+        if body is not None:
+            rows = body.get("quetes")
+            ranking = tuple(
+                quest
+                for row in (rows if isinstance(rows, list) else [])
+                if isinstance(row, dict) and (quest := _read_ranked(row)) is not None
+            )
+        self._rankings[key] = ranking
+        return ranking
+
+    def health(self) -> ServerHealth | None:
+        """L'état du serveur, ou `None` s'il n'a pas répondu.
+
+        `/sante` et pas autre chose : elle répond sans condition ni compte, elle
+        existe depuis le premier jour, et elle ne dépend d'aucune donnée. Une
+        adresse plus récente ferait passer pour injoignable un serveur qui
+        tourne parfaitement mais n'a pas encore été redéployé, ce qui est
+        précisément l'erreur de diagnostic à éviter : un point d'entrée manquant
+        n'est pas une panne de connexion.
+
+        Ne lève jamais, comme le reste du module.
+        """
+        if self._health_asked:
+            return self._health
+        body = self._get("/sante")
+        self._health_asked = True
+        self._health = (
+            ServerHealth(
+                protocol=_as_int(body.get("protocole")),
+                sessions=_as_int(body.get("sessions")),
+                measures=_as_int(body.get("measures")),
+                players=_as_int(body.get("players")),
+            )
+            if body
+            else None
+        )
+        return self._health
 
     def coverage(self) -> Coverage | None:
         """Combien de quêtes sont bien mesurées et peu mesurées, sur le serveur.
