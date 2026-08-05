@@ -21,7 +21,13 @@ from rubin.interface import (
     format_reference,
     format_upcoming_line,
 )
-from rubin.interface.theme import COLORS, confidence_colour
+from rubin.interface.theme import (
+    COLORS,
+    FULL_SCORE_AT,
+    UNPLACED_CAP,
+    confidence_colour,
+    confidence_score,
+)
 from rubin.reference import Quest, QuestId
 from rubin.references import QuestReference
 from rubin.upcoming import UpcomingQuest
@@ -240,3 +246,42 @@ class TestConflits:
         # le problème.
         message = describe_conflict([ZONES["le bandeau de quête"]], ZONES) or ""
         assert "transparence" in message
+
+
+class TestScoreSurCent:
+    def test_zero_quand_personne_n_a_mesure(self) -> None:
+        """0 veut dire « aucune information, aucun temps », comme demandé."""
+        assert confidence_score(None) == 0
+        assert confidence_score(0) == 0
+
+    def test_cent_quand_tout_est_su(self) -> None:
+        # Assez de mesures pour une médiane, et la place dans la chaîne connue.
+        assert confidence_score(FULL_SCORE_AT, placed=True) == 100
+        assert confidence_score(FULL_SCORE_AT * 3, placed=True) == 100
+
+    def test_monte_avec_le_nombre_de_mesures(self) -> None:
+        assert confidence_score(1) < confidence_score(5) < confidence_score(15)
+
+    def test_une_place_incertaine_plafonne_le_score(self) -> None:
+        """Régression : un temps parfait masquait une position inconnue.
+
+        Le score répond à « qu'est-ce qui m'attend et quand », et la moitié de
+        cette question est « où ça tombe ». Une quête dont on connaît
+        parfaitement le temps mais pas la place ne peut donc pas valoir cent.
+
+        Ce n'est pas un cas rare : 82 chaînes sur 349 portent des trous, et le
+        jeu compte 19 235 quêtes là où le référentiel en connaît 18 999.
+
+        Le maillon faible commande, jamais la moyenne : une moyenne laisserait
+        un temps très bien mesuré compenser une position inconnue.
+        """
+        assert confidence_score(FULL_SCORE_AT, placed=False) == UNPLACED_CAP
+        assert confidence_score(FULL_SCORE_AT, placed=False) < confidence_score(
+            FULL_SCORE_AT, placed=True
+        )
+
+    def test_une_place_incertaine_n_invente_pas_de_mesures(self) -> None:
+        # Le plafond ne remonte jamais un score bas : c'est un plafond, pas un
+        # plancher. Une quête sans mesure reste à zéro.
+        assert confidence_score(0, placed=False) == 0
+        assert confidence_score(1, placed=False) == confidence_score(1, placed=True)

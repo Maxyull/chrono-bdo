@@ -528,7 +528,7 @@ def command_interface(args: argparse.Namespace) -> int:
         print(f"référentiel indisponible : {error}", file=sys.stderr)
         return 1
 
-    RubinApp(_home(), catalog=catalogue).run()
+    RubinApp(_home(), catalog=catalogue, server=args.server).run()
     return 0
 
 
@@ -731,6 +731,13 @@ def build_parser() -> argparse.ArgumentParser:
     fenetre = subparsers.add_parser("fenetre", help="ouvre l'interface graphique")
     fenetre.add_argument(
         "--langue", dest="language", default="fr", choices=("fr", "en"), help="langue du client"
+    )
+    fenetre.add_argument(
+        "--envoyer",
+        dest="server",
+        default=None,
+        metavar="URL",
+        help="adresse du serveur : temps des autres joueurs, et envoi en fin de session",
     )
     fenetre.set_defaults(handler=command_interface)
 
