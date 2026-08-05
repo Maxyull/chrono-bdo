@@ -80,16 +80,45 @@ def parse_banner(
     if len(kept) < 2:  # il faut au moins un titre et un nom
         return None
 
-    kind = _match_title(kept[0][0])
-    if kind is None:
+    # Le titre est CHERCHÉ parmi les lignes, il n'est pas supposé être la
+    # première.
+    #
+    # Il l'était, et c'était le défaut le plus coûteux du projet. La zone du
+    # bandeau recouvre le haut du chat du jeu : quand une annonce de guilde
+    # déborde, elle occupe les premières lignes, le titre glisse en deuxième ou
+    # troisième position, et le bandeau entier était jeté. Le titre et le nom
+    # étaient pourtant lus parfaitement, à 0,97.
+    #
+    # Mesuré sur vingt minutes de jeu réel : **onze bandeaux sur soixante-treize
+    # perdus pour cette seule raison**, tous avec leur nom parfaitement lisible.
+    # C'est aussi ce qui a fait afficher « Les fanatiques » sans jamais la
+    # mesurer.
+    #
+    # Chercher plutôt que supposer n'ouvre pas la porte aux inventions : les
+    # libellés cherchés sont précis, et si du chat en contenait un par accident,
+    # le nom retenu serait la ligne suivante, qui ne se résoudrait en aucune
+    # quête. Le pire cas reste une mesure manquante.
+    found = next(
+        (
+            (i, genre)
+            for i, (text, _) in enumerate(kept)
+            if (genre := _match_title(text)) is not None
+        ),
+        None,
+    )
+    if found is None:
         return None
+    index, kind = found
 
-    name_lines = tuple(text for text, _ in kept[1:])
+    name_lines = tuple(text for text, _ in kept[index + 1 :])
     name = " ".join(name_lines)
     if not name:
         return None
 
-    confidence = min(score for _, score in kept)
+    # La confiance ne porte que sur le titre et le nom. Y mêler les lignes de
+    # chat qui précèdent ferait varier la confiance d'une mesure selon ce que
+    # racontait la guilde à cet instant.
+    confidence = min(score for _, score in kept[index:])
     if confidence < min_reading_score:
         return None
     return BannerReading(

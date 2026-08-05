@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import pytest
 
+from rubin.reading import BannerKind, parse_banner
 from rubin.reference import Catalog, QuestId
 
 #: nom affiché en jeu -> identifiant attendu, relevé sur les captures.
@@ -203,3 +204,43 @@ class TestLeveeDAmbiguite:
         assert catalog.resolve_in_chain("[Calpheon] Jeron, la tacticienne", None) == QuestId(
             21136, 1
         )
+
+
+def test_le_chat_de_guilde_ne_tue_plus_le_bandeau() -> None:
+    """Régression : une annonce de guilde faisait jeter le bandeau entier.
+
+    La zone du bandeau recouvre le haut du chat du jeu. Quand une annonce de
+    guilde déborde, elle occupe les premières lignes, le titre glisse en
+    deuxième ou troisième position, et l'analyse exigeait qu'il soit en
+    première. Tout était jeté.
+
+    Le titre et le nom étaient pourtant lus parfaitement. Les lignes ci-dessous
+    sont celles d'une session réelle du 5 août 2026, à 13:53:56, recopiées avec
+    leurs scores : « Nouvelle quete » à 0,971 et « Un forgeron chevronne » à
+    0,969, et pourtant `None`.
+
+    Mesuré sur vingt minutes de jeu : **onze bandeaux sur soixante-treize**
+    perdus pour cette seule raison, tous avec leur nom parfaitement lisible.
+    C'est aussi ce qui faisait afficher « Les fanatiques » sans jamais la
+    mesurer.
+    """
+    pollué = [
+        ("de guilde terminees avant la maintenance,", 0.98),
+        ("Nouvelle quete", 0.971),
+        ("Un forgeron chevronne", 0.969),
+    ]
+
+    lu = parse_banner(pollué)
+
+    assert lu is not None
+    assert lu.kind is BannerKind.ACCEPTED
+    assert lu.quest_name == "Un forgeron chevronne"
+    # La confiance ne retient pas la ligne de chat : elle ferait varier la
+    # mesure selon ce que racontait la guilde à cet instant.
+    assert lu.confidence == pytest.approx(0.969)
+
+
+def test_un_bandeau_sans_titre_reste_refuse() -> None:
+    # Chercher le titre plutôt que le supposer ne doit pas rendre l'analyse
+    # crédule : sans titre connu, il n'y a pas de bandeau.
+    assert parse_banner([("de guilde terminees", 0.98), ("Xian", 0.97)]) is None
