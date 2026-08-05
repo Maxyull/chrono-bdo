@@ -36,11 +36,35 @@ permettre de remonter à une personne.
 | `GET /v1/quetes/{chaine}/{position}` | temps médian d'une quête |
 | `GET /v1/chaines/{chaine}` | débit d'une chaîne |
 | `GET /v1/chaines` | **les chaînes les plus rapides**, en quêtes par heure |
+| `GET /v1/couverture` | combien de quêtes sont bien mesurées, et combien le sont peu |
 | `GET /v1/discord/connexion` | envoie vers Discord pour rattacher un compte |
 | `GET /v1/discord/retour` | reçoit le retour de Discord et rattache le compte |
 
 `GET /v1/chaines` est la réponse à la question qui a fait naître le projet : par
 où commencer quand il reste des milliers de quêtes à faire.
+
+## La couverture ne compte que deux tranches sur trois
+
+`GET /v1/couverture` rend le nombre de quêtes **bien mesurées**, cinq mesures ou
+plus, et **peu mesurées**, de une à quatre. Ce sont les vertes et les orange de
+la fenêtre, au seuil qu'elle emploie déjà.
+
+Il ne rend **pas** les grises, les jamais mesurées, et ce n'est pas un oubli. Le
+serveur ne connaît que les quêtes dont il a reçu au moins une mesure. Les 3 924
+quêtes principales sont un fait du catalogue, que le client porte et que le
+serveur n'a jamais vu : rien ne lui garantit d'ailleurs que tous les clients
+lisent le même. La soustraction appartient donc au client, seul à connaître son
+propre total. Le serveur dit ce qu'il sait, le client complète avec ce qu'il
+sait.
+
+Aucun pourcentage n'est rendu non plus. La base contient onze mesures d'un seul
+joueur : la réponse honnête ressemble à « 0 bien mesurée, 11 peu mesurées », et
+un pourcentage ne ferait que rendre ce chiffre moins lisible.
+
+⚠️ **Ces tranches comptent des mesures, pas des contributeurs.** Un joueur a
+jusqu'à 44 personnages et refait chaque quête sur chacun : il peut donc
+légitimement mesurer 44 fois la même quête, qui passerait « bien mesurée » alors
+qu'une seule main a parlé. La limite est connue et n'est pas encore corrigée.
 
 ## Le rattachement Discord, éteint par défaut
 

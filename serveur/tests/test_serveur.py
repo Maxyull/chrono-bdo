@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from rubin.protocol import PROTOCOL_VERSION, MeasurePayload, SessionPayload
 
 from rubin_serveur import main
-from rubin_serveur.storage import Storage
+from rubin_serveur.storage import WELL_MEASURED_AT, Storage
 
 
 @pytest.fixture(autouse=True)
@@ -173,6 +173,89 @@ class TestTempsTotal:
         # moins que la réalité.
         au_rythme_median = 4 * 3600 / stats["quests_per_hour"]
         assert au_rythme_median < stats["measured_total_seconds"] / 10
+
+
+class TestCouverture:
+    def test_repartit_les_quetes_en_deux_tranches(self, client: TestClient) -> None:
+        # Cinq mesures sur une quête, deux sur une autre, une sur la dernière :
+        # une verte et deux orange, avec le seuil de cinq de l'interface.
+        client.post("/v1/sessions", json=lot(*[60.0] * 5, quest="21136/1"))
+        client.post("/v1/sessions", json=lot(60.0, 70.0, quest="21136/2"))
+        client.post("/v1/sessions", json=lot(60.0, quest="21136/3"))
+
+        couverture = client.get("/v1/couverture").json()
+        assert couverture["well_measured"] == 1
+        assert couverture["lightly_measured"] == 2
+        assert couverture["measured_quests"] == 3
+        assert couverture["threshold"] == WELL_MEASURED_AT
+
+    def test_ne_dit_rien_des_quetes_jamais_mesurees(self, client: TestClient) -> None:
+        """Régression : le serveur ne connaît pas le nombre de quêtes grises.
+
+        Cas réel du 05/08/2026 : la base contient onze mesures, d'un seul
+        joueur, sur une seule chaîne. La fenêtre veut afficher « 0 verte,
+        11 orange, 3 913 grises », et la tentation est de faire calculer les
+        trois chiffres par le serveur d'un coup.
+
+        Il ne le peut pas. Les 3 924 quêtes principales sont un fait du
+        catalogue, que le client porte et que le serveur n'a jamais vu. Il ne
+        rend donc que les deux tranches qu'il a vraiment observées, et le client
+        soustrait de son propre total. Un serveur qui annoncerait 3 913 grises
+        énoncerait un chiffre qu'aucune de ses tables ne contient.
+        """
+        for position in range(1, 12):
+            client.post("/v1/sessions", json=lot(60.0, quest=f"21136/{position}"))
+
+        couverture = client.get("/v1/couverture").json()
+        assert couverture["well_measured"] == 0
+        assert couverture["lightly_measured"] == 11
+        assert couverture["measured_quests"] == 11
+
+        # Ni total, ni grises, ni pourcentage : rien qui laisse croire que le
+        # serveur connaît l'échelle de ce qui reste.
+        assert set(couverture) == {
+            "well_measured",
+            "lightly_measured",
+            "threshold",
+            "measured_quests",
+        }
+
+    def test_repond_zero_sur_une_base_vierge(self, client: TestClient) -> None:
+        """Régression : une somme sur zéro ligne rend `NULL`, pas zéro.
+
+        Le compteur s'affiche en bas de la fenêtre, donc il est interrogé au
+        tout premier démarrage, juste après un déploiement, quand personne n'a
+        encore rien envoyé. C'est exactement le cas où la requête n'a aucune
+        ligne à sommer : sans `coalesce`, la réponse porterait `null` là où le
+        client attend un entier, et le compteur tomberait sur son premier appel.
+        """
+        couverture = client.get("/v1/couverture").json()
+        assert couverture["well_measured"] == 0
+        assert couverture["lightly_measured"] == 0
+        assert couverture["measured_quests"] == 0
+
+    def test_compte_des_mesures_et_non_des_contributeurs(self) -> None:
+        """Limite connue, écrite pour qu'elle ne surprenne personne.
+
+        Un joueur a jusqu'à 44 personnages et refait chaque quête sur chacun :
+        cinq passages du même joueur suffisent à peindre une quête en vert alors
+        qu'une seule main a parlé. Le serveur ne distingue pas encore les
+        contributeurs par quête. Ce test fixe le comportement d'aujourd'hui,
+        il ne le défend pas.
+        """
+        stockage = Storage("sqlite+pysqlite:///:memory:")
+        for _ in range(5):
+            stockage.store(
+                SessionPayload(
+                    player="joueur-unique",
+                    language="fr",
+                    catalog_date="2026-08-05",
+                    measures=(MeasurePayload("21136/1", 60.0, "exacte", 0.97),),
+                )
+            )
+        couverture = stockage.coverage()
+        assert couverture.well_measured == 1
+        assert couverture.lightly_measured == 0
 
 
 class TestVersion:

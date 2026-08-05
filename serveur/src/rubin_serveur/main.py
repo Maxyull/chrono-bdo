@@ -176,6 +176,31 @@ def chain(chain: int) -> dict[str, Any]:
     return asdict(stats)
 
 
+@app.get("/v1/couverture")
+def coverage() -> dict[str, Any]:
+    """Combien de quêtes sont bien mesurées, et combien le sont peu.
+
+    Donne l'échelle de ce qui reste à mesurer, et rend chaque contribution
+    lisible : une quête de plus qui passe d'orange à verte se voit.
+
+    ⚠️ **Les quêtes jamais mesurées ne sont pas ici, et ce n'est pas un
+    oubli.** Le serveur ne connaît que les quêtes dont il a reçu au moins une
+    mesure ; le nombre de quêtes principales appartient au catalogue, que le
+    client porte et que le serveur n'a jamais vu. C'est donc au client de
+    soustraire ces deux tranches de son propre total pour obtenir ses grises.
+    Le faire ici demanderait au serveur d'affirmer un chiffre qu'il ne peut pas
+    vérifier.
+
+    Aucun pourcentage n'est rendu non plus. La base contient aujourd'hui onze
+    mesures d'un seul joueur : la réponse honnête ressemble à « 0 bien mesurée,
+    11 peu mesurées », et c'est ce chiffre-là qui doit s'afficher.
+
+    Sans condition ni compte, comme le reste de la lecture.
+    """
+    stats = storage.coverage()
+    return asdict(stats) | {"measured_quests": stats.measured_quests}
+
+
 def _discord_or_503() -> DiscordConfig:
     """La configuration Discord, ou un refus lisible si elle est absente.
 

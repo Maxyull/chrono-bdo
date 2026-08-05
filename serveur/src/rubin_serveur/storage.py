@@ -25,12 +25,26 @@ from sqlalchemy import (
     MetaData,
     String,
     Table,
+    case,
     create_engine,
     func,
     select,
 )
 from sqlalchemy.engine import Engine
 from sqlalchemy.pool import StaticPool
+
+#: Nombre de mesures à partir duquel une quête est réputée bien mesurée.
+#:
+#: C'est le seuil déjà employé par l'interface, dans
+#: `rubin/interface/theme.py`. Il est **recopié plutôt qu'importé** : ce module
+#: doit se charger sur un serveur sans écran, or `theme.py` importe tkinter dès
+#: son chargement. Une constante de plus vaut mieux qu'une dépendance graphique
+#: dans un service web.
+#:
+#: Le seuil n'est pas statistique, il est honnête : la base contient onze
+#: mesures d'un seul joueur, donc presque tout sera « peu mesuré », et c'est
+#: exactement ce qu'il faut montrer.
+WELL_MEASURED_AT = 5
 
 metadata = MetaData()
 
@@ -121,6 +135,41 @@ class ChainStats:
     #: Tant qu'il n'est pas nul, le total ci-dessus est un plancher, et se
     #: présenter autrement serait mentir.
     unmeasured_quests: int | None = None
+
+
+@dataclass(frozen=True)
+class Coverage:
+    """Combien de quêtes sont bien mesurées, et combien le sont peu.
+
+    ⚠️ **Les quêtes jamais mesurées manquent, et c'est volontaire.** Le serveur
+    ne connaît que les quêtes dont il a reçu au moins une mesure. Le nombre de
+    quêtes principales, 3 924, est un fait du catalogue, que le client porte et
+    que le serveur n'a jamais vu : rien ne lui garantit d'ailleurs que tous les
+    clients lisent le même catalogue. Rendre ici un nombre de quêtes grises
+    reviendrait à annoncer un chiffre qu'on ne peut pas vérifier, et un chiffre
+    faux entre dans les affichages sans jamais en ressortir. La soustraction
+    appartient au client, qui est le seul à connaître son propre total.
+
+    ⚠️ **Ces tranches comptent des mesures, pas des contributeurs.** Un joueur a
+    jusqu'à 44 personnages et refait chaque quête sur chacun : il peut donc
+    légitimement mesurer 44 fois la même quête, qui passerait « bien mesurée »
+    alors qu'une seule main a parlé. Le serveur ne distingue pas encore les
+    contributeurs par quête ; la limite est connue et n'est pas corrigée ici.
+    """
+
+    #: Quêtes portant au moins `threshold` mesures. Les vertes de l'interface.
+    well_measured: int
+    #: Quêtes portant de 1 à `threshold - 1` mesures. Les orange de l'interface.
+    lightly_measured: int
+    #: Le seuil employé, rendu avec le résultat pour que la réponse se suffise
+    #: à elle-même : un client qui l'aurait recopié verrait tout de suite qu'il
+    #: n'a pas le même que le serveur.
+    threshold: int = WELL_MEASURED_AT
+
+    @property
+    def measured_quests(self) -> int:
+        """Total des quêtes que le serveur a vues passer, tranches confondues."""
+        return self.well_measured + self.lightly_measured
 
 
 class Storage:
@@ -238,6 +287,40 @@ class Storage:
         stats = [s for chain in chains if (s := self.chain_stats(chain)) is not None]
         stats.sort(key=lambda s: s.quests_per_hour, reverse=True)
         return stats[:limit]
+
+    def coverage(self) -> Coverage:
+        """Répartit les quêtes mesurées en deux tranches, en une seule requête.
+
+        Le groupement et le comptage se font **en base**. Rapatrier toutes les
+        mesures pour les compter en Python tiendrait tant qu'il y en a onze, et
+        cesserait de tenir exactement quand le compteur deviendrait intéressant.
+
+        Le `coalesce` n'est pas une précaution de style : une somme sur zéro
+        ligne rend `NULL`, pas zéro. Sur une base vierge, juste après un
+        déploiement, la réponse serait donc `None` là où le client attend un
+        entier, et le compteur tomberait sur le seul cas où il est certain
+        d'être appelé, le tout premier démarrage.
+        """
+        per_quest = (
+            select(func.count().label("samples"))
+            .select_from(measures)
+            .group_by(measures.c.chain, measures.c.position)
+            .subquery()
+        )
+        tally = select(
+            func.coalesce(
+                func.sum(case((per_quest.c.samples >= WELL_MEASURED_AT, 1), else_=0)), 0
+            ).label("well_measured"),
+            func.coalesce(
+                func.sum(case((per_quest.c.samples < WELL_MEASURED_AT, 1), else_=0)), 0
+            ).label("lightly_measured"),
+        )
+        with self.engine.connect() as connection:
+            row = connection.execute(tally).one()
+        return Coverage(
+            well_measured=int(row.well_measured),
+            lightly_measured=int(row.lightly_measured),
+        )
 
     def link_discord(self, player: str, discord_id: str, discord_name: str) -> None:
         """Rattache un contributeur à un compte Discord, ou met à jour son nom.
