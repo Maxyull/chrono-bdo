@@ -321,3 +321,35 @@ class TestSousChronosLocaux:
         source = inspect.getsource(timing)
         assert "sous_chrono" not in source
         assert "OBJECTIVE_DONE" not in source
+
+
+class TestChoixAutomatiqueDeZone:
+    def test_le_titre_se_reconnait_malgre_les_espaces_avales(self) -> None:
+        """Régression : l'égalité stricte ne verrait jamais un titre réel.
+
+        La reconnaissance rend « Objectif dequete accompli », espaces avalés.
+        C'est le troisième piège du projet, et il vaut ici comme ailleurs : la
+        comparaison se fait sur la forme pliée, sans espaces ni ponctuation.
+        """
+        from rubin.interface.autozone import contains_title, titles_folded
+
+        assert contains_title([("Objectif dequete accompli", 0.96)], titles_folded())
+        assert contains_title([("Nouvelle quete", 0.98)], titles_folded())
+
+    def test_du_decor_ne_passe_pas_pour_un_titre(self) -> None:
+        from rubin.interface.autozone import contains_title, titles_folded
+
+        décor = [("de guilde terminees avant la maintenance,", 0.98), ("Xian", 0.97)]
+        assert not contains_title(décor, titles_folded())
+
+    def test_les_titres_viennent_des_valeurs_et_non_des_cles(self) -> None:
+        """Régression : `TITLES` associe un genre à ses libellés.
+
+        Itérer dessus rend des `BannerKind`, pas du texte, et la première
+        comparaison échoue sur une erreur incompréhensible. C'est arrivé.
+        """
+        from rubin.interface.autozone import titles_folded
+
+        attendus = titles_folded()
+        assert "nouvellequete" in attendus
+        assert all(isinstance(t, str) for t in attendus)
