@@ -97,6 +97,71 @@ def format_running(seconds: float | None) -> str:
     return f"chronomètre : {format_duration(seconds)}"
 
 
+#: Le cadenas qui marque une commande verrouillée pendant la mesure.
+#:
+#: Un caractère et non une image : il doit rester lisible sur le libellé du
+#: bouton lui-même, à côté du texte, sans dépendre d'un fichier à empaqueter.
+LOCK_MARK: Final = "🔒"
+
+
+def zone_lock_reason() -> str:
+    """Pourquoi les commandes de zone sont verrouillées pendant la mesure.
+
+    **La raison principale n'est pas la prudence, c'est que ça ne marcherait
+    pas.** La zone d'une session est calculée **une seule fois**, au démarrage,
+    et `ScreenCapture` retient ensuite un rectangle fixe : voir
+    `MeasuringSession._run`. Retracer une zone pendant la mesure enregistre bien
+    le nouveau rectangle dans les réglages, mais la session en cours continue
+    sur l'ancien, sans que rien ne le dise.
+
+    C'est le pire des cas de ce projet, et le même que la zone sans taille de
+    fenêtre : le joueur croit avoir corrigé, il a corrigé quelque chose, et
+    l'effet n'arrive pas. Il attribuera ensuite au réglage un silence qui vient
+    d'ailleurs, et cherchera là où il n'y a rien.
+
+    La seconde raison est mesurée à moitié seulement, et elle est écrite ici
+    comme une prudence, pas comme un fait : « Lire maintenant » et « Choix
+    automatique » lancent une reconnaissance **dans le processus qui mesure**.
+    Le 5 août 2026, une session a vu passer un bandeau sur une seule image là où
+    un témoin extérieur en voyait vingt et une, et la concurrence entre deux
+    reconnaissances dans le même processus est l'une des rares différences que
+    les essais n'ont pas reproduites. Ce n'est pas prouvé ; c'est une raison de
+    plus de ne pas les laisser se marcher dessus pendant qu'on cherche.
+    """
+    return (
+        "Verrouillé pendant la mesure. La zone d'une session est calculée à son "
+        "démarrage : la retracer maintenant n'aurait aucun effet sur la session "
+        "en cours, et vous croiriez avoir corrigé quelque chose. Arrêtez la "
+        "session pour y toucher."
+    )
+
+
+#: Les commandes de l'onglet Zones verrouillées pendant une session.
+#:
+#: Toutes celles qui écrivent une zone ou qui lancent une reconnaissance. Une
+#: seule table, pour que le libellé, le cadenas et l'état suivent ensemble : deux
+#: listes parallèles finiraient par diverger, et un bouton oublié resterait
+#: cliquable sans que rien ne le signale.
+LOCKED_WHILE_MEASURING: Final = (
+    "read_now",
+    "reset",
+    "auto",
+    "pick_banner",
+    "pick_tracker",
+    "pick_choice",
+)
+
+
+def lock_label(label: str, locked: bool) -> str:
+    """Le libellé d'un bouton, avec son cadenas quand il est verrouillé.
+
+    Le cadenas est **dans le libellé**, pas à côté : un bouton grisé se
+    remarque à peine, et l'utilisateur qui clique sans effet en conclut que le
+    logiciel ne répond plus. Le cadenas dit que le refus est voulu.
+    """
+    return f"{LOCK_MARK} {label}" if locked else label
+
+
 #: Au-delà de ce silence, la ligne de surveillance devient un avertissement.
 #:
 #: Quarante-cinq secondes, parce que c'est le temps qu'il faut pour douter sans

@@ -16,6 +16,8 @@ from rubin.interface import (
     DEMO_MARK,
     FRAGILE_BELOW,
     LINK_TAGS,
+    LOCK_MARK,
+    LOCKED_WHILE_MEASURING,
     RANKING_UNAVAILABLE,
     Watching,
     ZoneState,
@@ -36,12 +38,14 @@ from rubin.interface import (
     format_search_result,
     format_upcoming_line,
     format_watching,
+    lock_label,
     main_quest_total,
     other_quest_total,
     quest_display_name,
     ranking_message,
     running_seconds,
     search_quests,
+    zone_lock_reason,
 )
 from rubin.interface.app import ZONE_KEYS, ZONE_ROLES
 from rubin.interface.help import EXAMPLES
@@ -974,3 +978,63 @@ class TestSurveillanceVisible:
         # Et surtout : la ligne ne peut pas être vide, sans quoi on retombe
         # exactement sur le silence qu'elle existe pour rompre.
         assert texte
+
+
+class TestZonesVerrouilleesPendantLaMesure:
+    """Les commandes de zone, refusées pendant qu'une session tourne.
+
+    Ce n'est pas de la prudence, c'est que ça ne marcherait pas : la zone d'une
+    session est calculée à son démarrage, et la retracer en cours de route
+    n'aurait aucun effet sur la session vivante.
+    """
+
+    def test_les_six_commandes_qui_ecrivent_ou_lisent_sont_verrouillees(self) -> None:
+        # Toutes celles qui écrivent une zone ou lancent une reconnaissance.
+        assert set(LOCKED_WHILE_MEASURING) == {
+            "read_now",
+            "reset",
+            "auto",
+            "pick_banner",
+            "pick_tracker",
+            "pick_choice",
+        }
+
+    def test_le_cadenas_est_dans_le_libelle_pas_a_cote(self) -> None:
+        # Un bouton seulement grisé se remarque à peine, et le clic sans effet
+        # se lit comme un logiciel qui ne répond plus.
+        assert lock_label("Tracer le bandeau", locked=True) == f"{LOCK_MARK} Tracer le bandeau"
+
+    def test_le_libelle_redevient_nu_une_fois_la_session_arretee(self) -> None:
+        assert lock_label("Tracer le bandeau", locked=False) == "Tracer le bandeau"
+
+    def test_la_raison_dit_l_effet_et_la_sortie(self) -> None:
+        raison = zone_lock_reason()
+
+        # Ce qui se passerait vraiment : rien. C'est ça qu'il faut dire, pas
+        # « interdit ».
+        assert "aucun effet sur la session en cours" in raison
+        # Et comment s'en sortir, sinon le verrou est une impasse.
+        assert "Arrêtez la session" in raison
+
+    def test_regression_retracer_une_zone_en_cours_de_session_ne_faisait_rien(self) -> None:
+        """Régression : la zone est figée au démarrage de la session.
+
+        `MeasuringSession._run` calcule la zone une seule fois puis la confie à
+        `ScreenCapture`, qui retient un rectangle en coordonnées d'écran
+        absolues. Un tracé fait pendant la mesure était bien enregistré dans les
+        réglages, et la session continuait sur l'ancien rectangle.
+
+        C'est le pire cas de ce projet, celui du réglage faux et silencieux : le
+        joueur croit avoir corrigé, il a corrigé quelque chose, et l'effet
+        n'arrive jamais. Il attribuera ensuite au réglage un silence venu
+        d'ailleurs, et cherchera là où il n'y a rien. Vécu le 5 août 2026, où
+        j'ai moi-même conseillé de retracer la zone pendant qu'une session
+        tournait.
+
+        La raison affichée doit donc parler de la SESSION EN COURS, et pas
+        seulement dire que c'est verrouillé.
+        """
+        raison = zone_lock_reason()
+
+        assert "calculée à son démarrage" in raison
+        assert "croiriez avoir corrigé" in raison
