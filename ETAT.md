@@ -1,4 +1,4 @@
-# État du projet, au 5 août 2026
+# État du projet, au 5 août 2026 (0.4.0 publiée)
 
 **À lire en entier avant de coder.** Ce fichier dit où en est Rubin, ce qui a
 été appris en conditions réelles, et ce qui reste. Les pièges consignés plus
@@ -22,10 +22,11 @@ les temps de référence des autres. La chaîne complète tient debout.
 | Panneau de suivi de quête | ✅ |
 | Liste des quêtes suivantes | ✅ trous et branches signalés |
 | Serveur, classement, envoi | ✅ **en ligne** |
-| Exécutable Windows | ✅ 59 Mo |
-| Vérification de version | ✅ |
+| Exécutable Windows | ✅ **0.4.0 publiée**, 59 Mo |
+| Vérification de version | ✅ le serveur annonce 0.4.0 |
 | Rétention des lectures ratées | ✅ local, envoi manuel |
-| Rattachement Discord | ⏸ branché et testé, éteint faute d'identifiants |
+| Rattachement Discord | ⏸ en ligne, **503** faute d'identifiants |
+| Robot Discord de consultation | ⏸ écrit et testé, jamais lancé |
 
 ## En ligne
 
@@ -33,7 +34,7 @@ les temps de référence des autres. La chaîne complète tient debout.
 |---|---|
 | Serveur | **https://rubin.maxyull.fr** |
 | Dépôt | https://github.com/Maxyull/rubin-bdo |
-| Release | https://github.com/Maxyull/rubin-bdo/releases |
+| Release | **v0.4.0**, https://github.com/Maxyull/rubin-bdo/releases |
 | Confidentialité | https://maxyull.fr/confidentialite.html |
 
 Le serveur tourne en systemd sur le VPS OVH, dans `/opt/rubin`, base Postgres
@@ -237,6 +238,22 @@ quel que soit son intérêt.
   Et ce que ce n'est pas : un **robot** Discord. Il n'y a ici ni jeton de
   robot, ni passerelle, ni présence dans un salon. C'est un rattachement de
   compte par OAuth2, qui lit un pseudonyme une fois et jette le jeton.
+
+### Le robot, écrit mais jamais lancé
+
+Un dossier `bot/` à part, avec son venv et son propre job d'intégration
+continue. Trois commandes en lecture seule sur l'API publique : `/rapides`,
+`/chaine`, `/quete`. `Intents.none()`, aucune intention privilégiée, aucun
+pouvoir d'administration, permissions **0** à l'invitation.
+
+Il n'a **jamais tourné** : il attend `RUBIN_BOT_JETON`. Et contrairement au
+serveur web, un robot tient une connexion sortante permanente, donc il lui faut
+un service systemd propre que `deployer.sh` ne couvre pas. Ne pas activer
+l'unité avant que le jeton soit posé, sinon boucle de redémarrage.
+
+Le `measured_total_seconds` de l'API n'y est **pas lu du tout**, avec un test
+qui casse si quelqu'un l'ajoute : un champ jamais lu ne peut pas s'afficher par
+mégarde, et la somme des médianes ment d'un facteur deux.
 
 ### À écrire
 
