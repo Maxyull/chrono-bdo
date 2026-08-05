@@ -6,6 +6,11 @@ Rubin mesure le temps que prend chaque quête principale, sans que vous ayez à
 appuyer sur quoi que ce soit. Vous jouez normalement, il lit l'écran, et il vous
 dit quelles chaînes de quêtes rapportent le plus de quêtes par heure.
 
+> 📕 **Vous reprenez ce projet ?** Lisez [ETAT.md](ETAT.md) en entier avant de
+> coder. Il consigne cinq pièges découverts en conditions réelles, dont aucun
+> n'était visible sur des captures d'écran fixes, et dont chacun suffisait à
+> lui seul pour qu'aucune quête ne soit jamais mesurée.
+
 > ⚠️ **Projet en construction.** Le référentiel des quêtes fonctionne et est
 > testé. La capture d'écran, le chronométrage et le classement ne sont pas
 > encore écrits. Voir [État d'avancement](#état-davancement). Il n'y a pas
