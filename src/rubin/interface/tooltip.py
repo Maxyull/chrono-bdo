@@ -12,6 +12,7 @@ Ce module ne s'occupe que de le montrer.
 from __future__ import annotations
 
 import tkinter as tk
+from collections.abc import Callable
 from tkinter import ttk
 
 from .theme import COLORS
@@ -33,12 +34,26 @@ class Tooltip:
     qu'on éteint l'infobulle sans détruire l'attache.
     """
 
-    def __init__(self, widget: tk.Widget, text: str = "") -> None:
+    def __init__(
+        self,
+        widget: tk.Widget,
+        text: str = "",
+        when: Callable[[int, int], bool] | None = None,
+    ) -> None:
+        """`when` limite l'infobulle à une partie du composant.
+
+        Nécessaire pour un carnet d'onglets, qui est un seul composant portant
+        quatre onglets : sans cela, l'explication du verrou de l'onglet Zones
+        apparaîtrait en survolant n'importe lequel des trois autres, ce qui
+        laisserait croire qu'ils sont verrouillés aussi.
+        """
         self._widget = widget
         self._text = text
+        self._when = when
         self._fenetre: tk.Toplevel | None = None
         self._prevu: str | None = None
         widget.bind("<Enter>", self._on_enter, add="+")
+        widget.bind("<Motion>", self._on_enter, add="+")
         widget.bind("<Leave>", self._on_leave, add="+")
         # Un clic fait souvent disparaître le composant sous la souris, et
         # l'infobulle resterait seule à l'écran, orpheline.
@@ -49,10 +64,17 @@ class Tooltip:
         if not text:
             self._hide()
 
-    def _on_enter(self, _event: object = None) -> None:
+    def _on_enter(self, event: object = None) -> None:
         if not self._text:
             return
-        self._cancel()
+        if self._when is not None:
+            x = getattr(event, "x", None)
+            y = getattr(event, "y", None)
+            if x is None or y is None or not self._when(int(x), int(y)):
+                self._on_leave()
+                return
+        if self._fenetre is not None or self._prevu is not None:
+            return  # deja montree, ou deja prevue : ne pas relancer a chaque pixel
         self._prevu = self._widget.after(DELAY_MS, self._show)
 
     def _on_leave(self, _event: object = None) -> None:

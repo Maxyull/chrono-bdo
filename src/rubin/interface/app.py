@@ -231,6 +231,9 @@ class RubinApp:
     def _build_tabs(self) -> None:
         carnet = ttk.Notebook(self.root)
         carnet.pack(fill="both", expand=True, padx=10, pady=(4, 10))
+        # Retenu : l'onglet Zones se verrouille entier pendant la mesure, et il
+        # faut pouvoir le désigner plus tard. Voir `_lock_zone_controls`.
+        self._carnet = carnet
 
         self._session = ttk.Frame(carnet)
         self._classement = ttk.Frame(carnet)
@@ -240,6 +243,11 @@ class RubinApp:
         carnet.add(self._classement, text="Classement")
         carnet.add(self._zones, text="Zones")
         carnet.add(self._reglages, text="Réglages")
+
+        # L'infobulle du carnet ne parle QUE de l'onglet Zones : c'est un seul
+        # composant qui en porte quatre, et une explication de verrou apparue
+        # au survol de « Réglages » ferait croire qu'il est verrouillé aussi.
+        self._carnet_tip = Tooltip(carnet, when=self._over_zones_tab)
 
         self._build_session()
         self._build_ranking()
@@ -1283,6 +1291,19 @@ class RubinApp:
             self._surveillance.config(text="")
         self._lock_zone_controls(running)
 
+    def _over_zones_tab(self, x: int, y: int) -> bool:
+        """La souris est-elle sur l'étiquette de l'onglet Zones ?
+
+        `index("@x,y")` lève quand le point ne tombe sur aucun onglet, ce qui
+        est le cas courant : la souris passe la moitié de son temps dans le
+        contenu de l'onglet, pas sur ses étiquettes.
+        """
+        try:
+            ici = self._carnet.index(f"@{x},{y}")  # type: ignore[no-untyped-call]
+            return bool(ici == self._carnet.index(self._zones))  # type: ignore[no-untyped-call]
+        except tk.TclError:
+            return False
+
     def _lock_zone_controls(self, locked: bool) -> None:
         """Verrouille les commandes de zone pendant la mesure, et dit pourquoi.
 
@@ -1292,6 +1313,22 @@ class RubinApp:
         effet. Voir `zone_lock_reason`, qui porte la raison et sa mesure.
         """
         raison = zone_lock_reason() if locked else ""
+        # L'onglet entier d'abord. Un bouton verrouillé au milieu d'un onglet
+        # ouvert invite encore à essayer, et laisse croire que le reste de
+        # l'onglet, lui, agit sur la session en cours. Ce n'est le cas d'aucune
+        # de ses commandes.
+        #
+        # ⚠️ Quitter l'onglet AVANT de le désactiver : Tk laisse un onglet
+        # désactivé rester sélectionné, et le joueur se retrouverait devant une
+        # page morte sans savoir comment en sortir.
+        if locked and self._carnet.select() == str(self._zones):  # type: ignore[no-untyped-call]
+            self._carnet.select(self._session)  # type: ignore[no-untyped-call]
+        self._carnet.tab(  # type: ignore[no-untyped-call]
+            self._zones,
+            text=lock_label("Zones", locked),
+            state="disabled" if locked else "normal",
+        )
+        self._carnet_tip.update(raison)
         for clé in LOCKED_WHILE_MEASURING:
             bouton = self._zone_buttons.get(clé)
             if bouton is None:  # pragma: pas de couverture
