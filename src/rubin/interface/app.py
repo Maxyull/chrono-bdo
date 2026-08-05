@@ -31,7 +31,14 @@ from typing import Any, Final
 
 import requests
 
-from ..capture import Rect, ScreenCapture, banner_region, find_game_window, tracker_region
+from ..capture import (
+    Rect,
+    ScreenCapture,
+    banner_region,
+    choice_region,
+    find_game_window,
+    tracker_region,
+)
 from ..placement import choose, conflicts
 from ..protocol import PlayerIdentity
 from ..reference import Catalog
@@ -40,7 +47,7 @@ from ..settings import LANGUAGES, LIMITS, load, save
 from ..timing import Quality
 from ..upcoming import upcoming
 from .autozone import search as search_banner_zone
-from .help import HelpWindow
+from .help import EXAMPLES, HelpWindow
 from .picker import ZonePicker, png_data
 from .presentation import (
     ZoneState,
@@ -80,12 +87,14 @@ SEEN_LABELS: Final = {
 #: Largeur des aperçus de zone, en pixels.
 PREVIEW_WIDTH: Final = 400
 
-#: Les deux zones lues, et **à quoi elles servent**.
+#: Les trois zones lues, et **à quoi elles servent**.
 #:
-#: Le rôle est affiché sous chaque titre. Sans lui, le joueur voit deux
+#: Le rôle est affiché sous chaque titre. Sans lui, le joueur voit trois
 #: rectangles sans savoir lequel compte, ni ce qu'il casse en le déplaçant. Or
-#: les deux n'ont pas du tout le même poids : sans le bandeau, rien n'est jamais
-#: mesuré ; sans le panneau, on perd seulement de quoi lever une ambiguïté.
+#: les trois n'ont pas du tout le même poids : sans le bandeau, rien n'est jamais
+#: mesuré ; sans le panneau de suivi, on perd seulement de quoi lever une
+#: ambiguïté ; sans le panneau de choix, on perd les noms coupés et le chemin
+#: pris à un carrefour, mais aucune durée.
 ZONE_ROLES: Final = (
     (
         "banner",
@@ -101,7 +110,25 @@ ZONE_ROLES: Final = (
         "de trancher quand un nom lu désigne plusieurs quêtes. Mal placé, on "
         "mesure quand même, on identifie seulement moins bien.",
     ),
+    (
+        "choice",
+        "PANNEAU DE CHOIX",
+        "Au centre, quand une quête vous fait choisir entre deux suites. Il "
+        "sert à deux choses : identifier les quêtes dont le jeu coupe le "
+        "préfixe de région, et savoir laquelle des deux branches vous avez "
+        "prise. Mal placé, ces quêtes ne sont pas reconnues et la branche "
+        "reste inconnue, mais aucune durée n'est perdue. ZONE ESTIMÉE, jamais "
+        "mesurée en jeu : c'est celle qui a le plus besoin d'être tracée à la "
+        "main.",
+    ),
 )
+
+#: Les clés des zones, dans l'ordre exact où `RubinApp.zones` les rend.
+#:
+#: Une seule source pour cet ordre : deux listes parallèles finiraient par
+#: diverger, et une zone appariée à la mauvaise lui prêterait la lecture d'une
+#: autre, ce qui ne lève aucune erreur et ne se voit qu'à l'œil.
+ZONE_KEYS: Final = tuple(zone[0] for zone in ZONE_ROLES)
 
 
 class RubinApp:
@@ -319,7 +346,11 @@ class RubinApp:
         ).pack(side="left")
         tracer = ttk.Frame(self._zones)
         tracer.pack(fill="x", padx=12, pady=(0, 6))
-        for clé, libellé in (("banner", "Tracer le bandeau"), ("tracker", "Tracer le suivi")):
+        for clé, libellé in (
+            ("banner", "Tracer le bandeau"),
+            ("tracker", "Tracer le suivi"),
+            ("choice", "Tracer le choix"),
+        ):
             ttk.Button(tracer, text=libellé, command=self._pick(clé)).pack(
                 side="left", padx=(0, 8)
             )
@@ -333,8 +364,9 @@ class RubinApp:
         ttk.Label(
             self._zones_defilant,
             text=(
-                "Rubin lit ces deux rectangles. S'ils tombent à côté, il ne mesure\n"
-                "rien et ne peut pas dire pourquoi."
+                "Rubin lit ces trois rectangles. Les deux premiers sont mesurés ;\n"
+                "s'ils tombent à côté, il ne mesure rien et ne peut pas dire\n"
+                "pourquoi. Le troisième est ESTIMÉ : tracez-le vous-même."
             ),
             style="Faible.TLabel",
             anchor="w",
@@ -488,44 +520,76 @@ class RubinApp:
         self.root.wm_attributes("-alpha", self._settings.opacity)
 
     def _place_beside_the_game(self) -> None:
-        """Pose la fenêtre à côté des quêtes, jamais dessus."""
+        """Pose la fenêtre à côté des quêtes, jamais dessus.
+
+        ⚠️ Seules les deux zones **mesurées** entrent dans ce calcul. La zone du
+        panneau de choix en est écartée exprès, pour deux raisons qui vont dans
+        le même sens : elle est estimée, donc large et probablement fausse, et
+        elle occupe le centre de l'écran, donc l'inclure chasserait la fenêtre
+        du coin haut-droit où le joueur lit déjà ses quêtes. Céder la seule
+        bonne place à une supposition serait payer cher un rectangle que
+        personne n'a vérifié.
+
+        Ce que la fenêtre recouvre au centre reste visible là où il faut : dans
+        l'aperçu de la zone de choix, qui montre l'image réellement capturée.
+        """
         fenêtre = find_game_window()
         if fenêtre is None:
             return
-        place = choose(fenêtre, self.zones(fenêtre), WINDOW_SIZE)
+        bandeau, suivi, _choix = self.zones(fenêtre)
+        place = choose(fenêtre, (bandeau, suivi), WINDOW_SIZE)
         if place is None:
             # Aucune position n'évite les zones lues. On ne pose rien de force :
             # ce serait casser la mesure en silence pour un confort d'affichage.
             return
         self.root.geometry(f"{place.width}x{place.height}+{place.left}+{place.top}")
 
-    def zones(self, window: Rect) -> tuple[Rect, Rect]:
-        """Les deux zones lues, choisies par le joueur ou calculées."""
+    def zones(self, window: Rect) -> tuple[Rect, Rect, Rect]:
+        """Les trois zones lues, choisies par le joueur ou calculées.
+
+        Dans l'ordre de `ZONE_ROLES` : bandeau, suivi, choix. Les deux premières
+        reposent sur des mesures, la troisième sur une estimation.
+        """
         échelle = self._settings.ui_scale
         bandeau = self._settings.banner or banner_region(window, ui_scale=échelle)
         suivi = self._settings.tracker or tracker_region(window, ui_scale=échelle)
-        return bandeau, suivi
+        choix = self._settings.choice or choice_region(window, ui_scale=échelle)
+        return bandeau, suivi, choix
 
     # ------------------------------------------------------------------ actions
 
     def refresh_zones(self) -> None:
-        """Réaffiche la position des deux zones, et l'avertissement éventuel."""
+        """Réaffiche la position des trois zones, et l'avertissement éventuel."""
         fenêtre = find_game_window()
         if fenêtre is None:
             for étiquette in self._zone_labels.values():
                 étiquette.config(text="jeu introuvable")
             return
-        bandeau, suivi = self.zones(fenêtre)
+        bandeau, suivi, choix = self.zones(fenêtre)
         états = {
             "banner": ZoneState("Bandeau", bandeau, chosen=self._settings.banner is not None),
             "tracker": ZoneState("Suivi", suivi, chosen=self._settings.tracker is not None),
+            "choice": ZoneState("Choix", choix, chosen=self._settings.choice is not None),
         }
         for clé, état in états.items():
             self._zone_labels[clé].config(text=describe_zone(état))
         self._warn_if_blinding(bandeau, suivi)
 
     def _warn_if_blinding(self, bandeau: Rect, suivi: Rect) -> None:
-        """Prévient si la fenêtre couvre ce qu'elle lit."""
+        """Prévient si la fenêtre couvre une zone dont dépend la mesure.
+
+        ⚠️ La zone du panneau de choix n'y figure pas, **exprès**. Estimée, elle
+        couvre la moitié centrale de l'écran : l'y ajouter ferait apparaître
+        l'avertissement à chaque lancement, puisque la place retenue pour la
+        fenêtre la recoupe forcément. Un avertissement toujours allumé n'avertit
+        plus de rien, et celui-ci doit rester le signal fort qu'il est
+        aujourd'hui, celui qui dit « tu ne mesureras rien ».
+
+        Le message serait faux, en plus d'être permanent : couvrir le panneau
+        de choix ne coûte aucune durée, seulement une identification. Ce que
+        cette zone capture vraiment se voit d'un coup dans son aperçu, juste à
+        côté, et c'est le bon endroit pour s'en apercevoir.
+        """
         try:
             ici = Rect(
                 self.root.winfo_x(),
@@ -548,18 +612,24 @@ class RubinApp:
         à le déplacer à l'aveugle puis à jouer une session entière pour
         découvrir qu'il était à côté.
 
-        La lecture est lente, une à deux secondes pour le panneau de suivi, donc
-        elle a lieu sur demande et jamais en boucle.
+        La lecture est lente, une à deux secondes pour le panneau de suivi, plus
+        encore pour la zone de choix qui couvre la moitié de l'écran, donc elle
+        a lieu sur demande et jamais en boucle.
+
+        C'est aussi, à ce jour, le **seul** endroit qui lit la zone de choix :
+        la session de mesure ne s'en sert pas. C'est délibéré, et ça se dit
+        plutôt que de se laisser croire, parce qu'une zone réglable donne
+        l'impression d'être exploitée partout.
         """
         fenêtre = find_game_window()
         if fenêtre is None:
-            self._set_reading("banner", ())
-            self._set_reading("tracker", ())
+            for clé in ZONE_KEYS:
+                self._set_reading(clé, ())
             return
         from ..reading import RapidOcrReader
 
         lecteur = RapidOcrReader()
-        for clé, zone in zip(("banner", "tracker"), self.zones(fenêtre), strict=True):
+        for clé, zone in zip(ZONE_KEYS, self.zones(fenêtre), strict=True):
             try:
                 with ScreenCapture(zone) as capture:
                     image = capture.grab_color()
@@ -636,8 +706,9 @@ class RubinApp:
     def _pick(self, which: str) -> Callable[[], None]:
         """Ouvre le tracé de zone, sur une photographie du jeu.
 
-        Une fabrique et non une lambda : les deux boutons naissent d'une boucle,
-        et une lambda y capturerait la variable, donc la même zone pour les deux.
+        Une fabrique et non une lambda : les trois boutons naissent d'une
+        boucle, et une lambda y capturerait la variable, donc la même zone pour
+        les trois.
         """
 
         def ouvrir() -> None:
@@ -645,7 +716,11 @@ class RubinApp:
             if fenêtre is None:
                 self._avertissement.config(text="jeu introuvable, impossible de tracer")
                 return
-            titre = "Bandeau de quête" if which == "banner" else "Panneau de suivi"
+            # Le titre vient de l'aide, pour qu'il n'y ait qu'un seul endroit à
+            # corriger le jour où une zone est renommée. Une chaîne calculée ici
+            # aurait fini par contredire celle de la fenêtre d'aide sans que
+            # rien ne le signale.
+            titre = EXAMPLES[which][0]
             ZonePicker(self.root, fenêtre, titre, self._zone_chosen(which))
 
         return ouvrir
@@ -658,8 +733,10 @@ class RubinApp:
             # jusqu'au moment où le réglage ne s'enregistre pas.
             if which == "banner":
                 self._settings = replace(self._settings, banner=zone)
-            else:
+            elif which == "tracker":
                 self._settings = replace(self._settings, tracker=zone)
+            else:
+                self._settings = replace(self._settings, choice=zone)
             save(self._settings, self._home)
             self.refresh_zones()
             # Lire tout de suite : le seul moyen de savoir si le tracé est bon
@@ -670,8 +747,14 @@ class RubinApp:
         return retenir
 
     def reset_zones(self) -> None:
-        """Oublie les zones choisies, et revient au calcul qui suit la fenêtre."""
-        self._settings = replace(self._settings, banner=None, tracker=None)
+        """Oublie les zones choisies, et revient au calcul qui suit la fenêtre.
+
+        ⚠️ Pour le panneau de choix, « revenir au calcul » revient à revenir à
+        une estimation. C'est un recul assumé, et le même que pour les autres :
+        un rectangle tracé sur une fenêtre qui a changé de taille est pire
+        qu'un rectangle calculé.
+        """
+        self._settings = replace(self._settings, banner=None, tracker=None, choice=None)
         save(self._settings, self._home)
         self.refresh_zones()
 

@@ -4,6 +4,21 @@ Ce module ne touche ni à l'écran ni au système : il calcule des rectangles. L
 capture réelle vit dans `screen.py`, la localisation de la fenêtre dans
 `window.py`. Cette séparation existe pour que le calcul, qui est la partie où se
 logent les erreurs, soit vérifiable sans écran et donc en intégration continue.
+
+## Trois zones, et deux façons de les poser
+
+Le domaine a trois surfaces lisibles : le bandeau, le panneau de suivi, et le
+panneau de choix d'un carrefour.
+
+Les deux premières sont **mesurées** sur un écran réel, et posées en pixels
+depuis un coin : l'interface du jeu garde sa taille en pixels quand la
+résolution change, donc c'est la distance au coin qui se conserve, jamais une
+fraction de l'écran.
+
+La troisième ne l'est pas. `choice_region` est une **estimation** en fractions
+de la fenêtre, et sa docstring dit pourquoi. La différence de méthode n'est pas
+un oubli : elle rend visible, dans le code lui-même, laquelle des trois repose
+sur une mesure et laquelle repose sur une supposition.
 """
 
 from __future__ import annotations
@@ -83,6 +98,20 @@ _TRACKER_MARGIN_RIGHT: Final = 130
 _TRACKER_TOP: Final = 440
 
 
+# ⚠️ ZONE ESTIMÉE, JAMAIS MESURÉE EN JEU. Contrairement aux deux blocs
+# ci-dessus, ces deux nombres ne viennent d'aucune capture : il n'existe à ce
+# jour aucune image du panneau de choix d'un carrefour, ni dans le dépôt ni
+# dans les échantillons de calibration.
+#
+# Ils disent donc la seule chose qui soit sûre, que le panneau est **au centre**
+# de l'écran, et prennent large autour : la moitié de la fenêtre, centrée. Une
+# fraction plutôt que des pixels, précisément parce que la taille du panneau est
+# inconnue ; le jour où elle sera relevée, cette zone doit passer en pixels
+# ancrés comme les deux autres.
+_CHOICE_WIDTH_RATIO: Final = 0.5
+_CHOICE_HEIGHT_RATIO: Final = 0.5
+
+
 def tracker_region(window: Rect, ui_scale: float = 1.0) -> Rect:
     """Rectangle du panneau de suivi de quête, dans les coordonnées de l'écran.
 
@@ -144,4 +173,62 @@ def banner_region(window: Rect, ui_scale: float = 1.0) -> Rect:
         top=top,
         width=min(width, window.right - left),
         height=min(height, window.bottom - top),
+    )
+
+
+def choice_region(window: Rect, ui_scale: float = 1.0) -> Rect:
+    """Rectangle du panneau de choix d'un carrefour, dans les coordonnées de l'écran.
+
+    ⚠️ **CETTE ZONE EST ESTIMÉE, PAS MESURÉE.** C'est la seule des trois dans ce
+    cas, et il faut la vérifier en jeu avant de lui faire confiance. Aucune
+    capture du panneau de choix n'existe : ni dans le dépôt, où les images de
+    jeu sont exclues parce qu'elles portent des pseudonymes de tiers, ni dans
+    les échantillons de calibration, dont la liste ne l'a jamais réclamée.
+
+    Ce qui est sûr, et suffit à poser un rectangle : ce panneau est **au centre
+    de l'écran**, contrairement au bandeau ancré en bas à droite et au panneau
+    de suivi ancré en haut à droite. Le calcul n'est donc pas le même, et
+    recopier l'un des deux autres aurait donné une zone fausse avec l'aplomb
+    d'une zone mesurée.
+
+    La zone rendue couvre la moitié de la fenêtre, centrée. Elle est large
+    exprès : à défaut de connaître la taille du panneau, mieux vaut capturer du
+    décor autour que le couper. Le coût d'une zone trop large est une
+    reconnaissance plus lente et quelques lignes de décor à écarter ; le coût
+    d'une zone trop courte est un nom tronqué, donc une quête jamais reconnue.
+
+    ## Pourquoi une zone estimée reste sans danger
+
+    Une zone mal placée capture du décor, et du décor ne porte aucun nom de
+    quête. `Catalog.resolve_partial` exige une correspondance **unique** sur au
+    moins huit caractères ; un texte de dialogue, un libellé de bouton ou un
+    nom d'objet n'en produisent aucune. Le résultat est donc une **absence**
+    d'identification, jamais une identification erronée, ce qui est exactement
+    la règle qui autorise à livrer cette zone avant de l'avoir mesurée.
+
+    ## À quoi elle sert, une fois bien placée
+
+    Le panneau de choix affiche les branches d'un carrefour, en coupant le
+    préfixe de région : « [Carrefour] Du côté de Valks » là où le catalogue
+    porte « [Calpheon][Carrefour] Du côté de Valks ». 76 quêtes principales
+    sont dans ce cas, et `resolve_partial` les retrouve par la fin de leur nom.
+
+    Surtout, un carrefour est un choix qui **exclut** l'autre branche. Lire ce
+    panneau est le seul moyen connu de savoir laquelle des deux a été prise,
+    sur les 69 embranchements répartis dans 38 chaînes que le référentiel ne
+    départage pas.
+    """
+    if ui_scale <= 0:
+        raise ValueError(f"échelle d'interface invalide : {ui_scale}")
+
+    # Bornée à la fenêtre, et jamais plate : une zone de largeur ou de hauteur
+    # nulle capturerait une image vide, que la reconnaissance traiterait comme
+    # un écran sans panneau, sans que rien ne distingue les deux cas.
+    width = max(1, min(window.width, round(window.width * _CHOICE_WIDTH_RATIO * ui_scale)))
+    height = max(1, min(window.height, round(window.height * _CHOICE_HEIGHT_RATIO * ui_scale)))
+    return Rect(
+        left=window.left + (window.width - width) // 2,
+        top=window.top + (window.height - height) // 2,
+        width=width,
+        height=height,
     )

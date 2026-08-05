@@ -23,6 +23,14 @@ trouver un titre connu, « Nouvelle quête » ou « Quête accomplie » ; du dé
 jeu n'en contient pas, donc elle ne rend rien. Le résultat est une mesure
 manquante, pas une mesure erronée.
 
+La **zone du panneau de choix** est le cas extrême, puisque son calcul d'origine
+est estimé et non mesuré : elle tombe donc à côté plus souvent que les deux
+autres. Elle reste sans danger pour la même raison, en plus forte. Ce qu'on y
+cherche est un nom de quête retrouvé par la fin, ce qui exige une
+correspondance **unique** sur au moins huit caractères ; du décor, un texte de
+dialogue ou un libellé de bouton n'en produisent aucune. Une zone de choix mal
+placée n'identifie rien, elle n'identifie jamais autre chose.
+
 Un **seuil trop haut** rate des bandeaux. Un **seuil trop bas** en propose
 davantage à l'analyse, qui les refuse faute de titre. Dans les deux cas on perd
 des mesures, on n'en invente aucune.
@@ -93,9 +101,13 @@ def _clamp(name: str, value: float) -> float:
 class Settings:
     """Ce que le joueur a réglé, ou les valeurs mesurées à défaut.
 
-    Les deux zones valent `None` tant qu'elles n'ont pas été choisies à la
+    Les trois zones valent `None` tant qu'elles n'ont pas été choisies à la
     main : c'est alors le calcul d'origine qui s'applique, celui qui suit la
     fenêtre. `None` veut dire « calcule-la », jamais « pas de zone ».
+
+    ⚠️ La troisième, `choice`, mérite un tracé à la main plus que les deux
+    autres : son calcul d'origine est **estimé et non mesuré**. Voir
+    `capture.region.choice_region`.
     """
 
     #: Langue du **client de jeu**, pas celle de l'interface. Un joueur
@@ -111,6 +123,7 @@ class Settings:
     opacity: float = 1.0
     banner: Rect | None = None
     tracker: Rect | None = None
+    choice: Rect | None = None
 
     def normalised(self) -> Settings:
         """Une copie dont tous les nombres tiennent dans leurs bornes."""
@@ -140,6 +153,8 @@ class Settings:
             données["zone_bandeau"] = _rect_to_dict(self.banner)
         if self.tracker is not None:
             données["zone_suivi"] = _rect_to_dict(self.tracker)
+        if self.choice is not None:
+            données["zone_choix"] = _rect_to_dict(self.choice)
         return données
 
     @classmethod
@@ -160,6 +175,7 @@ class Settings:
             opacity=_float(données, "opacite", 1.0),
             banner=_rect_from_dict(données.get("zone_bandeau")),
             tracker=_rect_from_dict(données.get("zone_suivi")),
+            choice=_rect_from_dict(données.get("zone_choix")),
         ).normalised()
 
 

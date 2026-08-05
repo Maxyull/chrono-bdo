@@ -152,6 +152,74 @@ def test_un_nom_prive_de_son_prefixe_de_region_reste_identifiable(catalog: Catal
     assert catalog.resolve_partial("[Carrefour] Du côté d'Andre") == QuestId(21142, 5)
 
 
+#: Les deux branches d'un carrefour, telles que le panneau de choix les montre :
+#: préfixe de région coupé des deux côtés. Ce sont les deux quêtes de la chaîne
+#: 21142, en positions 1 et 5, et elles s'excluent l'une l'autre.
+CROSSROAD_PANEL = ("[Carrefour] Du côté de Valks", "[Carrefour] Du côté d'Andre")
+
+#: Texte relevé au CENTRE d'une vraie capture du jeu, là où la zone de choix
+#: cadre. Ce n'est pas du décor inventé : c'est le dialogue d'un PNJ et les
+#: libellés de ses boutons, sur une capture prise pour calibrer le bandeau.
+#:
+#: C'est exactement ce que la zone de choix lira la plupart du temps, puisque le
+#: panneau de choix ne s'affiche que quelques secondes par chaîne.
+CENTRE_OF_THE_SCREEN = (
+    "Enchantée, même cette situation n'est pas des plus réjouissantes !",
+    "Qu'est-ce qui vous amène ici, chez les Chevaliers de Delphe ?",
+    "Confirmer (Fonction souris 2)",
+    "Annuler",
+    "Récomp.",
+    "Quête",
+)
+
+
+def test_les_deux_branches_d_un_carrefour_se_retrouvent_chacune(catalog: Catalog) -> None:
+    """Ce que le panneau de choix apporte : savoir laquelle des deux a été prise.
+
+    La chaîne 21142 propose « Du côté de Valks » en position 1 et « Du côté
+    d'Andre » en position 5. Les deux s'excluent, et le référentiel ne dit pas
+    laquelle le joueur a suivie : c'est l'un des 69 embranchements répartis sur
+    38 chaînes, rangés dans `ETAT.md` sous « ce qu'aucun code ne peut résoudre ».
+
+    Le panneau de choix est justement la surface qui les montre. Chaque ligne y
+    est identifiable seule, et sur la bonne position, ce qui suffit à lever le
+    doute une fois la zone lue.
+    """
+    valks, andre = (catalog.resolve_partial(nom) for nom in CROSSROAD_PANEL)
+
+    assert valks == QuestId(21142, 1)
+    assert andre == QuestId(21142, 5)
+    # Le même carrefour, donc un choix, et non deux quêtes à faire l'une après
+    # l'autre : c'est ce que le nombre de positions entre les deux cache.
+    assert valks.chain == andre.chain
+    for quest_id in (valks, andre):
+        quête = catalog.get(quest_id)
+        assert quête is not None and quête.is_crossroad
+
+
+def test_une_zone_de_choix_mal_placee_n_identifie_rien(catalog: Catalog) -> None:
+    """Régression : une zone estimée ne doit jamais identifier de travers.
+
+    La zone du panneau de choix est la seule des trois à n'avoir jamais été
+    mesurée en jeu, faute de capture. Elle tombera donc à côté plus souvent que
+    les deux autres, et le plus souvent au milieu d'un dialogue de PNJ, qui est
+    ce qu'il y a au centre de l'écran le reste du temps.
+
+    Ces six lignes sont recopiées d'une capture réelle prise pour calibrer le
+    bandeau. Aucune ne doit ressortir en quête, pas même par correspondance
+    partielle, qui est pourtant la résolution la plus permissive du catalogue.
+
+    C'est ce qui autorise à livrer une zone estimée : rater le panneau donne un
+    chiffre incomplet, l'identifier de travers donnerait un chiffre faux, et un
+    faux carrefour enverrait en plus toute la suite de la chaîne sur la mauvaise
+    branche.
+    """
+    for ligne in CENTRE_OF_THE_SCREEN:
+        assert catalog.resolve(ligne) is None
+        assert catalog.resolve_partial(ligne) is None
+    assert catalog.resolve_lines(CENTRE_OF_THE_SCREEN) is None
+
+
 def test_ne_devine_pas_sur_un_fragment_trop_court(catalog: Catalog) -> None:
     # Une correspondance partielle est plus facile à obtenir qu'une exacte,
     # donc plus facile à obtenir par erreur.

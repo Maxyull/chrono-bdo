@@ -98,6 +98,35 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
   L'affichage en bas de la fenêtre viendra séparément : ce lot est le point
   d'entrée serveur, rien du client n'est touché.
 
+- **Une troisième zone de lecture : le panneau de choix d'un carrefour.**
+  `choice_region` la calcule, `Settings` la garde sous `zone_choix`, et
+  l'onglet Zones la montre, la lit et la fait tracer comme les deux autres. Le
+  domaine a trois surfaces lisibles ; l'application n'en connaissait que deux.
+
+  Ce qu'elle apporte est double. Le jeu y coupe le préfixe de région,
+  « [Carrefour] Du côté de Valks » là où le catalogue porte
+  « [Calpheon][Carrefour] Du côté de Valks » : **76 quêtes principales** sont
+  dans ce cas, et `Catalog.resolve_partial` sait déjà les rattraper, mais elle
+  n'était appelée que sur les lignes du bandeau. Surtout, un carrefour est un
+  choix qui **exclut** l'autre branche : ce panneau est le seul endroit connu
+  qui dise laquelle a été prise, sur les **69 embranchements répartis dans 38
+  chaînes** que `ETAT.md` range dans « ce qu'aucun code ne peut résoudre ».
+
+  ⚠️ **La zone est ESTIMÉE, pas mesurée.** Aucune capture de ce panneau
+  n'existe, ni dans le dépôt ni dans les échantillons de calibration. Elle dit
+  donc la seule chose sûre, que le panneau est au centre de l'écran, et prend
+  la moitié de la fenêtre autour. Elle est à vérifier en jeu, et c'est écrit à
+  tous les endroits où elle se lit : dans sa docstring, dans le rôle affiché
+  sous son titre, et dans son entrée d'aide, **rendue sans image** parce que
+  les deux autres montrent de vraies captures et qu'un dessin propre ferait
+  viser une cible qui n'existe pas.
+
+  Elle est sans danger malgré cela, et pour la raison habituelle : une zone
+  mal placée capture du décor, du décor ne produit aucune correspondance
+  unique de huit caractères, donc le résultat est une **absence**
+  d'identification, jamais une identification erronée. C'est vérifié sur du
+  vrai texte de dialogue relevé au centre d'une capture du jeu.
+
 ## [0.4.0] - 2026-08-05
 
 La première version qu'on peut mettre entre les mains d'un testeur : elle ne

@@ -154,9 +154,16 @@ python -m rubin fenetre
 ```
 
 Trois onglets. **Session** dit où vous en êtes et ce qui vient. **Zones** montre
-les deux rectangles que Rubin lit **et ce qu'il y lit à l'instant**, ce qui
+les trois rectangles que Rubin lit **et ce qu'il y lit à l'instant**, ce qui
 répond en une seconde à « pourquoi ça ne mesure rien ». **Réglages** porte les
 curseurs, la langue du client et l'opacité.
+
+Deux de ces rectangles ont été mesurés sur un écran réel : le bandeau, en bas à
+droite, et le panneau de suivi, sous la minimap. Le troisième, le **panneau de
+choix** d'un carrefour, est **estimé** : la moitié centrale de l'écran, faute
+d'une capture pour le relever. Tracez-le vous-même, avec « Tracer le choix ».
+Mal placé, il ne coûte aucune durée : il fait seulement perdre les quêtes dont
+le jeu coupe le préfixe de région, et la branche que vous avez prise.
 
 La fenêtre se pose d'elle-même à côté du panneau de quêtes, **jamais dessus**.
 Ce n'est pas une coquetterie : Rubin lit une capture d'écran, donc une fenêtre
