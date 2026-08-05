@@ -53,6 +53,7 @@ from .picker import ZonePicker, png_data
 from .presentation import (
     COVERAGE_TAGS,
     DEMO_BANNER,
+    LOCKED_WHILE_MEASURING,
     SEARCH_MIN_LENGTH,
     ZoneState,
     demo_active,
@@ -72,15 +73,18 @@ from .presentation import (
     format_search_result,
     format_upcoming_line,
     format_watching,
+    lock_label,
     main_quest_total,
     other_quest_total,
     ranking_message,
     running_seconds,
     search_quests,
+    zone_lock_reason,
 )
 from .session import MeasuringSession
 from .theme import COLORS, FAMILY, MONO_FAMILY, confidence_score
 from .theme import apply as apply_theme
+from .tooltip import Tooltip
 
 #: Taille de la fenêtre. Assez large pour un nom de quête complet, assez étroite
 #: pour tenir à côté du panneau de suivi sans mordre dessus.
@@ -533,16 +537,26 @@ class RubinApp:
         # elles ne doivent jamais dépendre de ce qui les précède.
         boutons = ttk.Frame(self._zones)
         boutons.pack(fill="x", padx=12, pady=(12, 2))
-        ttk.Button(
-            boutons, text="Lire maintenant", style="Accent.TButton",
-            command=self.read_zones_now,
-        ).pack(side="left")
-        ttk.Button(boutons, text="Zones calculées", command=self.reset_zones).pack(
-            side="left", padx=8
-        )
-        ttk.Button(
-            boutons, text="Choix automatique", command=self.auto_zone
-        ).pack(side="left")
+        # Les commandes sont retenues par clé, et les clés sont celles de
+        # `LOCKED_WHILE_MEASURING`. Une seule table pour le libellé, le cadenas
+        # et l'état : un bouton oublié resterait cliquable pendant la mesure
+        # sans que rien ne le signale.
+        self._zone_buttons: dict[str, ttk.Button] = {}
+        self._zone_labels_texts: dict[str, str] = {}
+        self._zone_tips: dict[str, Tooltip] = {}
+
+        def commande(parent: ttk.Frame, clé: str, libellé: str, action: Any, **kw: Any) -> None:
+            bouton = ttk.Button(parent, text=libellé, command=action, **kw)
+            bouton.pack(side="left", padx=kw.pop("padx", 0) or 0)
+            self._zone_buttons[clé] = bouton
+            self._zone_labels_texts[clé] = libellé
+            self._zone_tips[clé] = Tooltip(bouton)
+
+        commande(boutons, "read_now", "Lire maintenant", self.read_zones_now,
+                 style="Accent.TButton")
+        commande(boutons, "reset", "Zones calculées", self.reset_zones)
+        self._zone_buttons["reset"].pack_configure(padx=8)
+        commande(boutons, "auto", "Choix automatique", self.auto_zone)
         tracer = ttk.Frame(self._zones)
         tracer.pack(fill="x", padx=12, pady=(0, 6))
         for clé, libellé in (
@@ -550,9 +564,18 @@ class RubinApp:
             ("tracker", "Tracer le suivi"),
             ("choice", "Tracer le choix"),
         ):
-            ttk.Button(tracer, text=libellé, command=self._pick(clé)).pack(
-                side="left", padx=(0, 8)
-            )
+            commande(tracer, f"pick_{clé}", libellé, self._pick(clé))
+            self._zone_buttons[f"pick_{clé}"].pack_configure(padx=(0, 8))
+        # La même raison que l'infobulle, mais VISIBLE sans survoler quoi que ce
+        # soit. Une infobulle ne se découvre qu'en cherchant, or celui qui vient
+        # ici pour régler sa zone doit apprendre tout de suite qu'il ne le peut
+        # pas maintenant, et pourquoi.
+        self._zones_verrou = ttk.Label(
+            self._zones, text="", style="Alerte.TLabel", anchor="w", justify="left",
+            wraplength=400,
+        )
+        self._zones_verrou.pack(fill="x", padx=12, pady=(0, 4))
+
         self._avertissement = ttk.Label(
             self._zones, text="", style="Alerte.TLabel", anchor="w", justify="left",
             wraplength=400,
@@ -1258,6 +1281,27 @@ class RubinApp:
             self._titre.config(text="En attente du jeu")
             self._sous_titre.config(text="lancez Black Desert, puis jouez")
             self._surveillance.config(text="")
+        self._lock_zone_controls(running)
+
+    def _lock_zone_controls(self, locked: bool) -> None:
+        """Verrouille les commandes de zone pendant la mesure, et dit pourquoi.
+
+        Le cadenas est dans le libellé et l'explication dans une infobulle. Un
+        bouton seulement grisé serait le même silence que le reste : « pas
+        maintenant » et « cassé » se ressemblent beaucoup vus d'un clic sans
+        effet. Voir `zone_lock_reason`, qui porte la raison et sa mesure.
+        """
+        raison = zone_lock_reason() if locked else ""
+        for clé in LOCKED_WHILE_MEASURING:
+            bouton = self._zone_buttons.get(clé)
+            if bouton is None:  # pragma: pas de couverture
+                continue
+            bouton.config(
+                text=lock_label(self._zone_labels_texts[clé], locked),
+                state="disabled" if locked else "normal",
+            )
+            self._zone_tips[clé].update(raison)
+        self._zones_verrou.config(text=raison)
 
     def _show_progress(self, progress: Any) -> None:
         morceaux = [f"{progress.measured} mesurées"]
