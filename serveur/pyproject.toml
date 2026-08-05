@@ -27,7 +27,11 @@ dependencies = [
 postgres = ["psycopg[binary]>=3.1"]
 dev = [
   "pytest>=8.0",
-  "httpx2>=0.28",
+  # Exigé par le client de test de Starlette, qui fait `import httpx2 as
+  # httpx` et ne retombe sur `httpx` qu'à défaut. La borne disait `>=0.28`,
+  # qui est la numérotation de `httpx` : `httpx2` en est à la 2.9, donc
+  # elle n'excluait plus rien.
+  "httpx2>=2.9",
   "ruff>=0.6",
   "mypy>=1.11",
   "pip-audit>=2.7",
