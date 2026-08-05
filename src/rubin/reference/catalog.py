@@ -100,6 +100,50 @@ class Catalog:
         matches = self._by_name.get(language, {}).get(fold(name), [])
         return matches[0] if len(matches) == 1 else None
 
+    def resolve_in_chain(
+        self,
+        name: str,
+        chain: int | None,
+        language: str = "fr",
+        after_position: int | None = None,
+    ) -> QuestId | None:
+        """Retrouve une quête en sachant dans quelle chaîne le joueur se trouve.
+
+        C'est la levée d'ambiguïté annoncée depuis le début. 705 quêtes
+        principales sur 3 924, soit 18 %, partagent leur nom avec une autre :
+        « [Serendia] Boss des Fogans » en désigne trois. Le catalogue seul
+        refuse de trancher, et ces quêtes ne sont jamais mesurées.
+
+        La chaîne en cours suffit presque toujours à décider. Un joueur qui
+        vient de finir 21133/4 et voit apparaître un nom partagé fait
+        évidemment celui de la chaîne 21133, pas celui d'une chaîne qu'il n'a
+        jamais commencée.
+
+        Reste le cas des homonymes d'une **même** chaîne, que la chaîne seule ne
+        peut pas départager : 305 quêtes principales. `after_position` les
+        traite, en retenant celle qui suit immédiatement la dernière quête
+        connue.
+
+        Ce dernier recours est volontairement étroit. Il exige la position
+        exactement suivante, jamais une position plus loin : deviner un saut
+        reviendrait à attribuer une mesure à une quête que le joueur n'a
+        peut-être pas faite, ce qui est l'erreur qu'on refuse partout ailleurs.
+
+        Si rien ne départage, on refuse comme avant : mieux vaut une mesure
+        perdue qu'une mesure attribuée à la mauvaise quête.
+        """
+        exact = self.resolve(name, language)
+        if exact is not None or chain is None:
+            return exact
+        candidates = self._by_name.get(language, {}).get(fold(name), [])
+        in_chain = [quest_id for quest_id in candidates if quest_id.chain == chain]
+        if len(in_chain) == 1:
+            return in_chain[0]
+        if after_position is None:
+            return None
+        expected = [q for q in in_chain if q.position == after_position + 1]
+        return expected[0] if len(expected) == 1 else None
+
     def resolve_partial(self, name: str, language: str = "fr") -> QuestId | None:
         """Retrouve une quête dont le nom affiché a perdu son début.
 
@@ -131,7 +175,13 @@ class Catalog:
         }
         return next(iter(found)) if len(found) == 1 else None
 
-    def resolve_lines(self, lines: Sequence[str], language: str = "fr") -> QuestId | None:
+    def resolve_lines(
+        self,
+        lines: Sequence[str],
+        language: str = "fr",
+        chain: int | None = None,
+        after_position: int | None = None,
+    ) -> QuestId | None:
         """Retrouve une quête à partir de lignes dont on ignore où le nom s'arrête.
 
         Le bandeau n'affiche pas toujours que le nom. Sur un bandeau d'objectif,
@@ -146,7 +196,9 @@ class Catalog:
         bonne réponse.
         """
         for count in range(len(lines), 0, -1):
-            found = self.resolve(" ".join(lines[:count]), language)
+            found = self.resolve_in_chain(
+                " ".join(lines[:count]), chain, language, after_position
+            )
             if found is not None:
                 return found
         # Rien d'exact : le nom affiché a peut-être perdu son préfixe de région,
