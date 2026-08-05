@@ -82,11 +82,19 @@ class MeasurePayload:
 
 @dataclass(frozen=True)
 class SessionPayload:
-    """Un lot de mesures, envoyé en fin de session.
+    """Un lot de mesures.
 
-    En fin de session et non au fil de l'eau : cela évite toute requête réseau
-    pendant que le joueur joue, et permet de dédupliquer localement avant
-    d'envoyer.
+    Un lot et non une mesure isolée : le regroupement permet de dédupliquer
+    localement avant d'envoyer, et laisse au client le choix du moment.
+
+    ⚠️ Ce commentaire a longtemps affirmé qu'un lot partait « en fin de session,
+    ce qui évite toute requête réseau pendant que le joueur joue ». La seconde
+    moitié était fausse : `ReferenceClient` interroge le serveur à chaque quête,
+    pendant la partie, pour afficher les temps des autres. Le fil qui joue fait
+    donc déjà du réseau, et un lot envoyé après chaque quête terminée n'ouvre
+    aucune catégorie de risque nouvelle. Voir `upload.py`, qui n'envoie que les
+    mesures jamais transmises pour éviter le seul vrai danger, le double
+    comptage.
     """
 
     player: str
