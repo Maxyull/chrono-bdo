@@ -8,6 +8,7 @@ logent les cas tordus.
 
 from __future__ import annotations
 
+import unicodedata
 from collections.abc import Iterable, Sequence
 from dataclasses import replace
 from typing import Final
@@ -104,6 +105,52 @@ def _in_banner_column(title: TextLine, below: Sequence[TextLine]) -> list[TextLi
     return retained
 
 
+def is_foreign_noise(text: str) -> bool:
+    """Cette ligne est-elle d'un alphabet que le jeu n'affiche pas ici ?
+
+    Le moteur de reconnaissance est livré avec le modèle **chinois**, seul
+    modèle empaqueté par `rapidocr_onnxruntime`. Il lit très bien le français,
+    mesuré à 0,96 / 0,99 sur les bandeaux réels, mais son alphabet contient
+    aussi les idéogrammes, et il en produit sur du décor ou du bruit.
+
+    Or un client français ou anglais de Black Desert n'affiche **jamais** un
+    idéogramme. Une ligne qui n'a pas une seule lettre latine ne peut donc être
+    ni un titre de bandeau, ni un nom de quête : c'est du bruit, et le seul
+    endroit où elle peut encore nuire est le recollage des noms longs, où elle
+    se glisserait au milieu et rendrait le nom irrésoluble.
+
+    ⚠️ **Il faut les deux conditions**, un caractère d'un autre alphabet ET
+    aucune lettre latine, et c'est le point délicat.
+
+    Refuser toute ligne sans lettre latine serait plus simple et serait faux :
+    une ligne purement numérique serait jetée avec, or un nom de quête dont la
+    fin passe à la ligne peut très bien s'y réduire. C'est le cas que la PR #62
+    vient de traiter pour les chiffres romains, qui ne s'en sortaient que parce
+    que `I`, `V` et `X` sont des lettres latines. Le chiffre arabe, lui,
+    n'aurait rien pour se défendre.
+
+    Refuser sur le seul idéogramme serait faux dans l'autre sens : une ligne
+    mixte, où la reconnaissance a glissé un idéogramme au milieu du vrai nom,
+    se verrait jetée alors qu'elle porte l'essentiel.
+
+    Mesuré sur les 51 bandeaux réels du 5 août 2026, 173 lignes et 2 560
+    caractères : **2 caractères hors français**, deux fois le même idéogramme
+    seul sur sa ligne, et **aucun dans un nom de quête**. Le gain d'aujourd'hui
+    est donc nul, et c'est écrit ici pour que personne ne croie avoir corrigé
+    une panne. Ce garde-fou empêche un cas qui ne s'est pas encore produit.
+
+    C'est aussi la mesure qui a fait renoncer au modèle latin : dix mégaoctets
+    de plus dans le dépôt et dans l'exécutable, pour deux caractères sur deux
+    mille cinq cent soixante, dont aucun ne coûtait une mesure. Les accents, eux,
+    ne changeraient rien non plus : les noms sont comparés sans accents des deux
+    côtés, c'est le troisième piège de l'ETAT.
+    """
+    latine = any("a" <= caractere <= "z" for caractere in fold(text))
+    if latine:
+        return False
+    return any(unicodedata.category(caractere) == "Lo" for caractere in text)
+
+
 def _match_title(text: str) -> BannerKind | None:
     # Les titres sont écrits lisiblement et normalisés ici, plutôt que stockés
     # sous leur forme normalisée : celle-ci n'a ni espaces ni accents, donc
@@ -156,7 +203,13 @@ def parse_banner_lines(
     kept = [
         replace(line, text=line.text.strip())
         for line in lines
-        if line.score >= min_line_score and line.text.strip()
+        if line.score >= min_line_score
+        and line.text.strip()
+        # Une ligne d'un alphabet que le client n'affiche pas est du bruit, et
+        # elle nuit précisément là où elle se glisse : au milieu d'un nom long
+        # recollé. Voir `is_foreign_noise`, qui dit aussi ce que cela ne corrige
+        # pas.
+        and not is_foreign_noise(line.text)
     ]
     if len(kept) < 2:  # il faut au moins un titre et un nom
         return None

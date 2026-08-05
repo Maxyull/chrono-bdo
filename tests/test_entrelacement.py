@@ -26,6 +26,7 @@ from __future__ import annotations
 import pytest
 
 from rubin.reading import BannerKind, TextLine, parse_banner_lines
+from rubin.reading.parsing import is_foreign_noise
 from rubin.reference import Catalog, QuestId
 
 
@@ -317,3 +318,63 @@ def test_les_noms_separes_retombent_sur_les_bonnes_quetes() -> None:
         if (lu := parse_banner_lines(lignes)) is not None and lu.quest_name in attendus
     }
     assert obtenus == attendus
+
+
+class TestAlphabetEtranger:
+    """Les lignes d'un alphabet que le client français n'affiche jamais.
+
+    Le moteur est livré avec le modèle chinois, seul modèle empaqueté par
+    `rapidocr_onnxruntime`. Il lit le français à 0,96 / 0,99, mais il produit
+    parfois un idéogramme sur du décor. Un client français ou anglais n'en
+    affiche aucun : ces lignes-là sont donc du bruit, toujours.
+    """
+
+    def test_une_ligne_d_ideogrammes_seuls_est_du_bruit(self) -> None:
+        assert is_foreign_noise("品")
+
+    def test_une_ligne_francaise_ne_l_est_jamais(self) -> None:
+        assert not is_foreign_noise("[Mediah] Intentions inconnues")
+        assert not is_foreign_noise("Quete accomplie")
+
+    def test_une_ligne_mixte_est_gardee_pour_sa_partie_latine(self) -> None:
+        # Le refus porte sur les DEUX conditions. Écrit sur la seule présence
+        # d'un idéogramme, il jetterait un vrai nom pour un caractère parasite.
+        assert not is_foreign_noise("[Mediah] Terre des 品 tenebres")
+
+    def test_un_chiffre_seul_n_est_pas_du_bruit(self) -> None:
+        """Régression attendue : la fin d'un nom partie à la ligne.
+
+        C'est le cas que la PR #62 a traité pour les chiffres romains, qui ne
+        s'en sortaient que parce que `I`, `V` et `X` sont des lettres latines.
+        Un critère écrit « aucune lettre latine, donc du bruit » aurait jeté un
+        chiffre arabe isolé, qui est parfois la dernière ligne d'un nom long.
+        Le nom recollé y perdrait sa fin et ne se résoudrait plus.
+        """
+        assert not is_foreign_noise("2")
+        assert not is_foreign_noise("16")
+
+    def test_regression_l_ideogramme_de_la_vignette_cfbbb896(self) -> None:
+        """Régression : l'idéogramme relu sur une vraie vignette du 5 août 2026.
+
+        Mesuré sur les 51 bandeaux réels de cette journée, 173 lignes et
+        2 560 caractères : deux caractères hors français, tous deux le même
+        idéogramme seul sur sa ligne, dont celui-ci, relu sur la vignette
+        `cfbbb896250632c0` gardée dans le dossier des lectures ratées.
+
+        Aucun des deux n'était dans un nom de quête, donc aucun n'a coûté de
+        mesure. Ce test fige le cas là où il aurait pu nuire : glissé entre le
+        nom et sa suite, l'idéogramme aurait été recollé au milieu, et
+        « [Hebdo] Echange d'arme du Voile 品 noir » ne se résout en rien.
+        """
+        lignes = [
+            ligne("Queteaccomplie", 0.959, 148.5, 288.0, 31.5, 50.5),
+            ligne("[Hebdo] Echange d’arme du Voile", 0.943, 103.5, 330.0, 48.5, 68.5),
+            ligne("品", 0.812, 110.0, 128.0, 60.0, 76.0),
+            ligne("noir", 0.997, 103.5, 133.0, 68.5, 83.0),
+        ]
+
+        lecture = parse_banner_lines(lignes)
+
+        assert lecture is not None
+        assert lecture.kind is BannerKind.COMPLETED
+        assert lecture.quest_name == "[Hebdo] Echange d’arme du Voile noir"
