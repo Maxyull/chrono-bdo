@@ -139,6 +139,13 @@ Pearl Abyss, ni approuvé par eux.
 
 MIT, voir [LICENSE](LICENSE).
 
+## Confidentialité
+
+Ce logiciel n'envoie rien sans qu'on le lui demande, et ne transmet jamais de
+pseudonyme, de position, de discussion, de capture d'écran ni d'horaire de jeu.
+Le détail de ce qui part et de ce qui ne part pas est publié dans la
+[politique de confidentialité](https://maxyull.fr/confidentialite.html).
+
 ## Politique de signature
 
 Le code de ce projet est écrit et relu par Maxime Lacoste, seul mainteneur. Il
@@ -148,6 +155,11 @@ sous licence MIT, sans composant propriétaire ni double licence commerciale.
 Les versions publiées sont construites par `empaquetage/construire.py` à partir
 de l'état du dépôt, et l'empreinte SHA-256 de chaque archive est publiée à côté
 d'elle.
+
+La signature de code est assurée par [SignPath.io](https://signpath.io/), au
+moyen d'un certificat fourni par la [SignPath Foundation](https://signpath.org/),
+qui l'offre gratuitement aux projets libres. **La demande est en cours** : tant
+qu'elle n'a pas abouti, ce qui suit s'applique.
 
 ⚠️ **L'exécutable n'est pas encore signé.** Windows et certains antivirus
 peuvent donc l'annoncer comme provenant d'un éditeur inconnu, ce qui est un
