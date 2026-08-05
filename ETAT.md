@@ -1,4 +1,4 @@
-# État du projet, au 5 août 2026 (0.4.0 publiée)
+# État du projet, au 5-6 août 2026 (v0.5.4 publiée)
 
 **À lire en entier avant de coder.** Ce fichier dit où en est Rubin, ce qui a
 été appris en conditions réelles, et ce qui reste. Les pièges consignés plus
@@ -22,10 +22,10 @@ les temps de référence des autres. La chaîne complète tient debout.
 | Panneau de suivi de quête | ✅ |
 | Liste des quêtes suivantes | ✅ trous et branches signalés |
 | Serveur, classement, envoi | ✅ **en ligne** |
-| Exécutable Windows | ✅ **0.4.0 publiée**, 59 Mo |
-| Vérification de version | ✅ le serveur annonce 0.4.0 |
-| Rétention des lectures ratées | ✅ local, envoi manuel |
-| Interface graphique | ✅ 3 onglets, zones réglables |
+| Exécutable Windows | ✅ **v0.5.4 publiée**, la fenêtre est dedans, double-clic suffit |
+| Vérification de version | ⚠️ le serveur annonce encore **0.4.0** (`RUBIN_LATEST` pas mis à jour depuis, voir plus bas) |
+| Rétention des lectures ratées | ✅ local, envoi manuel, **et image gardée à l'aveugle après deux minutes de silence** |
+| Interface graphique | ✅ 3 onglets, zones réglables, meilleur temps personnel, liste alphabétique |
 | Rattachement Discord | ⏸ en ligne, **503** faute d'identifiants |
 | Robot Discord de consultation | ⏸ écrit et testé, jamais lancé |
 
@@ -35,12 +35,20 @@ les temps de référence des autres. La chaîne complète tient debout.
 |---|---|
 | Serveur | **https://rubin.maxyull.fr** |
 | Dépôt | https://github.com/Maxyull/rubin-bdo |
-| Release | **v0.4.0**, https://github.com/Maxyull/rubin-bdo/releases |
+| Release | **v0.5.4**, https://github.com/Maxyull/rubin-bdo/releases |
 | Confidentialité | https://maxyull.fr/confidentialite.html |
 
 Le serveur tourne en systemd sur le VPS OVH, dans `/opt/rubin`, base Postgres
 dédiée, derrière Caddy. Redéploiement et mise à jour :
 `bash serveur/deploiement/deployer.sh`, rejouable sans rien détruire.
+
+⚠️ **Ce script ne met pas à jour `RUBIN_LATEST`.** Vérifié le 05/08/2026 au
+soir, en interrogeant directement le serveur : `GET /v1/version` répond encore
+`"derniere": "0.4.0"` après cinq releases publiées (v0.5.0 à v0.5.4). Un joueur
+qui lance `rubin verifier` ne voit donc pas qu'une mise à jour existe. La
+variable est lue depuis l'environnement du service (`RUBIN_LATEST`,
+`serveur/src/rubin_serveur/main.py`) : à mettre à jour sur le VPS et à
+redéployer, à chaque nouvelle release.
 
 ---
 
@@ -214,6 +222,61 @@ Il n'a aucun fond opaque, contrairement au bandeau. La luminance de toute la
 zone plafonnait à **19 sur 255** et la reconnaissance n'y trouvait rien.
 Étirement du contraste obligatoire avant toute lecture.
 
+### Piste ouverte, pas prouvée : une session ne mesure presque rien, alors qu'un témoin externe voit tout
+
+Constaté le 05/08/2026 au soir : cinq sessions consécutives n'ont vu que 0 à 2
+bandeaux, contre 14 à 47 vus par un témoin externe observant la même zone au
+même moment. Dix-sept causes ont été éliminées une par une, chacune par une
+mesure, pas par un raisonnement. Une corrélation forte est apparue avec le
+chat du jeu ouvert ou fermé (fermé pendant les sessions aveugles, rouvert
+juste avant que la mesure reprenne), mais **jamais prouvée par un test strict
+fermé-ouvert-fermé dans une même session**. C'est aujourd'hui la plus grosse
+inconnue du projet.
+
+Les outils construits ce soir pour la prochaine fois que ça arrive : la
+fenêtre affiche en direct `images capturées / bandeaux vus / lectures`
+(`Watching`, `interface/presentation.py`), une image est gardée sur le disque
+dans `echecs/` après deux minutes de silence même sans lecture ratée
+(`_keep_if_blind`, `interface/session.py`), et les captures qui se répètent
+sont comptées (`WatchStats.repeats`, `watching.py`).
+
+---
+
+## Les pièges de l'empaquetage
+
+Deux de plus, trouvés non pas en jouant mais en **publiant**, à travers les
+propres tentatives d'installation de Maxime. Ils ont coûté trois releases
+correctives (v0.5.0 à v0.5.2 pour le premier, une release de plus pour le
+second) avant d'être identifiés.
+
+### 9. L'archive publiée en LZMA est illisible par les outils Windows natifs
+
+`ZIP_LZMA` compresse mieux que `ZIP_DEFLATED`, mais ni l'explorateur Windows
+ni `Expand-Archive` de PowerShell ne savent le décompresser : ce sont des
+outils limités à la méthode `Deflate`, la seule que le format zip garantit
+vraiment. Trois releases (v0.5.0 à v0.5.2) publiées avant de trouver la cause,
+après avoir éliminé un téléchargement tronqué (sha256 vérifié), un antivirus
+(exclusion ajoutée, rien n'a changé), et le marquage Windows « vient
+d'internet » (retiré, rien n'a changé). `Expand-Archive` a fini par rendre le
+message d'erreur exact citant l'algorithme non supporté ; l'explorateur
+Windows ne rendait qu'une erreur générique (`_asyncio.pyd`, 0x80004005).
+
+Corrigé en `empaquetage/construire.py` : `zipfile.ZIP_DEFLATED,
+compresslevel=9`.
+
+### 10. `console=True` ouvrait un terminal noir à côté de la fenêtre
+
+Un double-clic sur l'exécutable ouvrait une fenêtre de console vide en plus de
+la fenêtre Tk, que le joueur devait fermer lui aussi sans en comprendre
+l'utilité. Rien ne la justifiait pour ce chemin : la fenêtre graphique dit
+tout ce qu'il faut. Corrigé par `console=False` dans `rubin.spec`, avec
+`AttachConsole` dans `empaquetage/point_entree.py` pour que les commandes de
+terminal (`rubin verifier`, `rubin suivre`, `rubin echecs`) gardent leur texte
+quand elles sont lancées depuis un vrai terminal. ⚠️ Vérifié que
+`AttachConsole` réussit techniquement ; **pas vérifié qu'un vrai terminal
+humain affiche le texte**, les outils automatisés utilisés pour tester n'ayant
+pas de vraie console à eux pour le prouver.
+
 ---
 
 ## Décisions de conception, et pourquoi
@@ -332,8 +395,10 @@ Ces trous se comblent par l'usage, pas par de la programmation :
   lesquelles, mais pas lesquelles s'excluent entre elles : deux carrefours
   indépendants y sont indiscernables d'un choix à quatre branches. Deux
   branches jamais faites par la même personne sont probablement exclusives.
-- **La base ne contient que 11 mesures**, toutes d'un seul joueur sur une seule
-  chaîne. Ce sont des mesures, pas encore des références.
+- **La base ne contient encore que peu de matière.** Vérifié en direct le
+  05/08/2026 au soir via `GET /v1/couverture` : **30 quêtes mesurées**, seuil
+  « bien mesurée » à 5 échantillons, **aucune ne l'atteint encore**
+  (`well_measured: 0`). Ce sont des mesures, pas encore des références.
 
 ---
 
