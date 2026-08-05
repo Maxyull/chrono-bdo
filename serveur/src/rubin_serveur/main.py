@@ -29,7 +29,7 @@ from fastapi.responses import RedirectResponse
 from rubin.protocol import PROTOCOL_VERSION, SessionPayload
 
 from .discord import DiscordConfig, authorize_url, exchange_code, read_state
-from .storage import Storage
+from .storage import MIN_SAMPLES_PER_QUEST, Storage
 
 #: Nombre maximal de mesures dans un lot. Une session très longue en produit
 #: quelques centaines : au-delà de mille, c'est un envoi fabriqué, ou un
@@ -156,6 +156,42 @@ def submit(payload: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
         )
     )
     return {"enregistrees": stored, "refusees": refused}
+
+
+@app.get("/v1/quetes")
+def quest_ranking(
+    limit: int = 10, min_samples: int = MIN_SAMPLES_PER_QUEST
+) -> dict[str, Any]:
+    """Les quêtes les plus rapides, une par une, sur leur temps médian.
+
+    C'est le déplacement de l'unité primaire demandé le 05/08/2026 : `/v1/chaines`
+    classe des **chaînes**, et une chaîne moyenne ses quêtes rapides et ses
+    quêtes lentes. Pour décider quoi faire, il faut le temps de **chaque** quête.
+
+    ⚠️ **Le serveur ne rend aucun nom de quête, et ce n'est pas un oubli.** Il ne
+    connaît que `chaine/position` : les noms sont un fait du catalogue, que le
+    client porte et que le serveur n'a jamais vu. Les afficher ici demanderait au
+    serveur d'affirmer ce qu'il ne peut pas vérifier, et rien ne lui garantit que
+    tous les clients lisent le même référentiel, ni la même langue.
+
+    ⚠️ **`min_samples` vaut trois par défaut, jamais un.** Voir
+    `MIN_SAMPLES_PER_QUEST` : la base contient vingt-et-une mesures, presque
+    toutes uniques par quête, donc la réponse d'aujourd'hui est une liste
+    **vide**. C'est la bonne réponse : « personne n'a encore assez mesuré » est
+    vrai, là où un classement sans seuil trierait le bruit et paraîtrait précis.
+
+    Le plancher reste à un, comme pour `/v1/chaines` : qui le demande
+    explicitement sait ce qu'il fait, et chaque ligne porte de toute façon son
+    nombre de mesures. C'est le **défaut** qui protège, pas la borne.
+    """
+    limit = max(1, min(limit, 200))
+    seuil = max(1, min_samples)
+    return {
+        "quetes": [
+            asdict(s) | {"quete": s.quest} for s in storage.ranked_quests(limit, seuil)
+        ],
+        "min_echantillons": seuil,
+    }
 
 
 @app.get("/v1/quetes/{chain}/{position}")

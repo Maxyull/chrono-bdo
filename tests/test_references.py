@@ -6,7 +6,15 @@ import pytest
 import requests
 
 from rubin.reference import QuestId
-from rubin.references import ChainReference, Coverage, QuestReference, ReferenceClient
+from rubin.references import (
+    MIN_SAMPLES_PER_QUEST,
+    ChainReference,
+    Coverage,
+    QuestReference,
+    RankedQuest,
+    ReferenceClient,
+    ServerHealth,
+)
 
 
 class FakeResponse:
@@ -170,3 +178,158 @@ class TestCouverture:
         assert client.coverage() == Coverage(
             well_measured=0, lightly_measured=11, threshold=0, measured_quests=0
         )
+
+
+#: La réponse réelle de https://rubin.maxyull.fr/sante au 05/08/2026.
+SANTE = {
+    "etat": "ok",
+    "protocole": 1,
+    "sessions": 4,
+    "measures": 21,
+    "players": 2,
+    "linked": 0,
+}
+
+
+class TestClassementParQuete:
+    def test_lit_les_lignes_du_classement(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        corps = {
+            "quetes": [
+                {
+                    "chain": 21139,
+                    "position": 46,
+                    "median_seconds": 90.0,
+                    "samples": 11,
+                    "fastest_seconds": 9.0,
+                    "quete": "21139/46",
+                }
+            ],
+            "min_echantillons": 3,
+        }
+        client = client_with(monkeypatch, [FakeResponse(200, corps)])
+
+        classement = client.fastest_quests()
+
+        assert classement == (RankedQuest(21139, 46, 90.0, 11),)
+        assert classement[0].quest_id == QuestId(21139, 46)
+
+    def test_une_liste_vide_n_est_pas_une_absence_de_reponse(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Régression : les deux se ressemblent et ne disent pas la même chose.
+
+        Cas réel du 05/08/2026, et c'est l'état du jour : la base contient
+        vingt-et-une mesures, presque toutes uniques par quête, donc **aucune**
+        n'atteint le seuil de trois. Le serveur rend une liste vide, ce qui est
+        une réponse, et la fenêtre doit dire « aucune quête n'a encore assez de
+        mesures ».
+
+        Le même jour, le serveur en production ne connaissait pas encore cette
+        adresse et rendait 404, ce qui est une absence de réponse, et la fenêtre
+        doit dire « le serveur ne l'a pas donné ». Confondre les deux ferait
+        affirmer que personne n'a assez mesuré alors qu'on n'en sait rien.
+        """
+        vide = client_with(monkeypatch, [FakeResponse(200, {"quetes": [], "min_echantillons": 3})])
+        assert vide.fastest_quests() == ()
+
+        périmé = client_with(monkeypatch, [FakeResponse(404)])
+        assert périmé.fastest_quests() is None
+
+    def test_demande_le_seuil_strictement_superieur_a_un(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        vu: list[str] = []
+
+        def faux_get(url: str, **_kwargs: Any) -> Any:
+            vu.append(url)
+            return FakeResponse(200, {"quetes": []})
+
+        monkeypatch.setattr(requests, "get", faux_get)
+        ReferenceClient("https://exemple.test").fastest_quests()
+
+        assert MIN_SAMPLES_PER_QUEST > 1
+        assert f"min_samples={MIN_SAMPLES_PER_QUEST}" in vu[0]
+
+    def test_ecarte_une_ligne_malformee_sans_perdre_les_autres(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Ne lève jamais : une ligne écartée coûte une ligne, une exception
+        # coûterait le classement entier et le fil qui l'a demandé.
+        corps = {
+            "quetes": [
+                {"chain": "pas un nombre", "position": 1, "median_seconds": 10.0},
+                {"chain": 21139, "position": 46, "median_seconds": 90.0, "samples": 11},
+            ]
+        }
+        client = client_with(monkeypatch, [FakeResponse(200, corps)])
+        assert client.fastest_quests() == (RankedQuest(21139, 46, 90.0, 11),)
+
+    def test_ne_demande_qu_une_fois_le_meme_classement(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client = client_with(monkeypatch, [FakeResponse(200, {"quetes": []})])
+        client.fastest_quests()
+        # Un second appel réseau lèverait StopIteration : la liste est épuisée.
+        assert client.fastest_quests() == ()
+
+    def test_un_serveur_injoignable_devient_une_absence(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client = client_with(monkeypatch, [requests.ConnectionError("coupé")])
+        assert client.fastest_quests() is None
+        assert client.failures == 1
+
+    def test_ne_demande_rien_sans_serveur(self) -> None:
+        assert ReferenceClient(None).fastest_quests() is None
+
+
+class TestEtatDuServeur:
+    def test_lit_la_sante(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        client = client_with(monkeypatch, [FakeResponse(200, SANTE)])
+        assert client.health() == ServerHealth(
+            protocol=1, sessions=4, measures=21, players=2
+        )
+
+    def test_un_point_d_entree_manquant_n_est_pas_une_panne_de_connexion(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Régression : le serveur joignable mais périmé, vu le 05/08/2026.
+
+        `rubin.maxyull.fr` répondait parfaitement, mais rendait 404 sur
+        `/v1/couverture` parce qu'il tournait sur une version antérieure au
+        point d'entrée. Annoncer « le serveur n'a pas répondu » aurait envoyé
+        chercher l'erreur exactement du mauvais côté, alors que le remède était
+        un redéploiement.
+
+        Le témoin de connexion ne regarde donc que `/sante`, qui existe depuis
+        le premier jour : le serveur reste **connecté**, et c'est chaque
+        compteur qui dit séparément qu'il n'a pas eu sa réponse.
+        """
+        client = client_with(
+            monkeypatch, [FakeResponse(200, SANTE), FakeResponse(404), FakeResponse(404)]
+        )
+
+        assert client.health() is not None  # connecté
+        assert client.coverage() is None  # mais ce compteur-là n'a rien
+        assert client.fastest_quests() is None  # et celui-ci non plus
+        assert client.failures == 0  # aucune panne à signaler
+
+    def test_ne_leve_jamais_quand_le_serveur_est_injoignable(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client = client_with(monkeypatch, [requests.ConnectionError("coupé")])
+        assert client.health() is None
+
+    def test_ne_la_demande_qu_une_fois(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        client = client_with(monkeypatch, [FakeResponse(200, SANTE)])
+        client.health()
+        assert client.health() is not None
+
+    def test_ne_demande_rien_sans_serveur(self) -> None:
+        assert ReferenceClient(None).health() is None
+
+    def test_comble_les_champs_absents_sans_broncher(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client = client_with(monkeypatch, [FakeResponse(200, {"etat": "ok"})])
+        assert client.health() == ServerHealth(0, 0, 0, 0)

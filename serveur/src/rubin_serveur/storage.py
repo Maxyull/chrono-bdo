@@ -46,6 +46,27 @@ from sqlalchemy.pool import StaticPool
 #: exactement ce qu'il faut montrer.
 WELL_MEASURED_AT = 5
 
+#: Nombre de mesures en dessous duquel une quête n'entre pas au classement.
+#:
+#: **Trois, et le raisonnement n'est pas un arrondi de confort.** En dessous, la
+#: médiane n'est pas une médiane :
+#:
+#: - sur **une** mesure, la « médiane » est cette mesure. Le classement rendrait
+#:   le temps d'une personne, présenté comme celui de tout le monde ;
+#: - sur **deux**, c'est la moyenne des deux, donc un passage chanceux tire le
+#:   résultat de la moitié de son écart. Un tricheur, ou simplement un joueur
+#:   qui a trouvé son objectif au premier coup, prend la tête à lui seul ;
+#: - à partir de **trois**, la médiane est une valeur réellement observée, au
+#:   milieu, et aucune mesure isolée ne peut la devenir.
+#:
+#: Le relevé qui a fait écrire cette constante est réel, pris en production le
+#: 05/08/2026 : la chaîne 21403 tenait la tête du classement des chaînes à
+#: **198,8 quêtes/heure sur UNE seule mesure**. Un classement de chaînes sur peu
+#: de mesures est vague ; un classement de quêtes sur peu de mesures est faux et
+#: convaincant, parce que la première place ira toujours à la quête mesurée une
+#: fois par quelqu'un de chanceux.
+MIN_SAMPLES_PER_QUEST = 3
+
 metadata = MetaData()
 
 sessions = Table(
@@ -286,6 +307,47 @@ class Storage:
             ]
         stats = [s for chain in chains if (s := self.chain_stats(chain)) is not None]
         stats.sort(key=lambda s: s.quests_per_hour, reverse=True)
+        return stats[:limit]
+
+    def ranked_quests(
+        self, limit: int = 50, min_samples: int = MIN_SAMPLES_PER_QUEST
+    ) -> list[QuestStats]:
+        """Les quêtes les plus rapides, une par une, sur leur temps médian.
+
+        C'est la bonne unité pour décider quoi faire, et `ranked_chains` ne la
+        donne pas : une chaîne moyenne ses quêtes rapides et ses quêtes lentes,
+        alors qu'on choisit quête par quête. C'est aussi ce que le planificateur
+        consommera.
+
+        ⚠️ **Le seuil compte ici plus que partout ailleurs.** Voir
+        `MIN_SAMPLES_PER_QUEST` : en dessous de trois mesures, la première place
+        revient mécaniquement à la quête qu'une seule personne a mesurée une
+        seule fois, et la liste entière est fausse tout en paraissant précise.
+
+        ⚠️ **La médiane, jamais le record**, comme partout dans ce projet. Un
+        temps envoyé par un client local est une affirmation : un tricheur
+        s'empare d'un record en un envoi, il ne déplace pas une médiane.
+
+        Le tri retombe sur la chaîne puis la position à durée égale. Sans cela,
+        deux quêtes au même temps changeraient de place d'un appel à l'autre au
+        gré de l'ordre rendu par la base, et une liste qui bouge sans que rien
+        n'ait changé se lit comme une liste qui ment.
+        """
+        with self.engine.connect() as connection:
+            quests = [
+                (row.chain, row.position)
+                for row in connection.execute(
+                    select(measures.c.chain, measures.c.position, func.count().label("n"))
+                    .group_by(measures.c.chain, measures.c.position)
+                    .having(func.count() >= min_samples)
+                )
+            ]
+        stats = [
+            s
+            for chain, position in quests
+            if (s := self.quest_stats(chain, position)) is not None
+        ]
+        stats.sort(key=lambda s: (s.median_seconds, s.chain, s.position))
         return stats[:limit]
 
     def coverage(self) -> Coverage:

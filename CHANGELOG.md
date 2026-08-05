@@ -282,6 +282,97 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
   C'était déjà faux, `ReferenceClient` interroge le serveur à chaque quête pour
   afficher les temps des autres.
 
+- **Un classement PAR QUÊTE, `GET /v1/quetes`, et son onglet dans la fenêtre.**
+  Le serveur classait des **chaînes** et rendait **une** quête à la fois ; il
+  n'existait aucun classement de quêtes. C'est pourtant la bonne unité : une
+  chaîne moyenne ses quêtes rapides et ses quêtes lentes, alors qu'on choisit
+  quête par quête, et c'est ce que le planificateur consommera.
+
+  ⚠️ **`min_samples` vaut trois par défaut, et jamais un.** Un classement de
+  chaînes sur peu de mesures est vague ; un classement de quêtes sur peu de
+  mesures est **faux et convaincant**. Relevé en production le 05/08/2026 : la
+  chaîne 21403 tenait la tête à 198,8 quêtes/heure **sur une seule mesure**. Le
+  raisonnement derrière le trois : sur une mesure, la « médiane » est cette
+  mesure ; sur deux, c'est leur moyenne, donc un passage chanceux tire le
+  résultat de la moitié de son écart ; à partir de trois, la médiane est une
+  valeur réellement observée, qu'aucune mesure isolée ne peut devenir.
+
+  Le classement se fait sur la **médiane**, jamais sur le record : `ETAT.md`
+  tranche, et l'arbitrage de Maxime sur le contraire n'est pas rendu. Chaque
+  ligne porte son nombre de mesures. Quand rien n'atteint le seuil, la fenêtre
+  le **dit** au lieu d'afficher un tableau vide, et c'est l'état du jour : la
+  base contient vingt-et-une mesures, presque toutes uniques par quête.
+
+  ⚠️ **Le serveur ne rend aucun nom de quête**, seulement `chaine/position` :
+  les noms sont un fait du catalogue, que le client porte. La résolution se fait
+  donc à l'affichage, comme la soustraction des quêtes grises.
+
+- **Chercher une quête par son nom, dans le même onglet.** Trois lettres
+  suffisent, la comparaison passe par `fold` des deux côtés : le catalogue porte
+  « [Calpheon] Ce qui s'est passé jusqu'à présent » et personne ne tape cela.
+  Un clic montre la médiane, le nombre de mesures et le meilleur temps connu, ou
+  « jamais mesurée » en toutes lettres, jamais une colonne vide qui se lirait
+  « instantané ». Quêtes principales seulement : proposer les 15 075 autres
+  ferait cliquer sur des quêtes qui n'auront jamais de temps.
+
+- **Un mode démonstration, purement d'affichage.** Pour voir le tableau rempli
+  avant d'avoir assez de mesures. Il ne s'allume pas tout seul, chaque ligne
+  porte **TEST** en clair, un bandeau le répète au-dessus, et il s'efface de
+  lui-même dès que le vrai classement est complet.
+
+  ⛔ **Aucune donnée fabriquée n'entre en base ni dans un lot.** La forme retenue
+  est la garantie elle-même : ces lignes sont des chaînes de caractères déjà
+  mises en forme, jamais des mesures, donc il n'existe à aucun instant un objet
+  qui pourrait se glisser dans un envoi. « Ça disparaîtra à dix vraies entrées »
+  n'aurait rien gardé : ce qui disparaît d'un affichage reste en base et
+  continue de peser. Un test verrouille les trois portes.
+
+- **Un témoin de connexion au serveur**, sous le chronomètre, visible depuis
+  n'importe quel onglet. Trois états distincts, parce qu'ils appellent trois
+  gestes différents : aucun serveur configuré, ce qui est un choix et non une
+  panne ; configuré mais injoignable ; connecté, avec l'adresse. Un mot **et**
+  une couleur, jamais la couleur seule.
+
+  ⚠️ **Un point d'entrée manquant n'est pas une panne de connexion.** Cas réel
+  du 05/08/2026 : le serveur répondait parfaitement mais rendait 404 sur
+  `/v1/couverture`, faute d'avoir été redéployé. Le témoin ne regarde que
+  `/sante` ; c'est à chaque compteur de dire séparément qu'il n'a pas eu sa
+  réponse.
+
+- **Le compteur de couverture distingue les quêtes hors périmètre.** À côté des
+  trois tranches, sur sa propre ligne : « + 15 075 quêtes non principales, que
+  Rubin ne mesure pas ». Le catalogue en connaît 18 999, dont 3 924 principales
+  en 349 chaînes.
+
+  ⚠️ **Ce nombre ne rejoint jamais le total de la couverture**, dont le
+  dénominateur reste 3 924. Rubin ne mesure que les principales, et c'est
+  délibéré : chronométrer une quête répétable n'a aucun sens puisqu'on la refait
+  indéfiniment. Les mêler donnerait un chiffre décourageant **et** faux.
+
+### Corrigé
+
+- **L'onglet Zones lit tout seul quand on y entre**, au lieu d'exiger un clic
+  sur « Lire maintenant » pour montrer quoi que ce soit. Ouvrir un onglet devait
+  suffire à voir l'état.
+
+  ⚠️ La lecture ne pouvait pas devenir automatique telle quelle : elle coûte
+  environ une seconde et demie, la reconnaissance travaillant sur 349x115 puis
+  340x380, et elle tournait **sur le fil de Tk**. La rendre automatique sans la
+  déporter aurait figé la fenêtre à chaque bascule d'onglet, ce qui est pire que
+  le bouton. Elle part donc dans un fil, qui ne touche à aucun composant et
+  passe par la file de messages, avec une seule lecture à la fois et un
+  « lecture en cours… » affiché sur-le-champ. Le bouton reste : c'est le geste
+  naturel quand on vient de tracer une zone.
+
+- **La ligne d'état du nouvel onglet était présente et invisible**, trouvée en
+  éprouvant la fenêtre et non en la relisant : son contenu demandait 628 pixels
+  là où la fenêtre en offre 505, et Tk n'affiche simplement pas ce qui dépasse.
+  C'est le message le plus important de l'onglet qui disparaissait, celui qui
+  dit « aucune quête n'a encore assez de mesures pour être classée ». L'onglet
+  défile désormais, et la ligne d'état est posée **avant** le tableau. Même
+  défaut que les boutons invisibles de l'onglet Zones, au même endroit du
+  raisonnement.
+
 ## [0.4.0] - 2026-08-05
 
 La première version qu'on peut mettre entre les mains d'un testeur : elle ne

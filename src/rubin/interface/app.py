@@ -42,8 +42,8 @@ from ..capture import (
 )
 from ..placement import choose, conflicts
 from ..protocol import PlayerIdentity
-from ..reference import Catalog
-from ..references import ReferenceClient
+from ..reference import Catalog, Quest
+from ..references import RANKING_LIMIT, RankedQuest, ReferenceClient
 from ..settings import LANGUAGES, LIMITS, load, save
 from ..timing import Quality
 from ..upcoming import upcoming
@@ -52,18 +52,30 @@ from .help import EXAMPLES, HelpWindow
 from .picker import ZonePicker, png_data
 from .presentation import (
     COVERAGE_TAGS,
+    DEMO_BANNER,
+    SEARCH_MIN_LENGTH,
     ZoneState,
+    demo_active,
+    demo_ranking,
     describe_conflict,
     describe_reading,
     describe_zone,
     format_coverage,
     format_duration,
     format_gap,
+    format_link,
+    format_other_quests,
+    format_quest_times,
+    format_ranking,
     format_reference,
     format_running,
+    format_search_result,
     format_upcoming_line,
     main_quest_total,
+    other_quest_total,
+    ranking_message,
     running_seconds,
+    search_quests,
 )
 from .session import MeasuringSession
 from .theme import COLORS, FAMILY, MONO_FAMILY, confidence_score
@@ -152,6 +164,15 @@ class RubinApp:
         self._references = ReferenceClient(server)
         self._engine: MeasuringSession | None = None
         self._auto: threading.Thread | None = None
+        self._reading: threading.Thread | None = None
+        #: Le classement rendu par le serveur, tel qu'il est arrivé. `None` tant
+        #: qu'il n'a rien dit, ce qui ne veut pas dire « aucune quête classée » :
+        #: voir `ranking_message`.
+        self._ranking: tuple[RankedQuest, ...] | None = None
+        #: Les quêtes proposées par la recherche, dans l'ordre de la liste
+        #: affichée. Gardées à part parce qu'une ligne de liste est du texte, et
+        #: qu'on a besoin de l'identifiant pour interroger le serveur.
+        self._found: tuple[Quest, ...] = ()
 
         self.root = tk.Tk()
         self.root.title("Rubin, chronomètre de quêtes")
@@ -166,7 +187,7 @@ class RubinApp:
         self._build_tabs()
         self._apply_window_style()
         self._place_beside_the_game()
-        self._ask_coverage()
+        self._ask_server()
         self.root.after(REFRESH_MS, self._drain)
 
     # ------------------------------------------------------------------ mise en place
@@ -193,21 +214,38 @@ class RubinApp:
         # jamais hors de la fenêtre.
         self._chrono = ttk.Label(cadre, text="", style="Valeur.TLabel")
         self._chrono.pack(anchor="w", pady=(4, 0))
+        # Le témoin de connexion, sous le chronomètre : visible depuis n'importe
+        # quel onglet, parce que la question « est-ce que je suis relié ? » se
+        # pose de partout. Un mot **et** une couleur, jamais la couleur seule.
+        self._lien = ttk.Label(
+            cadre, text="serveur : vérification…", style="Faible.TLabel",
+            wraplength=430, justify="left",
+        )
+        self._lien.pack(anchor="w", pady=(4, 0))
 
     def _build_tabs(self) -> None:
         carnet = ttk.Notebook(self.root)
         carnet.pack(fill="both", expand=True, padx=10, pady=(4, 10))
 
         self._session = ttk.Frame(carnet)
+        self._classement = ttk.Frame(carnet)
         self._zones = ttk.Frame(carnet)
         self._reglages = ttk.Frame(carnet)
         carnet.add(self._session, text="Session")
+        carnet.add(self._classement, text="Classement")
         carnet.add(self._zones, text="Zones")
         carnet.add(self._reglages, text="Réglages")
 
         self._build_session()
+        self._build_ranking()
         self._build_zones()
         self._build_settings()
+
+        # Entrer dans l'onglet des zones déclenche la lecture. Voir
+        # `_tab_changed` : elle a lieu dans un fil, parce qu'elle coûte une
+        # seconde et demie et figerait la fenêtre autrement.
+        self._carnet = carnet
+        carnet.bind("<<NotebookTabChanged>>", self._tab_changed)
 
     def _build_session(self) -> None:
         commandes = ttk.Frame(self._session)
@@ -280,6 +318,116 @@ class RubinApp:
             self._couverture, text="couverture : demandée au serveur…", style="Faible.TLabel"
         )
         self._couverture_etat.pack(side="left")
+
+        # Les quêtes hors périmètre, sur leur propre ligne et **jamais** dans le
+        # total au-dessus. Rubin ne mesure que les principales, par conception :
+        # les mêler donnerait un chiffre décourageant et faux, puisqu'on n'a
+        # jamais eu l'intention de mesurer les autres.
+        self._autres = ttk.Label(
+            self._session, text="", style="Faible.TLabel", anchor="w", wraplength=420
+        )
+        self._autres.pack(fill="x", padx=12, pady=(0, 10))
+
+    def _build_ranking(self) -> None:
+        """L'onglet de consultation : chercher une quête, et voir les plus rapides.
+
+        Deux sections dans un seul onglet, parce qu'elles répondent à la même
+        question par deux bouts : « combien de temps prend celle-ci » et
+        « lesquelles vont vite ». Les deux ne lisent que le serveur, ne mesurent
+        rien et n'envoient rien.
+
+        ⚠️ **L'onglet défile**, et ce n'est pas une précaution de style. Mesuré
+        à l'écran : son contenu demande 628 pixels là où la fenêtre en offre
+        505, et le panneau des temps grandit encore quand on choisit une quête.
+        Sans défilement, Tk n'affiche simplement pas ce qui dépasse, et c'est la
+        ligne d'état du bas qui disparaissait, **présente et invisible** :
+        justement celle qui dit « aucune quête n'a encore assez de mesures ». Le
+        message le plus important de l'onglet était le premier sacrifié.
+
+        La ligne d'état est en outre posée **avant** le tableau, pour qu'elle
+        reste lisible même si le bas venait à être coupé un jour.
+        """
+        dedans = self._scrollable(self._classement)
+        ttk.Label(
+            dedans, text="CHERCHER UNE QUÊTE", style="Section.TLabel", anchor="w"
+        ).pack(fill="x", padx=12, pady=(12, 2))
+        ttk.Label(
+            dedans,
+            text=(
+                "Trois lettres suffisent, accents et crochets sans importance.\n"
+                "Quêtes principales seulement : les seules que Rubin mesure."
+            ),
+            style="Faible.TLabel", anchor="w", justify="left",
+        ).pack(fill="x", padx=12)
+
+        self._recherche = tk.StringVar()
+        champ = ttk.Entry(dedans, textvariable=self._recherche)
+        champ.pack(fill="x", padx=12, pady=(6, 4))
+        # `trace_add` plutôt qu'une touche relâchée : le collage à la souris ne
+        # produit aucune touche, et une recherche qui ignore le collage passe
+        # pour une recherche cassée.
+        self._recherche.trace_add("write", self._search_changed)
+
+        # Une liste et non une zone de texte : on vient y cliquer, et `tk.Text`
+        # ne sait pas dire quelle ligne a été choisie sans qu'on la calcule.
+        self._resultats = tk.Listbox(
+            dedans,
+            height=4,
+            background=COLORS["carte"],
+            foreground=COLORS["texte"],
+            selectbackground=COLORS["accent"],
+            selectforeground=COLORS["texte"],
+            relief="flat",
+            borderwidth=0,
+            highlightthickness=0,
+            activestyle="none",
+            font=(FAMILY, 10),
+        )
+        self._resultats.pack(fill="x", padx=12)
+        self._resultats.bind("<<ListboxSelect>>", self._result_chosen)
+
+        self._temps = ttk.Label(
+            dedans, text="", style="Faible.TLabel", anchor="w",
+            justify="left", wraplength=400,
+        )
+        self._temps.pack(fill="x", padx=12, pady=(4, 0))
+
+        ttk.Label(
+            dedans,
+            text="LES QUÊTES LES PLUS RAPIDES",
+            style="Section.TLabel",
+            anchor="w",
+        ).pack(fill="x", padx=12, pady=(10, 2))
+        ttk.Label(
+            dedans,
+            text=(
+                "Au temps médian, jamais au record : un record se falsifie en un\n"
+                "envoi. À partir de trois mesures, sans quoi la première place\n"
+                "irait toujours à une quête mesurée une seule fois."
+            ),
+            style="Faible.TLabel", anchor="w", justify="left",
+        ).pack(fill="x", padx=12)
+
+        self._demo = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            dedans,
+            text="Mode démonstration (lignes fabriquées, marquées TEST)",
+            variable=self._demo,
+            command=self._refresh_ranking,
+        ).pack(anchor="w", padx=12, pady=(4, 0))
+        self._demo_bandeau = ttk.Label(
+            dedans, text="", style="Alerte.TLabel", anchor="w",
+            justify="left", wraplength=400,
+        )
+        self._demo_bandeau.pack(fill="x", padx=12)
+
+        self._classement_etat = ttk.Label(
+            dedans, text="classement : demandé au serveur…",
+            style="Faible.TLabel", anchor="w", justify="left", wraplength=400,
+        )
+        self._classement_etat.pack(fill="x", padx=12, pady=(2, 0))
+        self._classement_texte = self._text_box(dedans, height=8)
+        self._classement_texte.pack(fill="both", expand=True, padx=12, pady=(4, 6))
 
     def _scrollable(self, parent: ttk.Frame) -> ttk.Frame:
         """Un cadre qui défile, pour que le contenu ne soit jamais coupé.
@@ -645,41 +793,83 @@ class RubinApp:
         )
         self._avertissement.config(text=message or "")
 
+    def _tab_changed(self, _event: object = None) -> None:
+        """Entrer dans l'onglet des zones suffit à voir ce qui est lu.
+
+        Le bouton restait nécessaire pour relire après avoir bougé quelque chose
+        en jeu, mais l'exiger pour un premier aperçu faisait ouvrir un onglet
+        vide, qui ne disait rien de l'état.
+
+        ⚠️ La lecture ne peut pas devenir automatique **telle quelle** : elle
+        coûte environ une seconde et demie, la reconnaissance travaillant sur
+        349x115 puis 340x380, et elle tournait sur le fil de Tk. La rendre
+        automatique sans la déporter aurait figé la fenêtre à chaque bascule
+        d'onglet, ce qui est pire que le bouton. Voir `read_zones_now`.
+        """
+        try:
+            # Les annotations de tkinter laissent ces deux-là sans type ; c'est
+            # une lacune des stubs, pas un doute sur ce qu'elles rendent.
+            onglet = self._carnet.tab(  # type: ignore[no-untyped-call]
+                self._carnet.select(), "text"  # type: ignore[no-untyped-call]
+            )
+        except tk.TclError:  # pragma: pas de couverture
+            return
+        if onglet == "Zones":
+            self.read_zones_now()
+
     def read_zones_now(self) -> None:
-        """Lit les deux zones et montre ce que la reconnaissance en tire.
+        """Lit les trois zones et montre ce que la reconnaissance en tire.
 
         C'est l'apport réel de cet onglet. Sans lui, régler un rectangle revient
         à le déplacer à l'aveugle puis à jouer une session entière pour
         découvrir qu'il était à côté.
 
-        La lecture est lente, une à deux secondes pour le panneau de suivi, plus
-        encore pour la zone de choix qui couvre la moitié de l'écran, donc elle
-        a lieu sur demande et jamais en boucle.
+        ⚠️ **La lecture a lieu dans un fil, et ne touche à aucun composant.**
+        Elle coûte environ une seconde et demie pour les trois zones, et le fil
+        de Tk est celui qui redessine la fenêtre : l'y laisser gelait tout
+        pendant ce temps. Le fil dépose dans la file, `_drain` affiche, comme le
+        moteur de mesure.
+
+        **Une seule lecture à la fois.** Basculer d'onglet trois fois de suite
+        lancerait sinon trois reconnaissances concurrentes sur les mêmes zones,
+        pour le même résultat, en se disputant le processeur.
 
         C'est aussi, à ce jour, le **seul** endroit qui lit la zone de choix :
         la session de mesure ne s'en sert pas. C'est délibéré, et ça se dit
         plutôt que de se laisser croire, parce qu'une zone réglable donne
         l'impression d'être exploitée partout.
         """
+        if self._reading is not None and self._reading.is_alive():
+            return
         fenêtre = find_game_window()
         if fenêtre is None:
             for clé in ZONE_KEYS:
                 self._set_reading(clé, ())
             return
-        from ..reading import RapidOcrReader
+        zones = dict(zip(ZONE_KEYS, self.zones(fenêtre), strict=True))
+        # Le dire tout de suite : sans cela l'onglet paraît vide pendant une
+        # seconde et demie, et on reclique en croyant que rien ne s'est passé.
+        for clé in ZONE_KEYS:
+            self._set_reading(clé, ("lecture en cours…",))
 
-        lecteur = RapidOcrReader()
-        for clé, zone in zip(ZONE_KEYS, self.zones(fenêtre), strict=True):
-            try:
-                with ScreenCapture(zone) as capture:
-                    image = capture.grab_color()
-                    lignes = lecteur.read(capture.grab_gray())
-            except Exception:  # pragma: pas de couverture
-                lignes = []
-            else:
-                self._show_preview(clé, image, zone)
-            self._set_reading(clé, tuple(texte for texte, _score in lignes))
-        self.refresh_zones()
+        def lire() -> None:
+            from ..reading import RapidOcrReader
+
+            lecteur = RapidOcrReader()
+            for clé, zone in zones.items():
+                image: Any = None
+                try:
+                    with ScreenCapture(zone) as capture:
+                        image = capture.grab_color()
+                        lignes = lecteur.read(capture.grab_gray())
+                except Exception:  # pragma: pas de couverture
+                    image, lignes = None, []
+                textes = tuple(texte for texte, _score in lignes)
+                self.publish("zone_lue", (clé, zone, image, textes))
+            self.publish("zones_lues", None)
+
+        self._reading = threading.Thread(target=lire, daemon=True)
+        self._reading.start()
 
     def _show_preview(self, clé: str, image: object, zone: Rect) -> None:
         """Montre l'image de ce que la zone capture vraiment.
@@ -735,40 +925,141 @@ class RubinApp:
         self._auto = threading.Thread(target=chercher, daemon=True)
         self._auto.start()
 
-    def _ask_coverage(self) -> None:
-        """Demande au serveur combien de quêtes sont mesurées, dans un fil.
+    def _ask_server(self) -> None:
+        """Interroge le serveur et compte le catalogue, dans un fil.
 
-        Dans un fil parce que l'appel dure jusqu'à cinq secondes quand le
-        serveur ne répond pas, et qu'une fenêtre figée cinq secondes au
-        lancement est un défaut bien plus visible que ce compteur n'est utile.
-        Le fil ne touche à aucun composant : il passe par la file, comme le
-        moteur de mesure.
+        Dans un fil parce que chaque appel dure jusqu'à cinq secondes quand le
+        serveur ne répond pas, et qu'une fenêtre figée quinze secondes au
+        lancement est un défaut bien plus visible que ces compteurs ne sont
+        utiles. Le fil ne touche à aucun composant : il passe par la file, comme
+        le moteur de mesure.
 
         Une seule fois par lancement, et c'est assumé : rien ne peut bouger
-        pendant la session, puisque les mesures ne partent qu'à son arrêt. Le
-        compteur montre donc l'état au démarrage, et la contribution du jour se
-        voit au lancement suivant.
+        pendant la session, puisque les mesures ne partent qu'à son arrêt. Les
+        compteurs montrent donc l'état au démarrage, et la contribution du jour
+        se voit au lancement suivant.
+
+        L'ordre n'est pas indifférent : le témoin de connexion part en premier,
+        parce que c'est lui qui explique les silences des deux autres.
         """
         if self._catalog is None:
             self._couverture_etat.config(
                 text="couverture inconnue : le référentiel n'est pas chargé"
             )
-            return
-        if not self._references.enabled:
+        elif not self._references.enabled:
             # Sans serveur, rien de faux ne s'affiche : le total des quêtes
             # principales est connu, mais la part mesurée ne l'est pas, et
             # afficher « 3 924 jamais mesurées » serait une affirmation.
             self._couverture_etat.config(
                 text="couverture inconnue : aucun serveur, relancez avec --envoyer"
             )
-            return
+        if not self._references.enabled:
+            self._classement_etat.config(
+                text="classement indisponible : aucun serveur, relancez avec --envoyer"
+            )
         catalogue, langue = self._catalog, self._settings.language
 
         def demander() -> None:
-            total = main_quest_total(catalogue, langue)
-            self.publish("couverture", format_coverage(self._references.coverage(), total))
+            self.publish("lien", self._references.health())
+            if catalogue is not None:
+                # Ne dépend d'aucun serveur : c'est un fait du catalogue, et il
+                # s'affiche même quand rien n'est joignable.
+                self.publish("autres_quetes", other_quest_total(catalogue, langue))
+            if not self._references.enabled:
+                return
+            self.publish("classement", self._references.fastest_quests(RANKING_LIMIT))
+            if catalogue is not None:
+                total = main_quest_total(catalogue, langue)
+                self.publish("couverture", format_coverage(self._references.coverage(), total))
 
         threading.Thread(target=demander, daemon=True).start()
+
+    def _search_changed(self, *_arguments: object) -> None:
+        """Refiltre le catalogue à chaque frappe, sans aucun réseau.
+
+        Le catalogue est déjà en mémoire, donc la recherche est locale et
+        instantanée. Rien n'est demandé au serveur tant qu'on n'a pas choisi une
+        quête : chercher ne doit pas coûter une requête par lettre.
+        """
+        self._found = search_quests(
+            self._catalog, self._recherche.get(), self._settings.language
+        )
+        self._resultats.delete(0, "end")
+        for quest in self._found:
+            self._resultats.insert("end", format_search_result(quest))
+        if not self._found:
+            # Distinguer « pas assez de lettres » de « rien trouvé » : les deux
+            # donnent une liste vide, et le geste à faire n'est pas le même.
+            tapé = self._recherche.get().strip()
+            self._temps.config(
+                text=""
+                if not tapé
+                else (
+                    f"tapez au moins {SEARCH_MIN_LENGTH} lettres"
+                    if len(tapé) < SEARCH_MIN_LENGTH
+                    else "aucune quête principale ne porte ce nom"
+                )
+            )
+
+    def _result_chosen(self, _event: object = None) -> None:
+        """Demande au serveur les temps de la quête choisie, dans un fil.
+
+        Dans un fil comme tout le reste du réseau : un serveur lent ne doit pas
+        figer la fenêtre pendant qu'on clique. Le fil ne touche à aucun
+        composant, il passe par la file.
+        """
+        # Sans type dans les stubs de tkinter, comme `Notebook.select`.
+        choix = self._resultats.curselection()  # type: ignore[no-untyped-call]
+        if not choix or choix[0] >= len(self._found):
+            return
+        quest = self._found[choix[0]]
+        self._temps.config(text=f"{quest.name} : interrogation du serveur…")
+        if not self._references.enabled:
+            self._temps.config(
+                text=f"{quest.name} : aucun serveur, relancez avec --envoyer"
+            )
+            return
+
+        def demander() -> None:
+            self.publish("temps", (quest, self._references.quest(quest.id)))
+
+        threading.Thread(target=demander, daemon=True).start()
+
+    def _show_times(self, quest: Quest, reference: Any) -> None:
+        """Affiche ce que le serveur sait d'une quête, absence comprise."""
+        self._temps.config(text=format_quest_times(quest, reference))
+
+    def _refresh_ranking(self) -> None:
+        """Réaffiche le classement, vrai ou de démonstration.
+
+        Un seul endroit qui écrit dans ce tableau : la case à cocher et la
+        réponse du serveur y passent toutes les deux, sans quoi cocher la case
+        après l'arrivée du classement effacerait ce dernier, ou l'inverse.
+        """
+        démo = demo_active(self._ranking, self._demo.get())
+        lignes = (
+            demo_ranking(self._catalog, self._settings.language)
+            if démo
+            else format_ranking(self._ranking, self._catalog, self._settings.language)
+        )
+        self._demo_bandeau.config(text=DEMO_BANNER if démo else "")
+        self._classement_texte.config(state="normal")
+        self._classement_texte.delete("1.0", "end")
+        for index, ligne in enumerate(lignes):
+            # Les lignes fabriquées sont peintes en « absent », la couleur de ce
+            # qui n'est adossé à rien, et portent TEST en clair : la couleur ne
+            # fait que doubler le mot, elle ne le remplace pas.
+            balise = (
+                "absent"
+                if démo
+                else _tag_for(self._ranking[index].samples if self._ranking else 0)
+            )
+            self._classement_texte.insert("end", f"{ligne}\n", balise)
+        self._classement_texte.config(state="disabled")
+        message = None if démo else ranking_message(self._ranking)
+        if démo:
+            message = "les vraies lignes remplaceront celles-ci dès qu'il y en aura assez"
+        self._classement_etat.config(text=message or "")
 
     def _help(self, which: str) -> Callable[[], None]:
         """Ouvre l'exemple de ce que cette zone doit contenir."""
@@ -921,6 +1212,19 @@ class RubinApp:
             self._show_upcoming(*charge)
         elif genre == "couverture":
             self._show_coverage(charge)
+        elif genre == "autres_quetes":
+            self._autres.config(text=format_other_quests(int(charge)) or "")
+        elif genre == "lien":
+            self._show_link(charge)
+        elif genre == "classement":
+            self._ranking = charge
+            self._refresh_ranking()
+        elif genre == "temps":
+            self._show_times(*charge)
+        elif genre == "zone_lue":
+            self._show_zone_reading(*charge)
+        elif genre == "zones_lues":
+            self.refresh_zones()
 
     def _set_running(self, running: bool) -> None:
         self._bouton.config(
@@ -1075,6 +1379,33 @@ class RubinApp:
         ):
             morceau.config(text=texte + (", " if index < len(parts) - 1 else ""))
         self._couverture_etat.config(text="")
+
+    def _show_zone_reading(self, clé: str, zone: Rect, image: Any, lignes: Any) -> None:
+        """Pose l'aperçu et les lignes d'une zone, depuis le fil de Tk.
+
+        Le fil de lecture n'a fait que capturer et reconnaître ; c'est ici, et
+        seulement ici, qu'on touche aux composants.
+        """
+        if image is not None:
+            self._show_preview(clé, image, zone)
+        self._set_reading(clé, tuple(lignes))
+
+    def _show_link(self, health: Any) -> None:
+        """Le témoin de connexion : un mot, une adresse, une couleur.
+
+        Les trois états sont distincts **exprès**, parce qu'ils appellent trois
+        gestes différents. « Aucun serveur » n'est pas une panne, c'est un
+        lancement sans `--envoyer` ; « injoignable » veut dire qu'il y a quelque
+        chose à réparer.
+
+        ⚠️ Ce témoin regarde `/sante`, et rien d'autre. Un serveur qui répond
+        parfaitement mais tourne sur une version antérieure, sans le point
+        d'entrée d'un compteur, reste **connecté** : c'est le compteur qui dit
+        qu'il n'a pas eu sa réponse, pas la connexion qui est en cause. Le cas
+        est réel, il date du 05/08/2026.
+        """
+        texte, balise = format_link(self._server, health)
+        self._lien.config(text=f"serveur : {texte}", foreground=COLORS[balise])
 
     def publish(self, genre: str, charge: Any) -> None:
         """Dépose un message pour l'affichage. Appelable depuis n'importe quel fil."""
