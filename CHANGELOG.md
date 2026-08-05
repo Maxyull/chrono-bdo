@@ -373,6 +373,48 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
   défaut que les boutons invisibles de l'onglet Zones, au même endroit du
   raisonnement.
 
+- **Les quêtes enchaînées vite sont enfin comptées.** « Ça va trop vite et
+  certaines quêtes ne sont pas comptées », signalé par Maxime le 05/08/2026 :
+  c'est vérifié, mesuré, et corrigé.
+
+  La surveillance refusait de relire une image trop proche de la dernière lue,
+  et cette proximité se mesurait par la **différence moyenne sur toute la zone**.
+  Or la zone est surtout du décor, qui ne change pas quand la quête change : le
+  seul signal utile y était noyé. Sur les vingt minutes de jeu réel enregistrées
+  ce jour-là, **huit paires de bandeaux voisins sur vingt-huit** passaient sous
+  le seuil de 8,0 alors que les deux bandeaux étaient bel et bien différents.
+
+  Le cas le plus net, à deux secondes d'intervalle : « Quête accomplie /
+  [Mediah] Les marchands d'Altinova II » puis « Nouvelle quête / [Mediah] Les
+  marchands d'Altinova III ». **2,54 de différence.** Le second était pris pour
+  le premier, le chronomètre de cette quête ne démarrait jamais, et la quête
+  n'apparaissait nulle part. Ce n'était pas une mesure fausse, c'était une quête
+  entière absente.
+
+  La comparaison porte désormais sur **la barre du bandeau seule**, découpée
+  d'après l'icône que la détection de présence retrouve déjà, et retient **la
+  ligne qui a le plus changé** au lieu d'en faire la moyenne. Sur les mêmes
+  vingt-huit paires réelles, la plus faible valeur passe de 2,15 à **6,78**,
+  toutes au-dessus du nouveau seuil de 5,0.
+
+  ⚠️ **La piste évidente était la mauvaise, et il vaut mieux l'écrire que la
+  laisser reproposer** : comparer la bande du **nom** plutôt que l'image entière
+  donne **0,84** sur cette paire, donc pire que ce qu'on corrigeait. Deux quêtes
+  qui se suivent dans une chaîne portent souvent le même nom à un chiffre romain
+  près, et c'est le **titre** qui porte alors toute la différence.
+
+  Le même changement règle les bandeaux saisis pendant leur animation d'entrée,
+  vingt et un sur cette session : leur titre sort tronqué, « Quete acc » ou
+  « Nou », donc ils sont refusés, ce qui est correct, mais ils servaient ensuite
+  de référence au bandeau posé qui suivait. Mesuré sur une paire réelle : 7,66
+  sur la zone entière, donc sous l'ancien seuil, contre 17,31 sur la barre.
+
+  Le sens de l'erreur est assumé : relire un bandeau déjà lu ne coûte qu'un peu
+  de calcul, rater un bandeau coûte une quête. Le risque de l'autre côté, noyer
+  la file de lecture, est borné et il a été mesuré lui aussi : un bandeau n'est
+  présent à l'écran que 5 à 11 % du temps, donc tout relire donnerait 0,4 à 0,9
+  lecture par seconde contre 1 à 3 que le moteur soutient.
+
 ## [0.4.0] - 2026-08-05
 
 La première version qu'on peut mettre entre les mains d'un testeur : elle ne
