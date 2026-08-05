@@ -58,6 +58,7 @@ from __future__ import annotations
 import contextlib
 import threading
 import time
+import traceback
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -342,9 +343,38 @@ class MeasuringSession:
             # Une panne ne doit pas emporter la fenêtre avec elle, ni faire
             # perdre ce qui a déjà été mesuré.
             self._publish("etat", f"mesure interrompue : {erreur}")
+            self._log_crash(erreur)
         finally:
             self._finish(timeline, time.monotonic() - début, journal, sender)
             self._publish("demarre", False)
+
+    def _log_crash(self, erreur: Exception) -> None:
+        """Écrit la panne et sa trace complète dans un fichier, pour qu'elle survive.
+
+        Signalé par Maxime le 06/08/2026 : une session s'arrêtait parfois
+        toute seule, sans qu'il sache pourquoi. La cause était déjà rapportée
+        à l'écran (« mesure interrompue : … »), mais seulement là : la ligne
+        disparaît dès le message suivant, et rien ne la garde. Sans trace, la
+        seule façon de connaître l'erreur était de la voir passer en direct.
+
+        Écrit en ajout dans le même dossier que les lectures ratées
+        (`echecs/`), avec la trace complète et pas seulement le message : un
+        message seul dit souvent « KeyError: None », ce qui ne dit rien sans
+        savoir où il a eu lieu.
+
+        Ne lève jamais : une panne qui en cause une seconde en essayant de
+        s'écrire serait pire que ne rien écrire du tout.
+        """
+        try:
+            dossier = self._home / "echecs"
+            dossier.mkdir(parents=True, exist_ok=True)
+            horodatage = time.strftime("%Y-%m-%d %H:%M:%S")
+            with (dossier / "erreurs.log").open("a", encoding="utf-8") as fichier:
+                fichier.write(f"--- {horodatage} ---\n")
+                fichier.write(traceback.format_exc())
+                fichier.write("\n")
+        except OSError:  # pragma: pas de couverture
+            pass
 
     def _keep_if_blind(
         self,

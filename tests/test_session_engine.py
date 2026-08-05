@@ -476,3 +476,72 @@ class TestGardeAAveugle:
             )
 
         assert messages == []
+
+
+class TestJournalDesPannes:
+    """`_log_crash` : la trace d'une panne qui arrête la session survit au disque.
+
+    Signalé par Maxime le 06/08/2026 : une session s'arrêtait parfois toute
+    seule, sans qu'il sache pourquoi. `_run` attrapait déjà l'exception et
+    publiait « mesure interrompue : … », mais seulement vers la fenêtre : le
+    message disparaît dès le suivant, et rien ne le garde. Sans trace, la
+    seule façon de connaître l'erreur était de la voir passer en direct.
+    """
+
+    def test_ecrit_le_message_et_la_trace_dans_un_fichier(self, tmp_path: Path) -> None:
+        session = MeasuringSession(
+            home=tmp_path,
+            catalog=None,  # type: ignore[arg-type]
+            settings=Settings(),
+            publish=lambda genre, charge: None,
+        )
+
+        try:
+            raise ValueError("bandeau introuvable")
+        except ValueError as erreur:
+            session._log_crash(erreur)
+
+        contenu = (tmp_path / "echecs" / "erreurs.log").read_text(encoding="utf-8")
+        assert "ValueError: bandeau introuvable" in contenu
+        # La trace complète, pas seulement le message : un message seul dit
+        # souvent « KeyError: None », ce qui ne dit rien sans savoir où.
+        assert "Traceback" in contenu
+
+    def test_deux_pannes_s_accumulent_sans_s_ecraser(self, tmp_path: Path) -> None:
+        session = MeasuringSession(
+            home=tmp_path,
+            catalog=None,  # type: ignore[arg-type]
+            settings=Settings(),
+            publish=lambda genre, charge: None,
+        )
+
+        for message in ("première panne", "seconde panne"):
+            try:
+                raise RuntimeError(message)
+            except RuntimeError as erreur:
+                session._log_crash(erreur)
+
+        contenu = (tmp_path / "echecs" / "erreurs.log").read_text(encoding="utf-8")
+        assert "première panne" in contenu
+        assert "seconde panne" in contenu
+
+    def test_regression_une_panne_reelle_arrete_la_session_et_laisse_une_trace(
+        self, tmp_path: Path, catalog: Catalog
+    ) -> None:
+        """Cas réel visé : `_run` publie « demarre » à `False` dans son `finally`,
+        quelle que soit la cause de l'arrêt. Ce test vérifie que le couple
+        complet tient : la fenêtre est prévenue ET le fichier existe, pas l'un
+        sans l'autre.
+        """
+        publie = Journal()
+        session = moteur_pour(tmp_path, catalog, publie)
+
+        try:
+            raise OSError("écran introuvable")
+        except OSError as erreur:
+            session._publish("etat", f"mesure interrompue : {erreur}")
+            session._log_crash(erreur)
+            session._publish("demarre", False)
+
+        assert ("demarre", False) in publie.messages
+        assert (tmp_path / "echecs" / "erreurs.log").exists()
