@@ -9,6 +9,7 @@ dépendances, plus une archive prête à distribuer.
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
 import subprocess
 import sys
@@ -20,11 +21,63 @@ sys.path.insert(0, str(RACINE / "src"))
 from rubin import __version__  # noqa: E402
 
 
+def _ecrire_metadonnees() -> None:
+    """Régénère `metadonnees.txt` avec le vrai numéro de version.
+
+    Trouvé le 06/08/2026 : ce fichier portait encore « 0.4.0 » en dur, alors
+    que `rubin.__version__` avait déjà dérivé jusqu'à 0.5.4 sans que personne
+    ne le remarque, exactement le même défaut que `RUBIN_LATEST` côté
+    serveur. Le régénérer à chaque construction, à partir de la même source
+    que le nom de l'archive, ferme cette source d'oubli pour de bon plutôt
+    que de la corriger une fois de plus.
+    """
+    quadruplet = (*(int(n) for n in __version__.split(".")), 0)
+    contenu = f"""# Métadonnées Windows de l'exécutable.
+#
+# Régénéré par construire.py à partir de rubin.__version__ : ne pas modifier
+# à la main, la prochaine construction écraserait le changement.
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers={quadruplet!r},
+    prodvers={quadruplet!r},
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0),
+  ),
+  kids=[
+    StringFileInfo([
+      StringTable(
+        '040C04B0',
+        [
+          StringStruct('CompanyName', 'Maxime Lacoste'),
+          StringStruct('FileDescription', 'Rubin, chronomètre de quêtes pour Black Desert Online'),
+          StringStruct('FileVersion', '{__version__}'),
+          StringStruct('InternalName', 'rubin'),
+          StringStruct('LegalCopyright', 'Copyright (c) 2026 Maxime Lacoste. Licence MIT.'),
+          StringStruct('OriginalFilename', 'rubin.exe'),
+          StringStruct('ProductName', 'Rubin'),
+          StringStruct('ProductVersion', '{__version__}'),
+        ],
+      )
+    ]),
+    # 0x040C est le français, 1200 la page de codes Unicode.
+    VarFileInfo([VarStruct('Translation', [0x040C, 1200])]),
+  ],
+)
+"""
+    (RACINE / "empaquetage" / "metadonnees.txt").write_text(contenu, encoding="utf-8")
+
+
 def main() -> int:
     python = sys.executable
     print("--- nettoyage")
     for dossier in ("build", "dist"):
         shutil.rmtree(RACINE / dossier, ignore_errors=True)
+
+    _ecrire_metadonnees()
 
     print("--- construction")
     # Ni l'interpréteur ni le chemin de la recette ne viennent de l'extérieur :
@@ -80,7 +133,52 @@ def main() -> int:
     )
     print(f"--- {archive.stat().st_size / 1e6:.0f} Mo : {archive}")
     print(f"--- sha256 : {empreinte}")
+
+    print("--- installateur")
+    iscc = _trouver_iscc()
+    if iscc is None:
+        # Ne fait pas échouer la construction : le zip seul reste un livrable
+        # complet, et Inno Setup n'a aucune raison d'être posé sur un poste
+        # de CI qui ne construit jamais l'exécutable.
+        print("[rubin] Inno Setup introuvable, installateur non construit")
+        return 0
+    resultat = subprocess.run(  # noqa: S603
+        [
+            str(iscc),
+            f"/DVersion={__version__}",
+            str(RACINE / "empaquetage" / "rubin.iss"),
+        ],
+        cwd=RACINE,
+        check=False,
+    )
+    if resultat.returncode != 0:
+        return resultat.returncode
+    installateur = RACINE / "dist" / f"rubin-installateur-{__version__}.exe"
+    empreinte_installateur = hashlib.sha256(installateur.read_bytes()).hexdigest()
+    (RACINE / "dist" / f"{installateur.name}.sha256").write_text(
+        f"{empreinte_installateur}  {installateur.name}" + "\n", encoding="utf-8"
+    )
+    print(f"--- {installateur.stat().st_size / 1e6:.0f} Mo : {installateur}")
+    print(f"--- sha256 : {empreinte_installateur}")
     return 0
+
+
+def _trouver_iscc() -> Path | None:
+    """Cherche le compilateur Inno Setup aux emplacements usuels.
+
+    Installé par utilisateur (comme Rubin lui-même) ou par machine selon ce
+    qu'a choisi qui l'a posé : les deux se rencontrent, donc les deux se
+    cherchent, avant de renoncer.
+    """
+    candidats = [
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Inno Setup 6" / "ISCC.exe",
+        Path("C:/Program Files (x86)/Inno Setup 6/ISCC.exe"),
+        Path("C:/Program Files/Inno Setup 6/ISCC.exe"),
+    ]
+    for candidat in candidats:
+        if candidat.is_file():
+            return candidat
+    return None
 
 
 if __name__ == "__main__":

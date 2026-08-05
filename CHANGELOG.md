@@ -7,6 +7,30 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+### Ajouté
+
+- **Un installateur Windows, avec mise à jour en un clic depuis la fenêtre.**
+  Demandé par Maxime le 06/08/2026, après l'archive zip seule. Compilé par
+  Inno Setup (`empaquetage/rubin.iss`), il s'installe **par utilisateur**,
+  jamais dans Program Files : c'est ce qui permet à Rubin de se mettre à jour
+  lui-même sans jamais demander les droits administrateur.
+
+  Un bouton apparaît dans l'en-tête dès qu'une version plus récente est
+  connue (`autoupdate.py`), sauf pendant une session en cours. Un clic
+  télécharge l'installateur depuis GitHub Releases, **vérifie son empreinte
+  SHA-256 avant d'en faire quoi que ce soit**, puis le lance en silence.
+  L'installateur ferme et relance Rubin lui-même (`CloseApplications=force`,
+  `RestartApplications=yes`, Gestionnaire de redémarrage de Windows).
+
+  ⚠️ **`updates.py` avait explicitement refusé ceci** : « rien n'est remplacé
+  automatiquement… il faudrait un lanceur intermédiaire ». C'est exactement
+  ce que fait maintenant l'installateur : ce module-là ne se contredit pas,
+  il devient ce second programme qui manquait.
+
+  Au passage, `metadonnees.txt` (nom, version Windows de l'exécutable) est
+  désormais régénéré à chaque construction depuis `rubin.__version__`, au
+  lieu de rester figé à la main : il portait encore 0.4.0.
+
 ### Modifié
 
 - **« Toutes les quêtes » se range désormais par CHAÎNE, plus par lettre du
