@@ -26,6 +26,7 @@ from .reference import Catalog
 from .reference.source import catalog_date, load
 from .references import ReferenceClient
 from .timing import Measure, Quality, Timeline
+from .upcoming import DEFAULT_COUNT, UpcomingQuest, crossroads_ahead, upcoming
 from .updates import check_for_update
 from .upload import save_session, send_session
 from .watching import BannerWatcher
@@ -173,6 +174,11 @@ def command_watch(args: argparse.Namespace) -> int:
                         measure = timeline.record(reading, at=at)
                         if measure is not None:
                             _print_measure(measure, catalog, args.language, references)
+                            # Juste après la mesure, parce que c'est le moment
+                            # où le joueur décide de la suite.
+                            _print_upcoming(
+                                timeline, catalog, references, args.language, args.upcoming
+                            )
     except KeyboardInterrupt:
         pass
 
@@ -224,6 +230,84 @@ def _print_failures(deferred: DeferredWatcher | None, failures: FailureStore) ->
         # Un dossier vide ne doit pas se lire comme « aucun échec ».
         print(f"({failures.unwritable} n'ont pas pu être écrits sur le disque)")
     print("« rubin echecs --archiver » en fait une archive, si vous voulez aider à corriger")
+
+
+def _print_upcoming(
+    timeline: Timeline,
+    catalog: Catalog,
+    references: ReferenceClient,
+    language: str,
+    count: int,
+) -> None:
+    """Montre ce qui vient après la quête qu'on vient de finir.
+
+    C'est la question qu'on se pose en jouant, et à laquelle le bilan de fin de
+    session répond trop tard pour qu'elle serve à décider quoi que ce soit.
+
+    Rien n'est affiché quand on ne sait pas où l'on est : une liste tirée d'une
+    position inconnue serait une liste au hasard, ce qui est pire que pas de
+    liste du tout.
+    """
+    chain = timeline.current_chain
+    position = timeline.current_position
+    if count <= 0 or chain is None or position is None:
+        return
+
+    suivantes = upcoming(
+        catalog, chain, position, language=language, count=count, references=references
+    )
+    if not suivantes:
+        # Fin de chaîne connue, ou chaîne absente du référentiel. Les deux se
+        # produisent normalement et ne méritent pas d'alarme.
+        return
+
+    print(f"  à suivre dans la chaîne {chain} :")
+    for item in suivantes:
+        _print_upcoming_line(item)
+
+    embranchements = crossroads_ahead(suivantes)
+    if embranchements:
+        # Le référentiel dit lesquelles sont des branches, pas lesquelles
+        # s'excluent entre elles. On ne prétend donc pas dire laquelle prendre.
+        print(
+            f"    {embranchements} de ces quêtes sont des branches d'un choix : "
+            "vous n'en ferez pas la totalité"
+        )
+
+
+def _print_upcoming_line(item: UpcomingQuest) -> None:
+    """Une ligne de la liste : position, nom, et ce qu'on sait du temps.
+
+    Aucun symbole hors de l'ASCII n'est employé, et ce n'est pas de la
+    coquetterie. Un glyphe comme « ⑂ » n'existe pas dans la page de codes
+    cp1252 de la console Windows, et son affichage **interrompt la session** par
+    une erreur d'encodage si la sortie n'a pas pu être basculée en UTF-8. Même
+    quand elle l'a été, la plupart des polices de console le rendent en carré
+    vide. Un marqueur illisible qui peut faire tomber le programme ne vaut pas
+    les trois caractères qu'il économise.
+    """
+    if item.gap_before:
+        # Enjamber un trou sans rien dire laisserait croire que cette quête
+        # suit immédiatement la précédente.
+        manquantes = "position inconnue" if item.gap_before == 1 else "positions inconnues"
+        print(f"    ... {item.gap_before} {manquantes} du référentiel")
+
+    # Le marqueur va en fin de ligne et non après le nom : accolé au nom, il
+    # décale la colonne des temps d'une ligne à l'autre et l'œil ne peut plus
+    # les comparer d'un coup, ce qui est pourtant le seul usage de cette liste.
+    marque = "   (branche d'un choix)" if item.is_crossroad else ""
+    nom = f"{item.quest.id.position}. {item.quest.name}"
+    reference = item.reference
+    if reference is None:
+        # « jamais mesurée » et non une colonne vide ou un zéro : un blanc se
+        # lit comme « instantané », l'inverse de ce qu'on veut dire.
+        print(f"    {nom:<52} jamais mesurée{marque}")
+        return
+    mesures = "mesure" if reference.samples == 1 else "mesures"
+    temps = (
+        f"{_format_duration(reference.median_seconds)} ({reference.samples} {mesures})"
+    )
+    print(f"    {nom:<52} {temps}{marque}")
 
 
 def _print_chain_summary(
@@ -348,7 +432,10 @@ def command_failures(args: argparse.Namespace) -> int:
     )
     if result.left_out:
         # Une troncature qui se tait se lirait comme un inventaire complet.
-        print(f"⚠ {result.left_out} images laissées dehors, l'archive était pleine")
+        # Texte simple et non un pictogramme : « ⚠ » n'existe pas en cp1252 et
+        # interromprait la commande sur une console qui n'a pas pu basculer en
+        # UTF-8, pour n'apporter aucune information de plus.
+        print(f"ATTENTION : {result.left_out} images laissées dehors, l'archive était pleine")
         plus_grand = larger_than(result.needed)
         if plus_grand is not None and plus_grand.key != cible.key:
             print(
@@ -485,6 +572,14 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=1.0,
         help="échelle de l'interface du jeu, si elle a été modifiée",
+    )
+    watch.add_argument(
+        "--suivantes",
+        dest="upcoming",
+        type=int,
+        default=DEFAULT_COUNT,
+        metavar="N",
+        help="nombre de quêtes à venir affichées après chaque mesure, 0 pour aucune",
     )
     watch.set_defaults(handler=command_watch)
 

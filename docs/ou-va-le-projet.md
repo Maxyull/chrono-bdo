@@ -20,20 +20,32 @@ sans mentir.
 
 ---
 
-## 1. La liste des quêtes suivantes
+## 1. La liste des quêtes suivantes — ✅ faite
 
 Pendant qu'on joue, le logiciel montre les quêtes qui viennent, avec leur temps
 et la solidité de ce temps. Une quête finie fait avancer la liste toute seule.
 
-**Presque tout existe déjà.** `Timeline.current_chain` et `current_position`
-savent où en est le joueur, `tracker_region` lit le panneau de suivi, et le
-catalogue connaît la suite de la chaîne. Ce qui manque est l'affichage.
+Écrite dans `src/rubin/upcoming.py`, affichée après chaque mesure, réglable par
+`--suivantes N`.
 
-⚠️ **Les embranchements interdisent de promettre un chemin unique.** 69 quêtes
-principales, réparties sur 38 chaînes, sont des branches d'un choix. On sait
-lesquelles sont des branches, pas lesquelles s'excluent entre elles. Sur ces
-chaînes, « la quête d'après » n'existe pas au singulier : il faut montrer le
-choix comme un choix.
+Trois pièges y étaient, et le module les documente en détail :
+
+- **les embranchements interdisent de promettre un chemin unique.** 69 quêtes
+  principales sur 38 chaînes sont des branches d'un choix. On sait lesquelles
+  sont des branches, pas lesquelles s'excluent entre elles. Elles sont marquées,
+  jamais présentées comme une suite à faire dans l'ordre ;
+- **les trous de numérotation** touchent 82 chaînes sur 349. Supposer que la
+  quête suivante porte la position juste après ferait disparaître la suite de
+  ces chaînes dès le premier trou. Les positions sont donc prises telles que le
+  référentiel les connaît, et le trou est signalé plutôt qu'enjambé en silence ;
+- **une quête jamais mesurée le dit.** Une colonne vide ou un zéro se lirait
+  comme « instantané » au lieu de « inconnu ».
+
+Noter que le traitement des trous est **l'inverse** de celui de la déduction
+d'une fin manquée, dans `timing.py`, et que la différence est délibérée.
+Déduire exige la contiguïté, parce qu'un trou peut cacher une quête réellement
+faite dont on inclurait le temps par erreur : ce serait une mesure fausse.
+Afficher n'exige rien, puisque montrer la suite connue n'invente aucun chiffre.
 
 ## 2. Le score de confiance
 

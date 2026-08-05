@@ -6,8 +6,12 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from rubin.__main__ import _format_duration, build_parser, main
+from rubin.__main__ import _format_duration, _print_upcoming, build_parser, main
 from rubin.failures import FailureStore
+from rubin.reading import BannerKind
+from rubin.reference import Catalog, QuestId
+from rubin.references import ReferenceClient
+from rubin.timing import Event, Timeline
 
 
 class TestFormatDuration:
@@ -47,6 +51,12 @@ class TestParser:
         with pytest.raises(SystemExit):
             build_parser().parse_args(["suivre", "--langue", "de"])
 
+    def test_suivre_montre_cinq_quetes_a_venir_par_defaut(self) -> None:
+        assert build_parser().parse_args(["suivre"]).upcoming == 5
+
+    def test_suivre_accepte_de_n_en_montrer_aucune(self) -> None:
+        assert build_parser().parse_args(["suivre", "--suivantes", "0"]).upcoming == 0
+
     def test_echecs_vise_github_par_defaut(self) -> None:
         # La destination la plus contrainte, mais la seule où le fichier reste
         # attaché au rapport qui le décrit.
@@ -73,6 +83,48 @@ class TestMain:
         monkeypatch.setattr("rubin.__main__.find_game_window", lambda: None)
         assert main(["suivre"]) == 1
         assert "Black Desert" in capsys.readouterr().err
+
+    def test_la_liste_a_venir_annonce_le_trou_et_les_carrefours(
+        self, capsys: pytest.CaptureFixture[str], catalog: Catalog
+    ) -> None:
+        """Régression : la liste affichait une suite qu'on ne peut pas suivre.
+
+        Deux défauts d'affichage, tous deux sur de vraies chaînes du jeu. Dans
+        la 21130, la position 147 suit la 2 : l'afficher sans rien dire laisse
+        croire qu'elles s'enchaînent. Dans la 21142, les deux quêtes connues
+        sont des branches d'un choix : les lister l'une sous l'autre donne un
+        programme que personne ne peut suivre.
+        """
+        timeline = Timeline(catalog=catalog, language="fr")
+        references = ReferenceClient(None)
+
+        # Chaîne à trou : après la 2 vient la 147.
+        timeline.events.append(
+            Event(at=0.0, kind=BannerKind.ACCEPTED, quest_name="", confidence=1.0,
+                  quest_id=QuestId(21130, 2))
+        )
+        _print_upcoming(timeline, catalog, references, "fr", 5)
+        sortie = capsys.readouterr().out
+        assert "144 positions inconnues" in sortie
+        assert "jamais mesurée" in sortie
+
+        # Chaîne d'embranchements : les deux quêtes sont des branches.
+        timeline.events.append(
+            Event(at=0.0, kind=BannerKind.ACCEPTED, quest_name="", confidence=1.0,
+                  quest_id=QuestId(21142, 0))
+        )
+        _print_upcoming(timeline, catalog, references, "fr", 5)
+        sortie = capsys.readouterr().out
+        assert "branches d'un choix" in sortie
+
+    def test_la_liste_a_venir_se_tait_quand_on_ignore_ou_on_est(
+        self, capsys: pytest.CaptureFixture[str], catalog: Catalog
+    ) -> None:
+        # Une liste tirée d'une position inconnue serait une liste au hasard,
+        # ce qui est pire que pas de liste du tout.
+        timeline = Timeline(catalog=catalog, language="fr")
+        _print_upcoming(timeline, catalog, ReferenceClient(None), "fr", 5)
+        assert capsys.readouterr().out == ""
 
     def test_echecs_sur_un_dossier_vide_ne_propose_rien_a_envoyer(
         self,

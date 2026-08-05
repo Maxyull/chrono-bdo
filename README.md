@@ -158,6 +158,28 @@ Rubinmétrer une session :
 python -m rubin suivre
 ```
 
+Après chaque quête mesurée, les suivantes de la chaîne s'affichent avec leur
+temps de référence :
+
+```
+  à suivre dans la chaîne 21136 :
+    2. [Calpheon] Cris stridents des harpies             4 min 12 s (14 mesures)
+    3. [Calpheon] Coup de main tant désiré               1 min 37 s (1 mesure)
+```
+
+Trois choses n'y sont jamais tues, parce que les taire donnerait une liste
+qu'on ne peut pas suivre :
+
+- une quête que **personne n'a mesurée** affiche « jamais mesurée », et non une
+  colonne vide qui se lirait comme « instantané » ;
+- un **trou de numérotation** est annoncé. 82 chaînes sur 349 en portent, et le
+  référentiel connaît 18 999 quêtes quand le jeu en compte 19 235 : une quête
+  peut donc exister à l'écran sans figurer dans cette liste ;
+- une **branche d'un choix** est marquée. 69 quêtes principales sur 38 chaînes
+  sont des embranchements, et vous n'en ferez qu'une partie.
+
+`--suivantes 0` supprime l'affichage, `--suivantes 10` l'allonge.
+
 Voir les bandeaux que le logiciel n'a pas su lire :
 
 ```bash

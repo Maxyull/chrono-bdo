@@ -14,6 +14,22 @@ datée le jour de la release.
 
 ### Ajouté
 
+- **La liste des quêtes suivantes.** Après chaque mesure, les quêtes qui
+  viennent dans la chaîne s'affichent avec leur temps de référence et le nombre
+  de mesures derrière. C'est la question qu'on se pose en jouant, et à laquelle
+  le bilan de fin de session répondait trop tard pour décider quoi que ce soit.
+  Réglable par `--suivantes N`, `0` pour supprimer l'affichage.
+
+  Trois choses n'y sont jamais tues, parce que les taire donnerait une liste
+  qu'on ne peut pas suivre : une quête jamais mesurée le dit au lieu de laisser
+  une colonne vide, qui se lirait comme « instantané » ; un trou de numérotation
+  est annoncé, 82 chaînes sur 349 en portant et le référentiel connaissant
+  18 999 quêtes quand le jeu en compte 19 235 ; une branche d'un choix est
+  marquée, 69 quêtes principales sur 38 chaînes étant des embranchements.
+
+  La liste ne prévoit **pas** de durée totale. La somme des médianes ment d'un
+  facteur deux, 77 quêtes/heure au rythme médian contre 36 réellement produites.
+
 - **Les lectures ratées laissent une trace.** Une image jugée digne d'être lue
   dont aucun bandeau ne sortait était jusqu'ici abandonnée sur place, sans rien
   laisser derrière elle. Une session qui ne mesurait rien ne disait donc pas
@@ -30,6 +46,15 @@ datée le jour de la release.
   L'archive est bornée par celle qu'on vise, et quand elle déborde, la
   destination suivante est proposée. Fabriquer une archive que l'hébergeur
   refusera au dépôt serait un piège.
+
+### Corrigé
+
+- **Un pictogramme pouvait interrompre une session.** Les symboles hors ASCII
+  employés dans les messages, comme « ⚠ », n'existent pas dans la page de codes
+  cp1252 de la console Windows. Leur affichage lève une erreur d'encodage quand
+  la sortie n'a pas pu être basculée en UTF-8, et même quand elle l'a été, la
+  plupart des polices de console les rendent en carré vide. Tous les marqueurs
+  des sorties sont passés en texte simple.
 
 ### Notes
 

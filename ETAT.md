@@ -20,6 +20,7 @@ les temps de référence des autres. La chaîne complète tient debout.
 | Chronométrage et déduction des fins manquées | ✅ vérifié en jeu |
 | Identification des quêtes | ✅ **100 %** |
 | Panneau de suivi de quête | ✅ |
+| Liste des quêtes suivantes | ✅ trous et branches signalés |
 | Serveur, classement, envoi | ✅ **en ligne** |
 | Exécutable Windows | ✅ 59 Mo |
 | Vérification de version | ✅ |
