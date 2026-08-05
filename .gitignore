@@ -44,3 +44,7 @@ dist/
 .coverage.*
 htmlcov/
 coverage.xml
+
+# Consignes locales pour Claude. Le dépôt est public : ce fichier reste sur
+# le poste, comme celui de butin-bdo.
+CLAUDE.md
