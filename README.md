@@ -89,12 +89,28 @@ ligne de classement. Aucune table de traduction n'est écrite à la main.
 
 | Partie | État |
 |---|---|
-| Référentiel des quêtes, deux langues | ✅ fonctionne, testé |
-| Reconstitution des chaînes | ✅ 267 chaînes sur 349 complètes |
+| Référentiel des quêtes, deux langues | ✅ 18 999 quêtes, jointure FR/EN complète |
+| Reconstitution des chaînes | ✅ 267 chaînes sur 349 sans trou de numérotation |
 | Capture et lecture des bandeaux | ✅ fonctionne en jeu |
 | Rubinmétrage et journal d'événements | ✅ fonctionne en jeu |
-| Suivi de quête, pour lever les ambiguïtés de noms | ⬜ à écrire |
-| Envoi au serveur et classement | ⬜ à écrire |
+| Suivi de quête, pour lever les ambiguïtés de noms | ✅ fonctionne en jeu |
+| Identification des quêtes principales | ✅ **100 %** |
+| Envoi au serveur et classement | ✅ **en ligne** |
+| Exécutable Windows | ✅ publié en release |
+| Rétention des lectures ratées | ✅ locale, envoi manuel |
+| Rattachement d'un compte Discord | ⏸ écrit, en attente d'identifiants |
+
+En ligne :
+
+| | |
+|---|---|
+| Serveur | **https://rubin.maxyull.fr** |
+| Version Windows | https://github.com/Maxyull/rubin-bdo/releases |
+
+⚠️ **Le classement ne contient pour l'instant que 11 mesures, d'un seul joueur,
+sur une seule chaîne.** Ce sont des mesures, pas encore des références : une
+médiane calculée sur un échantillon est un chiffre, pas une observation. Cela se
+comble en jouant, pas en programmant.
 
 Première mesure en conditions réelles, le 5 août 2026 :
 
@@ -104,12 +120,31 @@ Première mesure en conditions réelles, le 5 août 2026 :
 
 Soit la quête 21139/46, quarante-sixième d'une chaîne de quatre-vingt-quinze.
 
-Quatre défauts ont été trouvés en une seule session de jeu, et **aucun n'était
-visible sur des captures fixes** : l'icône du bandeau se déplace de 150 pixels
-selon la longueur du nom, la corrélation plafonne à 0,90 au lieu de 0,99 parce
-que le décor bouge derrière, la reconnaissance avale des espaces, et un bandeau
-d'objectif porte une ligne de description qu'on prendrait pour la suite du nom.
-Chacun suffisait à lui seul pour qu'aucune quête ne soit jamais mesurée.
+**Cinq défauts ont été trouvés en jouant, et aucun n'était visible sur des
+captures fixes.** Chacun suffisait à lui seul pour qu'aucune quête ne soit
+jamais mesurée :
+
+1. l'icône du bandeau **se déplace de 150 pixels** selon la longueur du nom,
+   la barre restant ancrée à droite. Elle est cherchée par glissement, jamais à
+   une position fixe ;
+2. la corrélation **plafonne à 0,90 en jeu** au lieu de 0,99 sur capture fixe,
+   parce que le bandeau est semi-transparent et que le décor bouge derrière. Le
+   seuil retenu est 0,70 ;
+3. la reconnaissance **avale des espaces**, « Ce qui s'est passé » devenant
+   « Cequi s'estpasse ». Les noms sont donc comparés sans espaces ni ponctuation
+   des deux côtés ;
+4. un **bandeau d'objectif porte une ligne de trop**, que rien ne distingue de
+   la suite d'un nom long passé à la ligne ;
+5. le **panneau de choix coupe le préfixe de région** : « [Carrefour] Du côté de
+   Valks » là où le catalogue porte « [Calpheon][Carrefour] Du côté de Valks ».
+   76 quêtes principales sont dans ce cas.
+
+En prime, le panneau de suivi n'a aucun fond opaque : de nuit, la luminance de
+toute la zone tombe à **19 sur 255** et la reconnaissance n'y trouve aucune
+ligne. Un étirement de contraste avant lecture est obligatoire.
+
+C'est la leçon principale du projet : un jeu de test figé valide la lecture
+d'une image, pas le comportement d'une interface vivante.
 
 Voir l'état du référentiel :
 
