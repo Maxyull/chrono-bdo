@@ -47,12 +47,18 @@ def main() -> int:
     print(f"--- {poids / 1e6:.0f} Mo dans {cible}")
 
     print("--- archive")
-    # LZMA plutôt que la compression par défaut du zip : sur des binaires de
-    # cette taille, elle rend une archive environ deux fois plus petite, pour
-    # quelques dizaines de secondes de plus à la construction. C'est ce que les
-    # gens téléchargent, donc c'est là que le poids compte le plus.
+    # ⚠️ ZIP_DEFLATED, jamais ZIP_LZMA. La LZMA rendait l'archive environ deux
+    # fois plus petite, mais ni l'explorateur Windows ni `Expand-Archive` de
+    # PowerShell ne savent décompresser une méthode LZMA dans un zip : ce sont
+    # des outils natifs, limités à la compression Deflate du format, la seule
+    # que le zip lui-même garantit. Trouvé le 5 août 2026 au soir, quand Maxime
+    # n'arrivait pas à extraire les trois premières releases : l'explorateur
+    # rendait « erreur non spécifiée » sur un fichier au hasard,
+    # `Expand-Archive` était plus clair, « méthode de compression non prise en
+    # charge ». Les trois releases publiées ce soir avant ce correctif, v0.5.0
+    # à v0.5.2, sont donc illisibles par les outils Windows natifs.
     archive = RACINE / "dist" / "rubin-windows.zip"
-    with zipfile.ZipFile(archive, "w", zipfile.ZIP_LZMA) as zf:
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
         for fichier in sorted(cible.rglob("*")):
             if fichier.is_file():
                 zf.write(fichier, fichier.relative_to(cible))
