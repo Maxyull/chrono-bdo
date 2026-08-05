@@ -40,6 +40,7 @@ from ..capture import (
     find_game_window,
     tracker_region,
 )
+from ..history import personal_best
 from ..placement import choose, conflicts
 from ..protocol import PlayerIdentity
 from ..reference import Catalog, Quest, QuestId
@@ -68,6 +69,7 @@ from .presentation import (
     format_link,
     format_measure_line,
     format_other_quests,
+    format_personal_best,
     format_quest_times,
     format_ranking,
     format_reference,
@@ -232,6 +234,13 @@ class RubinApp:
         # la quête finie. Voir `format_current_reference`.
         self._record_en_cours = ttk.Label(cadre, text="", style="Faible.TLabel")
         self._record_en_cours.pack(anchor="w", pady=(0, 0))
+        # Le record PERSONNEL sur cette même quête, juste en dessous : une
+        # étiquette à part et non la même ligne, parce que les deux répondent à
+        # des questions différentes, « le meilleur de tout le monde » et « mon
+        # meilleur à moi », et qu'un joueur doit pouvoir les distinguer d'un coup
+        # d'œil. Voir `format_personal_best`, purement local.
+        self._record_personnel = ttk.Label(cadre, text="", style="Faible.TLabel")
+        self._record_personnel.pack(anchor="w", pady=(0, 0))
         # Le témoin de connexion, sous le chronomètre : visible depuis n'importe
         # quel onglet, parce que la question « est-ce que je suis relié ? » se
         # pose de partout. Un mot **et** une couleur, jamais la couleur seule.
@@ -1447,6 +1456,7 @@ class RubinApp:
             self._sous_titre.config(text="lancez Black Desert, puis jouez")
             self._surveillance.config(text="")
             self._record_en_cours.config(text="")
+            self._record_personnel.config(text="")
         self._lock_zone_controls(running)
 
     def _over_zones_tab(self, x: int, y: int) -> bool:
@@ -1695,21 +1705,34 @@ class RubinApp:
         change exactement quand une quête vient d'être acceptée. Dans un fil,
         comme tout le reste du réseau : un serveur lent ne doit pas figer la
         fenêtre pendant qu'une quête vient de démarrer.
+
+        Le record personnel local est demandé dans ce MÊME fil, alors qu'il ne
+        touche jamais le réseau. Deux raisons à ce choix : lire quelques
+        dizaines de fichiers ne coûte rien de plus qu'attendre une réponse
+        réseau, et surtout, les deux résultats arrivent ensemble sur une seule
+        ligne « reference_en_cours », donc `_show_current_reference` n'a besoin
+        que d'UN garde-fou de fraîcheur pour les deux affichages, jamais deux
+        copies du même contrôle qui pourraient un jour diverger.
         """
         quest_id = QuestId(chain, position)
 
         def demander() -> None:
             reference = references.quest(quest_id) if references is not None else None
-            self.publish("reference_en_cours", (quest_id, reference))
+            record = personal_best(self._home, quest_id)
+            self.publish("reference_en_cours", (quest_id, reference, record))
 
         threading.Thread(target=demander, daemon=True).start()
 
-    def _show_current_reference(self, quest_id: QuestId, reference: Any) -> None:
-        """Affiche le meilleur temps connu, s'il concerne toujours la quête en cours.
+    def _show_current_reference(
+        self, quest_id: QuestId, reference: Any, record: float | None
+    ) -> None:
+        """Affiche les deux références, si elles concernent toujours la quête en cours.
 
         ⚠️ La requête part dans un fil et peut répondre après que le joueur ait
         déjà avancé : sans ce contrôle, la réponse d'une quête abandonnée
-        s'afficherait sous le nom d'une autre, silencieusement fausse.
+        s'afficherait sous le nom d'une autre, silencieusement fausse. Le même
+        contrôle protège le record personnel que le meilleur temps connu : les
+        deux arrivent sur le même message, voir `_ask_current_reference`.
         """
         moteur = self._engine
         if (
@@ -1720,6 +1743,7 @@ class RubinApp:
         ):
             return
         self._record_en_cours.config(text=format_current_reference(reference))
+        self._record_personnel.config(text=format_personal_best(record))
 
     def _show_coverage(self, parts: tuple[str, str, str] | None) -> None:
         """Affiche « 0 verte, 11 orange, 3 913 jamais mesurées », ou son absence.

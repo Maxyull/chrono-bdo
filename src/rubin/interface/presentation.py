@@ -380,10 +380,8 @@ def format_current_reference(reference: QuestReference | None) -> str:
     « en combien de temps ça peut se faire », la médiane répondant à une autre
     question, « en combien de temps ça se fait d'habitude ».
 
-    ⚠️ **« Ton meilleur temps » personnel n'existe pas encore.** Le serveur ne
-    garde aucune donnée liée à un joueur dans ses réponses, par conception, et
-    le client ne tient pas non plus d'historique récapitulatif par quête. Ce
-    serait une vraie fonctionnalité à construire, pas une ligne de plus ici.
+    Ceci reste **le record de tout le monde**. Le record personnel du joueur,
+    lui, est une donnée locale distincte : voir `format_personal_best`.
     """
     if reference is None or reference.samples <= 0:
         return "jamais mesurée avant, vous seriez le·la premier·ère"
@@ -395,6 +393,24 @@ def format_current_reference(reference: QuestReference | None) -> str:
     if reference.samples < FRAGILE_BELOW:
         texte += "  peu sûr"
     return texte
+
+
+def format_personal_best(seconds: float | None) -> str:
+    """Le record personnel du joueur sur la quête EN COURS, pendant qu'on la joue.
+
+    Demandé par Maxime après #72 : à côté du meilleur temps connu de tout le
+    monde (`format_current_reference`), voir aussi SON PROPRE meilleur temps sur
+    cette quête. C'est une donnée strictement locale, lue dans les sessions déjà
+    écrites sur ce poste (voir `history.personal_best`), jamais envoyée ni reçue
+    du serveur, qui ne garde par conception aucune donnée par joueur.
+
+    `None` se dit « jamais mesurée », jamais un zéro ou une ligne vide : les deux
+    se liraient comme « instantané », l'inverse de la vérité, le même écueil que
+    partout ailleurs dans ce projet pour une quête sans référence.
+    """
+    if seconds is None:
+        return "ton meilleur temps : jamais mesurée"
+    return f"ton meilleur temps : {format_duration(seconds)}"
 
 
 def format_upcoming_line(item: UpcomingQuest) -> str:
