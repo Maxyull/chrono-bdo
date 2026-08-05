@@ -11,7 +11,9 @@ capture souvent et ne reconnaît qu'au moment utile.
 
 from __future__ import annotations
 
-from typing import Protocol
+from collections.abc import Iterable
+from dataclasses import dataclass
+from typing import Protocol, runtime_checkable
 
 import numpy as np
 
@@ -24,11 +26,61 @@ from ..capture import GrayFrame
 UPSCALE: int = 2
 
 
+@dataclass(frozen=True)
+class TextLine:
+    """Une ligne reconnue, avec la boîte qui l'entoure.
+
+    Les coordonnées sont celles de l'**image d'origine**, pas de l'image
+    agrandie que le moteur a réellement vue : le facteur d'agrandissement est
+    un détail de la reconnaissance, que personne d'autre n'a à connaître.
+
+    Cette boîte est ce qui sépare le bandeau du chat du jeu. Le moteur la rend
+    depuis toujours ; elle était jetée sur place, et sans elle deux textes
+    superposés à l'écran arrivent mélangés, sans rien pour dire lequel vient
+    d'où.
+    """
+
+    text: str
+    score: float
+    #: Bords de la boîte, en pixels de l'image d'origine.
+    left: float
+    right: float
+    top: float
+    bottom: float
+
+    @property
+    def middle(self) -> float:
+        """Abscisse du milieu de la ligne.
+
+        C'est elle qui décide de l'appartenance au bandeau, plutôt qu'un bord :
+        un bord se compare mal entre une ligne longue et une ligne courte,
+        alors que le milieu dit simplement dans quelle colonne la ligne se
+        trouve.
+        """
+        return (self.left + self.right) / 2.0
+
+
 class TextReader(Protocol):
     """Ce que la lecture attend d'un moteur de reconnaissance."""
 
     def read(self, image: GrayFrame) -> list[tuple[str, float]]:
         """Lignes reconnues, de haut en bas, avec leur score de 0 à 1."""
+        ...
+
+
+@runtime_checkable
+class BoxedTextReader(Protocol):
+    """Un moteur qui sait dire **où** il a lu chaque ligne.
+
+    Volontairement un second point d'entrée, et non un changement de ce que
+    rend `TextReader.read`. Ce protocole-là est employé par le panneau de suivi,
+    par le choix automatique de zone et par la fenêtre : leur imposer une
+    géométrie dont ils n'ont que faire aurait touché tout le logiciel pour le
+    besoin d'un seul appelant, l'analyse du bandeau.
+    """
+
+    def read_boxed(self, image: GrayFrame) -> list[TextLine]:
+        """Lignes reconnues, avec la boîte de chacune."""
         ...
 
 
@@ -93,6 +145,9 @@ class RapidOcrReader:
         return self._engine
 
     def read(self, image: GrayFrame) -> list[tuple[str, float]]:
+        return [(line.text, line.score) for line in self.read_boxed(image)]
+
+    def read_boxed(self, image: GrayFrame) -> list[TextLine]:
         engine = self._ensure_engine()
         # L'étirement d'abord, l'agrandissement ensuite : étaler la luminance
         # sur une image déjà agrandie donnerait le même résultat pour quatre
@@ -104,4 +159,56 @@ class RapidOcrReader:
         result, _ = engine(rgb)  # type: ignore[operator]
         if not result:
             return []
-        return [(str(text).strip(), float(score)) for _, text, score in result]
+        # Les boîtes sont rendues dans l'échelle de l'image agrandie. On les
+        # ramène à celle de l'image d'origine, seule échelle que connaissent la
+        # zone tracée par le joueur et les vignettes gardées en cas d'échec.
+        scale = float(max(1, self._factor))
+        lines: list[TextLine] = []
+        for box, text, score in result:
+            xs = [float(point[0]) / scale for point in box]
+            ys = [float(point[1]) / scale for point in box]
+            lines.append(
+                TextLine(
+                    text=str(text).strip(),
+                    score=float(score),
+                    left=min(xs),
+                    right=max(xs),
+                    top=min(ys),
+                    bottom=max(ys),
+                )
+            )
+        return lines
+
+
+def read_lines(reader: TextReader, image: GrayFrame) -> list[TextLine]:
+    """Lit une image, avec les boîtes si le moteur sait les rendre.
+
+    Les moteurs écrits pour les tests ne rendent que du texte et un score, et
+    c'est très bien ainsi : la géométrie n'a de sens que face à une vraie image.
+    Ils reçoivent alors une géométrie **neutre**, où toutes les lignes occupent
+    la même colonne et se suivent de haut en bas. Le filtre de colonne ne
+    rejette rien dans ce cas, ce qui est le comportement voulu : sans boîte, on
+    ne sait rien, et deviner reviendrait à jeter des lignes au hasard.
+    """
+    if isinstance(reader, BoxedTextReader):
+        return reader.read_boxed(image)
+    return neutral_lines(reader.read(image))
+
+
+def neutral_lines(lines: Iterable[tuple[str, float]]) -> list[TextLine]:
+    """Des lignes sans géométrie connue, rangées dans une colonne unique.
+
+    Le rang tient lieu d'ordonnée : c'est le seul ordre dont on dispose quand
+    on n'a que du texte, et c'est celui de la lecture, de haut en bas.
+    """
+    return [
+        TextLine(
+            text=text,
+            score=score,
+            left=0.0,
+            right=1.0,
+            top=float(rank),
+            bottom=float(rank) + 1.0,
+        )
+        for rank, (text, score) in enumerate(lines)
+    ]

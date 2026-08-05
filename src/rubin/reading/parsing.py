@@ -9,10 +9,12 @@ logent les cas tordus.
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from dataclasses import replace
 from typing import Final
 
 from ..reference import fold
 from .models import BannerKind, BannerReading
+from .ocr import TextLine, neutral_lines
 
 #: Titres reconnus, par type de bandeau, sous leur forme normalisée.
 #:
@@ -42,6 +44,66 @@ MIN_LINE_SCORE: Final = 0.75
 MIN_READING_SCORE: Final = 0.80
 
 
+def _in_banner_column(title: TextLine, below: Sequence[TextLine]) -> list[TextLine]:
+    """Ne garde, sous le titre, que les lignes qui sont dans sa colonne.
+
+    C'est la correction du défaut qui empêchait Rubin de mesurer quoi que ce
+    soit. La zone du bandeau recouvre le haut du chat du jeu, et la
+    reconnaissance rend les lignes des deux **mélangées**, dans un ordre qui
+    alterne. Relevé sur les neuf échecs du 5 août 2026 :
+
+        Queteaccomplie                      <- le titre
+        Guer                                <- du chat, APRÈS le titre
+        [Hebdo] Echange d'arme du Voile     <- le nom
+        finp                                <- du chat
+        noir                                <- la SUITE du nom
+
+    Le nom recollé devenait « Guer [Hebdo] Echange d'arme du Voile finp noir »,
+    qui ne se résout en rien, alors que chaque ligne était lue entre 0,94 et
+    0,97. Rien ne manquait à la reconnaissance : il manquait de savoir **où**
+    chaque ligne avait été lue.
+
+    Aucune abscisse n'est écrite ici, et c'est délibéré : un seuil fixe calé sur
+    des captures est le deuxième piège du projet. Le critère est **relatif**, et
+    tient à une propriété du bandeau qui ne dépend d'aucune résolution : il
+    centre son texte, toujours sur le même axe. Les neuf relevés le confirment,
+    milieu du titre entre 215,5 et 218,25 sur une zone large de 349. Le chat, à
+    l'inverse, est calé à gauche.
+
+    Une ligne appartient donc au bandeau si son **milieu** tombe dans la colonne
+    ouverte par le titre, colonne qu'elle élargit ensuite : un nom plus long que
+    le titre déborde des deux côtés, et les lignes de suite sont alignées à
+    gauche sur lui, donc plus à gauche que le titre.
+
+    Ce qui a été mesuré sur les neuf images, boîtes ramenées à l'échelle de la
+    vignette de 349 pixels :
+
+    - les lignes de chat qui suivent le titre sont **hachées par la barre
+      opaque du bandeau** et ne dépassent jamais x = 33,5 ;
+    - la colonne du bandeau commence au plus tôt à x = 103,5.
+
+    Soit soixante-dix pixels de marge, sans qu'aucun nombre n'ait à être écrit.
+    En cas de doute la ligne est **abandonnée**, jamais attribuée au bandeau :
+    un nom amputé ne se résout en rien et coûte une mesure, un nom pollué
+    pourrait en résoudre une autre.
+    """
+    left, right = title.left, title.right
+    retained: list[TextLine] = []
+    for line in below:
+        # Au-dessus du titre, ce n'est pas la suite du bandeau. L'ordre rendu
+        # par le moteur suit les rangées de haut en bas mais s'inverse parfois
+        # entre deux lignes de la même rangée, et une ligne de chat pleine
+        # largeur traverserait la colonne.
+        if line.top < title.top:
+            continue
+        if not left <= line.middle <= right:
+            continue
+        left = min(left, line.left)
+        right = max(right, line.right)
+        retained.append(line)
+    return retained
+
+
 def _match_title(text: str) -> BannerKind | None:
     # Les titres sont écrits lisiblement et normalisés ici, plutôt que stockés
     # sous leur forme normalisée : celle-ci n'a ni espaces ni accents, donc
@@ -64,6 +126,22 @@ def parse_banner(
     min_line_score: float = MIN_LINE_SCORE,
     min_reading_score: float = MIN_READING_SCORE,
 ) -> BannerReading | None:
+    """Assemble des lignes sans géométrie, quand on n'a que du texte.
+
+    Point d'entrée historique, gardé pour tout ce qui fabrique des lignes à la
+    main : les tests, la vérification `rubin verifier`, un enregistrement rejoué.
+    Sans boîte, aucune séparation d'avec le chat n'est possible ; ce chemin ne
+    doit donc pas être celui d'une vraie session, qui passe par
+    `parse_banner_lines`.
+    """
+    return parse_banner_lines(neutral_lines(lines), min_line_score, min_reading_score)
+
+
+def parse_banner_lines(
+    lines: Iterable[TextLine],
+    min_line_score: float = MIN_LINE_SCORE,
+    min_reading_score: float = MIN_READING_SCORE,
+) -> BannerReading | None:
     """Assemble les lignes reconnues en un bandeau, ou renvoie `None`.
 
     `lines` arrive dans l'ordre de lecture, de haut en bas : le titre d'abord,
@@ -75,8 +153,11 @@ def parse_banner(
     capturé pendant son apparition en fondu, une ligne peut être un artefact.
     Un `None` ne coûte qu'une mesure ; un bandeau inventé fausse un classement.
     """
-    kept = [(text.strip(), score) for text, score in lines if score >= min_line_score]
-    kept = [(text, score) for text, score in kept if text]
+    kept = [
+        replace(line, text=line.text.strip())
+        for line in lines
+        if line.score >= min_line_score and line.text.strip()
+    ]
     if len(kept) < 2:  # il faut au moins un titre et un nom
         return None
 
@@ -101,24 +182,26 @@ def parse_banner(
     found = next(
         (
             (i, genre)
-            for i, (text, _) in enumerate(kept)
-            if (genre := _match_title(text)) is not None
+            for i, line in enumerate(kept)
+            if (genre := _match_title(line.text)) is not None
         ),
         None,
     )
     if found is None:
         return None
     index, kind = found
+    title = kept[index]
 
-    name_lines = tuple(text for text, _ in kept[index + 1 :])
+    retained = _in_banner_column(title, kept[index + 1 :])
+    name_lines = tuple(line.text for line in retained)
     name = " ".join(name_lines)
     if not name:
         return None
 
     # La confiance ne porte que sur le titre et le nom. Y mêler les lignes de
-    # chat qui précèdent ferait varier la confiance d'une mesure selon ce que
-    # racontait la guilde à cet instant.
-    confidence = min(score for _, score in kept[index:])
+    # chat ferait varier la confiance d'une mesure selon ce que racontait la
+    # guilde à cet instant.
+    confidence = min([title.score, *(line.score for line in retained)])
     if confidence < min_reading_score:
         return None
     return BannerReading(

@@ -3,7 +3,17 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from rubin.reading import BannerKind, is_known_title, parse_banner, upscale
+from rubin.reading import (
+    BannerKind,
+    RapidOcrReader,
+    TextLine,
+    is_known_title,
+    neutral_lines,
+    parse_banner,
+    parse_banner_lines,
+    read_lines,
+    upscale,
+)
 from rubin.reading.ocr import stretch_contrast
 
 #: Sorties **réelles** du moteur de reconnaissance sur les captures du jeu,
@@ -135,6 +145,125 @@ class TestParseBanner:
     def test_ignore_les_lignes_vides(self) -> None:
         lignes = [("Nouvelle quete", 0.99), ("   ", 0.99), ("[X] Une", 0.95)]
         assert parse_banner(lignes) is not None
+
+
+def _ligne(text: str, score: float, gauche: float, droite: float, haut: float) -> TextLine:
+    """Une ligne posée à un endroit précis de la vignette du bandeau."""
+    return TextLine(
+        text=text, score=score, left=gauche, right=droite, top=haut, bottom=haut + 15.0
+    )
+
+
+class TestColonneDuBandeau:
+    """Le filtre qui sépare le bandeau du chat, ligne par ligne.
+
+    Le bandeau centre son texte sur un axe fixe, aux environs de x = 217 sur une
+    vignette large de 349. Le chat, lui, est calé à gauche, et la barre opaque du
+    bandeau le hache : sous le titre, il ne reste de lui qu'une colonne étroite.
+    """
+
+    TITRE = _ligne("Quete accomplie", 0.96, 148.5, 288.0, 31.5)
+
+    def test_garde_un_nom_plus_large_que_le_titre(self) -> None:
+        # Un nom long déborde du titre des deux côtés. Son milieu reste dans la
+        # colonne, c'est ce qui le rattache au bandeau.
+        nom = _ligne("[Hebdo] Echange d’arme du Voile", 0.94, 103.5, 330.0, 48.5)
+        lu = parse_banner_lines([self.TITRE, nom])
+        assert lu is not None
+        assert lu.quest_name == "[Hebdo] Echange d’arme du Voile"
+
+    def test_garde_une_ligne_de_suite_alignee_a_gauche_sur_le_nom(self) -> None:
+        # Les lignes de suite ne sont pas centrées : elles s'alignent sur le bord
+        # gauche du nom, donc leur milieu part vers la gauche. La colonne s'est
+        # élargie au nom, c'est ce qui les rattrape.
+        nom = _ligne("[Hebdo] Echange d’arme du Voile", 0.94, 103.5, 330.0, 48.5)
+        suite = _ligne("noir", 0.99, 103.5, 133.0, 68.5)
+        lu = parse_banner_lines([self.TITRE, nom, suite])
+        assert lu is not None
+        assert lu.quest_name == "[Hebdo] Echange d’arme du Voile noir"
+
+    def test_ecarte_une_ligne_de_chat_calee_a_gauche(self) -> None:
+        chat = _ligne("Guer", 0.98, 1.0, 27.5, 39.0)
+        nom = _ligne("Les fanatiques", 0.97, 168.0, 266.5, 58.5)
+        lu = parse_banner_lines([self.TITRE, chat, nom])
+        assert lu is not None
+        assert lu.quest_name == "Les fanatiques"
+
+    def test_ecarte_une_ligne_de_chat_passee_sous_le_titre(self) -> None:
+        # Une annonce de guilde pleine largeur traverse la colonne du bandeau :
+        # c'est son ordonnée, au-dessus du titre, qui la disqualifie. Le moteur
+        # rend parfois deux lignes d'une même rangée dans l'ordre inverse.
+        annonce = _ligne("de guilde terminees avant la maintenance,", 0.98, 2.5, 230.5, 0.5)
+        nom = _ligne("Les fanatiques", 0.97, 168.0, 266.5, 58.5)
+        lu = parse_banner_lines([self.TITRE, annonce, nom])
+        assert lu is not None
+        assert lu.quest_name == "Les fanatiques"
+
+    def test_refuse_le_bandeau_quand_il_ne_reste_aucun_nom(self) -> None:
+        # Un titre entouré de chat et rien d'autre : mieux vaut une mesure
+        # perdue qu'un nom fait de morceaux de conversation.
+        chat = _ligne("ajour", 0.98, 2.0, 33.0, 73.0)
+        assert parse_banner_lines([self.TITRE, chat]) is None
+
+
+class TestLignesSansGeometrie:
+    def test_neutralise_les_lignes_sans_boite(self) -> None:
+        lignes = neutral_lines([("Nouvelle quete", 0.99), ("[X] Une quete", 0.95)])
+        assert [ligne.text for ligne in lignes] == ["Nouvelle quete", "[X] Une quete"]
+        # Une colonne unique, où toutes les lignes tombent : sans boîte, aucune
+        # ne peut être écartée, et deviner reviendrait à en jeter au hasard.
+        assert all(ligne.left <= ligne.middle <= ligne.right for ligne in lignes)
+        assert [ligne.top for ligne in lignes] == [0.0, 1.0]
+
+    def test_lit_sans_boite_avec_un_moteur_qui_n_en_rend_pas(self) -> None:
+        class MoteurSimple:
+            def read(self, image: np.ndarray) -> list[tuple[str, float]]:
+                return [("Nouvelle quete", 0.99), ("[X] Une quete", 0.95)]
+
+        lignes = read_lines(MoteurSimple(), np.zeros((4, 4), dtype=np.uint8))
+        assert parse_banner_lines(lignes) is not None
+
+    def test_lit_avec_les_boites_quand_le_moteur_sait_les_rendre(self) -> None:
+        class MoteurAvecBoites:
+            def read(  # pragma: pas de couverture
+                self, image: np.ndarray
+            ) -> list[tuple[str, float]]:
+                raise AssertionError("read_boxed doit être préféré")
+
+            def read_boxed(self, image: np.ndarray) -> list[TextLine]:
+                return [_ligne("Nouvelle quete", 0.99, 148.5, 288.0, 31.5)]
+
+        lignes = read_lines(MoteurAvecBoites(), np.zeros((4, 4), dtype=np.uint8))
+        assert [ligne.left for ligne in lignes] == [148.5]
+
+
+class TestRapidOcrReader:
+    """Le seul point où la géométrie du moteur est traduite.
+
+    Le moteur voit une image agrandie deux fois. Rendre ses boîtes telles quelles
+    doublerait toutes les abscisses, et la colonne du bandeau se comparerait à
+    une zone qui n'existe pas.
+    """
+
+    class _MoteurFactice:
+        def __call__(self, image: np.ndarray) -> tuple[list[object], float]:
+            boite = [[207.0, 63.0], [576.0, 63.0], [576.0, 101.0], [207.0, 101.0]]
+            return [(boite, " Quete accomplie ", 0.96)], 0.0
+
+    def test_ramene_les_boites_a_l_echelle_de_l_image_d_origine(self) -> None:
+        lecteur = RapidOcrReader(factor=2)
+        lecteur._engine = self._MoteurFactice()
+        (ligne,) = lecteur.read_boxed(np.zeros((115, 349), dtype=np.uint8))
+        assert (ligne.left, ligne.right) == (103.5, 288.0)
+        assert (ligne.top, ligne.bottom) == (31.5, 50.5)
+        assert ligne.text == "Quete accomplie"
+
+    def test_rend_les_memes_lignes_par_les_deux_points_d_entree(self) -> None:
+        # `read` reste le protocole employé partout ailleurs : il ne doit pas
+        # dévier de ce que `read_boxed` a lu.
+        lecteur = RapidOcrReader(factor=2)
+        lecteur._engine = self._MoteurFactice()
+        assert lecteur.read(np.zeros((115, 349), dtype=np.uint8)) == [("Quete accomplie", 0.96)]
 
 
 class TestKnownTitle:

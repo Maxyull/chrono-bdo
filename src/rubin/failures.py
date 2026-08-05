@@ -51,6 +51,7 @@ from pathlib import Path
 from typing import Final
 
 from .capture import GrayFrame
+from .reading import TextLine
 
 #: Au-delà de quoi une image retenue est effacée. Trois mois couvrent largement
 #: le délai entre une session qui rate et le moment où quelqu'un s'en occupe,
@@ -185,6 +186,33 @@ def _encode_webp(image: GrayFrame, path: Path) -> bool:
     return True
 
 
+def _journal_line(line: TextLine | tuple[str, float]) -> dict[str, object]:
+    """Une ligne du journal des échecs, avec sa boîte quand on l'a.
+
+    La boîte est écrite parce que son absence a coûté cher. Le journal du 5 août
+    2026 ne portait que le texte et le score : il montrait bien que le chat était
+    mélangé au bandeau, mais pas **où** chaque ligne se trouvait, donc pas de
+    quoi mesurer la séparation. Il a fallu rejouer la reconnaissance sur les neuf
+    vignettes gardées pour retrouver une information que le moteur avait rendue
+    et qu'on avait jetée deux fois de suite.
+
+    Les coordonnées ne disent rien de plus sur le joueur que la vignette
+    elle-même, qui est déjà dans le dossier : ce sont des positions à
+    l'intérieur d'un rectangle de 349 pixels de large, pas sur son écran.
+    """
+    if isinstance(line, tuple):
+        text, score = line
+        return {"texte": text, "score": round(score, 3)}
+    return {
+        "texte": line.text,
+        "score": round(line.score, 3),
+        "gauche": round(line.left, 1),
+        "droite": round(line.right, 1),
+        "haut": round(line.top, 1),
+        "bas": round(line.bottom, 1),
+    }
+
+
 @dataclass(frozen=True)
 class FailureStats:
     """Ce que le dossier contient, pour le dire en fin de session."""
@@ -251,7 +279,7 @@ class FailureStore:
     def keep(
         self,
         image: GrayFrame,
-        lines: Sequence[tuple[str, float]],
+        lines: Sequence[TextLine] | Sequence[tuple[str, float]],
         at: float | None = None,
     ) -> Path | None:
         """Retient une lecture ratée, et renvoie le fichier écrit s'il l'a été.
@@ -282,7 +310,7 @@ class FailureStore:
             "instant": round(moment, 3),
             "hauteur": int(image.shape[0]),
             "largeur": int(image.shape[1]),
-            "lignes": [{"texte": text, "score": round(score, 3)} for text, score in lines],
+            "lignes": [_journal_line(line) for line in lines],
         }
         try:
             with (self._directory / JOURNAL_NAME).open("a", encoding="utf-8") as journal:

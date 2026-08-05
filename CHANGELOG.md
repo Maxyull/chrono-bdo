@@ -127,6 +127,51 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
   d'identification, jamais une identification erronée. C'est vérifié sur du
   vrai texte de dialogue relevé au centre d'une capture du jeu.
 
+- **Le chat du jeu ne se mêle plus au nom de la quête.** C'était le défaut qui
+  empêchait Rubin de mesurer quoi que ce soit : **neuf échecs sur neuf** du
+  5 août 2026 étaient de ce type. La zone du bandeau recouvre le haut du chat,
+  et la reconnaissance rendait les lignes des deux mélangées, dans un ordre qui
+  alterne :
+
+  ```
+  0,96  Queteaccomplie                      <- le titre
+  0,98  Guer                                <- du CHAT, APRÈS le titre
+  0,94  [Hebdo] Echange d'arme du Voile     <- le nom
+  0,97  finp                                <- du chat
+  1,00  noir                                <- la SUITE du nom
+  ```
+
+  Le nom recollé devenait « Guer [Hebdo] Echange d'arme du Voile finp noir »,
+  qui ne se résout en rien. Les noms étaient pourtant lus entre 0,94 et 0,97 :
+  rien ne manquait à la reconnaissance, il manquait de savoir **où** chaque
+  ligne avait été lue. Le moteur rendait cette information depuis toujours, et
+  elle était jetée sur place.
+
+  La correction garde les boîtes et filtre dessus. Le bandeau centre son texte
+  sur un axe fixe, le chat est calé à gauche : une ligne appartient au bandeau
+  si son milieu tombe dans la colonne ouverte par le titre, colonne que chaque
+  ligne retenue élargit ensuite. **Aucune abscisse n'est écrite dans le code**,
+  parce qu'un seuil calé sur des captures fixes est le deuxième piège du
+  projet. Relevé sur les neuf vignettes : sous le titre, la barre opaque du
+  bandeau hache le chat, qui ne dépasse jamais x = 33,5, quand la colonne du
+  bandeau commence au plus tôt à x = 103,5.
+
+  En cas de doute la ligne est **abandonnée**, jamais attribuée au bandeau. Le
+  pire cas reste donc une mesure perdue : vérifié, un nom pollué de chat ne
+  retombe sur aucune quête, ni par résolution exacte, ni par recollages, ni par
+  correspondance partielle.
+
+  ⚠️ Le type rendu par `TextReader.read` **n'a pas changé** : c'est un
+  protocole employé par le panneau de suivi, le choix automatique de zone et la
+  fenêtre. Les boîtes passent par un second point d'entrée, `read_boxed`, que
+  seul le chemin d'une vraie session emprunte.
+
+- **Le journal des échecs garde la boîte de chaque ligne.** Son absence a coûté
+  cher : le journal du 5 août montrait bien le chat mêlé au bandeau, mais sans
+  une seule coordonnée, donc sans de quoi mesurer la séparation. Il a fallu
+  rejouer la reconnaissance sur les neuf vignettes pour retrouver une
+  information que le logiciel jetait deux fois de suite.
+
 ## [0.4.0] - 2026-08-05
 
 La première version qu'on peut mettre entre les mains d'un testeur : elle ne

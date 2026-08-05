@@ -30,6 +30,7 @@ from rubin.failures import (
     fingerprint,
     larger_than,
 )
+from rubin.reading import TextLine
 from rubin.watching import BannerWatcher
 
 DATA = Path(__file__).parent / "data"
@@ -88,6 +89,33 @@ class TestRetention:
         ]
         assert entrees[0]["hauteur"] == banner.shape[0]
         assert entrees[0]["largeur"] == banner.shape[1]
+
+    def test_garde_la_boite_de_chaque_ligne(self, store: FailureStore, banner: GrayFrame) -> None:
+        """Régression : le journal ne disait pas OÙ chaque ligne avait été lue.
+
+        Les neuf échecs du 5 août 2026 montraient bien le chat du jeu mélangé au
+        bandeau, mais sans une seule coordonnée : de quoi voir le défaut, pas de
+        quoi mesurer la séparation. Il a fallu rejouer la reconnaissance sur les
+        neuf vignettes pour retrouver une information que le moteur avait rendue
+        et que le logiciel jetait deux fois de suite, à la lecture puis à
+        l'écriture du journal.
+
+        Les coordonnées ne disent rien de plus que la vignette déjà gardée à
+        côté : ce sont des positions dans un rectangle de 349 pixels de large,
+        pas sur l'écran de quelqu'un.
+        """
+        store.keep(banner, [TextLine("Quete accomplie", 0.96, 148.5, 288.0, 31.5, 50.5)])
+
+        assert _journal(store)[0]["lignes"] == [
+            {
+                "texte": "Quete accomplie",
+                "score": 0.96,
+                "gauche": 148.5,
+                "droite": 288.0,
+                "haut": 31.5,
+                "bas": 50.5,
+            }
+        ]
 
     def test_garde_aussi_ce_qui_n_a_produit_aucune_ligne(
         self, store: FailureStore, banner: GrayFrame
