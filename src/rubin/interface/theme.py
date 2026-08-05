@@ -146,6 +146,25 @@ def apply(root: ttk.Widget | object) -> ttk.Style:
     style.configure("Accent.TButton", background=COLORS["accent"], foreground="#ffffff")
     style.map("Accent.TButton", background=[("active", "#e8564d")])
 
+    # L'arbre alphabétique est le seul `Treeview` de la fenêtre : `clam` le
+    # rend en clair par défaut, comme le reste, et sans ce style il tranche
+    # sur tout le fond sombre au lieu de s'y fondre. `fieldbackground` est ce
+    # qui compte ici : `background` seul ne teint pas la zone de contenu.
+    style.configure(
+        "Treeview",
+        background=carte,
+        fieldbackground=carte,
+        foreground=texte,
+        borderwidth=0,
+        rowheight=22,
+        font=(FAMILY, 10),
+    )
+    style.map(
+        "Treeview",
+        background=[("selected", COLORS["bordure"])],
+        foreground=[("selected", texte)],
+    )
+
     style.configure(
         "TScale", background=fond, troughcolor=COLORS["bordure"], borderwidth=0
     )
