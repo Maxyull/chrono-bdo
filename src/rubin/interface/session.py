@@ -148,6 +148,15 @@ class MeasuringSession:
                             # celui de la lecture : sinon chaque mesure serait
                             # allongée de la durée de sa propre reconnaissance.
                             mesure = timeline.record(reading, at=at)
+                            # Tout bandeau vu est annoncé, même ceux qui ne
+                            # bornent aucune durée. Un bandeau d'objectif ne
+                            # produit pas de mesure, et c'est voulu : il se
+                            # passe PENDANT une quête. Mais se taire dessus
+                            # laissait croire que rien n'était vu, alors que la
+                            # lecture marchait parfaitement. Le silence ne
+                            # distingue pas « je ne vois rien » de « je vois,
+                            # ça ne se mesure pas ».
+                            self._publish("vu", (reading, langue))
                             if mesure is not None:
                                 self._publish("mesure", (mesure, langue))
                             ici = (timeline.current_chain, timeline.current_position)

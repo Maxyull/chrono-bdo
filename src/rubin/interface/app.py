@@ -22,14 +22,18 @@ from __future__ import annotations
 import queue
 import threading
 import tkinter as tk
+import webbrowser
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from tkinter import ttk
 from typing import Any, Final
 
+import requests
+
 from ..capture import Rect, ScreenCapture, banner_region, find_game_window, tracker_region
 from ..placement import choose, conflicts
+from ..protocol import PlayerIdentity
 from ..reference import Catalog
 from ..references import ReferenceClient
 from ..settings import LANGUAGES, LIMITS, load, save
@@ -53,12 +57,24 @@ from .theme import apply as apply_theme
 
 #: Taille de la fenêtre. Assez large pour un nom de quête complet, assez étroite
 #: pour tenir à côté du panneau de suivi sans mordre dessus.
-WINDOW_SIZE: Final = (460, 560)
+WINDOW_SIZE: Final = (470, 700)
 
 #: Période de rafraîchissement de l'affichage, en millisecondes. Huit fois par
 #: seconde suffisent : c'est déjà la cadence de capture, et l'œil n'en demande
 #: pas plus sur du texte.
 REFRESH_MS: Final = 125
+
+#: Ce qu'on écrit sous le nom de la quête, selon le bandeau vu.
+#:
+#: Les deux derniers ne produisent aucune mesure, et le disent. Sans cela, un
+#: joueur qui enchaîne les objectifs d'une même quête voit un logiciel muet et
+#: en conclut qu'il ne marche pas, alors qu'il lit parfaitement.
+SEEN_LABELS: Final = {
+    "acceptee": "quête acceptée, chronomètre lancé",
+    "accomplie": "quête accomplie, temps enregistré",
+    "objectif-partiel": "objectif en cours (ne borne aucune durée)",
+    "objectif-accompli": "objectif accompli (ne borne aucune durée)",
+}
 
 #: Largeur des aperçus de zone, en pixels.
 PREVIEW_WIDTH: Final = 400
@@ -196,6 +212,58 @@ class RubinApp:
         self._compteurs = ttk.Label(self._session, text="", style="Faible.TLabel", anchor="w")
         self._compteurs.pack(fill="x", padx=12, pady=(0, 10))
 
+    def _scrollable(self, parent: ttk.Frame) -> ttk.Frame:
+        """Un cadre qui défile, pour que le contenu ne soit jamais coupé.
+
+        Défaut constaté à l'usage : l'onglet des zones demandait 578 pixels de
+        haut dans une fenêtre de 560, et Tk n'affiche simplement pas ce qui
+        dépasse. Les boutons du bas étaient **présents et invisibles** : le
+        joueur en concluait qu'ils n'existaient pas, ce qui est pire qu'un
+        bouton grisé, lequel se voit.
+
+        Agrandir la fenêtre ne résout que le cas d'aujourd'hui ; un écran plus
+        petit, une police plus grande ou une ligne de plus rétabliraient le
+        défaut sans prévenir.
+        """
+        # Un conteneur à part : mélanger `side="top"` et `side="left"` dans un
+        # même cadre donne une mise en page écrasée, sans la moindre erreur. Les
+        # boutons au-dessus sont empilés vers le haut, la toile et sa barre
+        # côte à côte : les deux ne peuvent pas cohabiter directement.
+        cadre = ttk.Frame(parent)
+        cadre.pack(fill="both", expand=True)
+        toile = tk.Canvas(
+            cadre, background=COLORS["fond"], highlightthickness=0, borderwidth=0
+        )
+        barre = ttk.Scrollbar(cadre, orient="vertical", command=toile.yview)
+        dedans = ttk.Frame(toile)
+        fenêtre = toile.create_window((0, 0), window=dedans, anchor="nw")
+
+        def contenu_change(_event: object = None) -> None:
+            toile.configure(scrollregion=toile.bbox("all"))
+
+        def toile_change(event: tk.Event[tk.Misc]) -> None:
+            # La largeur vient de l'événement, jamais de `winfo_width()` : au
+            # premier passage la toile n'est pas encore disposée et rend 1, ce
+            # qui écrase tout le contenu dans une colonne d'un pixel. Le défaut
+            # ne se voit qu'à l'écran, aucune erreur n'est levée.
+            toile.itemconfigure(fenêtre, width=event.width)
+            toile.configure(scrollregion=toile.bbox("all"))
+
+        dedans.bind("<Configure>", contenu_change)
+        toile.bind("<Configure>", toile_change)
+        toile.configure(yscrollcommand=barre.set)
+        toile.pack(side="left", fill="both", expand=True)
+        barre.pack(side="right", fill="y")
+
+        def molette(event: tk.Event[tk.Misc]) -> None:
+            toile.yview_scroll(-event.delta // 120, "units")
+
+        # Liée à la toile et non à toute la fenêtre : sinon la molette ferait
+        # défiler cet onglet même quand on regarde ailleurs.
+        toile.bind("<MouseWheel>", molette)
+        dedans.bind("<MouseWheel>", molette)
+        return dedans
+
     def _text_box(self, parent: tk.Misc, height: int, mono: bool = False) -> tk.Text:
         """Une zone de texte habillée, `tk.Text` n'obéissant pas aux styles ttk.
 
@@ -233,8 +301,32 @@ class RubinApp:
         return boite
 
     def _build_zones(self) -> None:
+        # Les commandes d'abord : ce sont elles qu'on vient chercher, et
+        # elles ne doivent jamais dépendre de ce qui les précède.
+        boutons = ttk.Frame(self._zones)
+        boutons.pack(fill="x", padx=12, pady=(12, 2))
+        ttk.Button(
+            boutons, text="Lire maintenant", style="Accent.TButton",
+            command=self.read_zones_now,
+        ).pack(side="left")
+        ttk.Button(boutons, text="Zones calculées", command=self.reset_zones).pack(
+            side="left", padx=8
+        )
+        tracer = ttk.Frame(self._zones)
+        tracer.pack(fill="x", padx=12, pady=(0, 6))
+        for clé, libellé in (("banner", "Tracer le bandeau"), ("tracker", "Tracer le suivi")):
+            ttk.Button(tracer, text=libellé, command=self._pick(clé)).pack(
+                side="left", padx=(0, 8)
+            )
+        self._avertissement = ttk.Label(
+            self._zones, text="", style="Alerte.TLabel", anchor="w", justify="left",
+            wraplength=400,
+        )
+        self._avertissement.pack(fill="x", padx=12, pady=(0, 6))
+
+        self._zones_defilant = self._scrollable(self._zones)
         ttk.Label(
-            self._zones,
+            self._zones_defilant,
             text=(
                 "Rubin lit ces deux rectangles. S'ils tombent à côté, il ne mesure\n"
                 "rien et ne peut pas dire pourquoi."
@@ -277,26 +369,6 @@ class RubinApp:
             lecture.pack(fill="both", expand=True, padx=12, pady=(3, 2))
             self._zone_readings[clé] = lecture
 
-        boutons = ttk.Frame(self._zones)
-        boutons.pack(fill="x", padx=12, pady=(8, 4))
-        ttk.Button(
-            boutons, text="Lire maintenant", style="Accent.TButton", command=self.read_zones_now
-        ).pack(side="left")
-        ttk.Button(boutons, text="Zones calculées", command=self.reset_zones).pack(
-            side="left", padx=8
-        )
-
-        tracer = ttk.Frame(self._zones)
-        tracer.pack(fill="x", padx=12, pady=(0, 4))
-        for clé, libellé in (("banner", "Tracer le bandeau"), ("tracker", "Tracer le suivi")):
-            ttk.Button(
-                tracer, text=libellé, command=self._pick(clé)
-            ).pack(side="left", padx=(0, 8))
-
-        self._avertissement = ttk.Label(
-            self._zones, text="", style="Alerte.TLabel", anchor="w", justify="left", wraplength=400
-        )
-        self._avertissement.pack(fill="x", padx=12, pady=(4, 10))
         self.refresh_zones()
 
     def _build_settings(self) -> None:
@@ -356,6 +428,27 @@ class RubinApp:
             self._reglages, text="Enregistrer", style="Accent.TButton",
             command=self.save_settings,
         ).pack(padx=12, pady=(14, 4), anchor="w")
+
+        ttk.Label(
+            self._reglages, text="COMPTE DISCORD", style="Section.TLabel", anchor="w"
+        ).pack(fill="x", padx=12, pady=(16, 2))
+        ttk.Label(
+            self._reglages,
+            text=(
+                "Facultatif, et sans effet sur la mesure. Se connecter permet\n"
+                "d'apparaître au classement sous votre nom au lieu d'un\n"
+                "identifiant anonyme. Seul le pseudonyme est demandé : ni\n"
+                "courriel, ni serveurs, ni liste d'amis."
+            ),
+            style="Faible.TLabel", anchor="w", justify="left",
+        ).pack(fill="x", padx=12)
+        ttk.Button(
+            self._reglages, text="Se connecter avec Discord", command=self.link_discord
+        ).pack(padx=12, pady=(8, 2), anchor="w")
+        self._discord_etat = ttk.Label(
+            self._reglages, text="", style="Faible.TLabel", anchor="w", wraplength=400
+        )
+        self._discord_etat.pack(fill="x", padx=12)
         self._reglages_etat = ttk.Label(
             self._reglages, text="", style="Faible.TLabel", anchor="w", wraplength=400
         )
@@ -598,6 +691,8 @@ class RubinApp:
             self._show_progress(charge)
         elif genre == "mesure":
             self._add_measure(*charge)
+        elif genre == "vu":
+            self._show_seen(*charge)
         elif genre == "position":
             self._show_upcoming(*charge)
 
@@ -617,6 +712,18 @@ class RubinApp:
             morceaux.append(f"{progress.failed} illisibles")
         morceaux.append(f"{int(progress.elapsed)} s")
         self._compteurs.config(text="   ".join(morceaux))
+
+    def _show_seen(self, reading: Any, language: str) -> None:
+        """Annonce un bandeau vu, qu'il produise une mesure ou non.
+
+        Un bandeau d'objectif ne borne aucune durée, et c'est voulu : il se
+        passe pendant une quête. Mais se taire dessus laissait croire que rien
+        n'était vu, alors que la lecture marchait. Le silence ne distingue pas
+        « je ne vois rien » de « je vois, ça ne se mesure pas ».
+        """
+        quoi = SEEN_LABELS.get(reading.kind.value, reading.kind.value)
+        self._titre.config(text=reading.quest_name or "quête non identifiée")
+        self._sous_titre.config(text=quoi)
 
     def _add_measure(self, measure: Any, language: str) -> None:
         """Ajoute une quête terminée en haut de la liste des faites."""
@@ -670,6 +777,56 @@ class RubinApp:
     def publish(self, genre: str, charge: Any) -> None:
         """Dépose un message pour l'affichage. Appelable depuis n'importe quel fil."""
         self._messages.put((genre, charge))
+
+    def link_discord(self) -> None:
+        """Ouvre le rattachement du compte Discord dans le navigateur.
+
+        Le rattachement est **facultatif et sans effet sur la mesure**. Un
+        joueur qui n'en veut pas alimente les médianes exactement comme les
+        autres ; il n'apparaît simplement pas nommé.
+
+        L'identifiant anonyme voyage signé dans le paramètre `state`, que le
+        serveur vérifie au retour : sans cette signature, n'importe qui
+        pourrait rattacher son compte Discord à l'identifiant d'un autre.
+
+        Rien n'est ouvert avant d'avoir demandé au serveur s'il sait le faire.
+        Envoyer quelqu'un vers une page d'erreur qu'il ne peut pas comprendre
+        serait pire que de lui dire tout de suite que ce n'est pas gréé.
+        """
+        if not self._server:
+            self._discord_etat.config(
+                text="aucun serveur indiqué : relancez avec --envoyer pour vous connecter"
+            )
+            return
+        try:
+            identity = PlayerIdentity.load_or_create(self._home / "identite")
+        except OSError as erreur:  # pragma: pas de couverture
+            self._discord_etat.config(text=f"identifiant illisible : {erreur}")
+            return
+
+        adresse = f"{self._server.rstrip('/')}/v1/discord/connexion?player={identity.value}"
+        try:
+            réponse = requests.get(adresse, timeout=5, allow_redirects=False)
+        except requests.RequestException as erreur:
+            self._discord_etat.config(text=f"serveur injoignable : {erreur}")
+            return
+        if réponse.status_code == 503:
+            # L'état d'aujourd'hui : les routes existent, les identifiants
+            # Discord ne sont pas posés. Le dire tel quel plutôt que d'ouvrir
+            # un navigateur sur une erreur.
+            self._discord_etat.config(
+                text="le serveur n'a pas encore ses identifiants Discord, "
+                "le rattachement n'est pas disponible"
+            )
+            return
+        if réponse.status_code >= 400:
+            self._discord_etat.config(text=f"le serveur a refusé ({réponse.status_code})")
+            return
+
+        webbrowser.open(adresse)
+        self._discord_etat.config(
+            text="autorisez Rubin dans votre navigateur, puis revenez ici"
+        )
 
     def toggle_session(self) -> None:
         """Démarre ou arrête la mesure, selon l'état.
