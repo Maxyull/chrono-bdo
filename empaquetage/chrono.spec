@@ -88,6 +88,9 @@ exe = EXE(
     strip=False,
     upx=False,  # UPX déclenche des faux positifs d'antivirus, pour peu de gain
     console=True,
+    # Un binaire anonyme est doublement pénalisé : les antivirus s'en méfient
+    # davantage, et la signature de code exige un nom de produit et une version.
+    version=str(RACINE / "empaquetage" / "metadonnees.txt"),
 )
 
 coll = COLLECT(
