@@ -157,6 +157,58 @@ def apply(root: ttk.Widget | object) -> ttk.Style:
     return style
 
 
+#: Nombre de mesures au-delà duquel le score plafonne à cent.
+#:
+#: Vingt, et c'est un choix assumé plutôt que calculé. Le score ne prétend pas
+#: être une statistique : il dit **combien c'est mesuré**, sur une échelle
+#: lisible, et rien de plus.
+FULL_SCORE_AT: Final = 20
+
+
+#: Plafond du score quand la place de la quête dans sa chaîne n'est pas sûre.
+#:
+#: Une quête dont on connaît parfaitement le temps mais pas la place ne peut pas
+#: valoir cent : le score répond à « qu'est-ce qui m'attend et quand », et la
+#: moitié de cette question est « où ça tombe ». Soixante dit « le temps est
+#: bon, la place ne l'est pas », ce qui est exactement la situation.
+UNPLACED_CAP: Final = 60
+
+
+def confidence_score(samples: int | None, placed: bool = True) -> int:
+    """Un score sur cent, tel que défini : 0 sans rien, 100 quand tout est su.
+
+    Deux conditions, et **la plus faible commande**, jamais la moyenne :
+
+    - assez de mesures pour qu'une médiane veuille dire quelque chose ;
+    - assez de certitude sur la **place de la quête dans sa chaîne**.
+
+    Une moyenne laisserait un temps très bien mesuré compenser une position
+    inconnue, et donnerait un bon score à une quête dont on ne sait pas quand
+    elle arrive. Les deux moitiés de la question doivent tenir ensemble.
+
+    `placed` est faux quand le référentiel a un trou juste avant cette quête. Ce
+    n'est pas un détail : 82 chaînes sur 349 en portent, et le jeu compte 19 235
+    quêtes là où le référentiel en connaît 18 999. Une quête peut donc s'insérer
+    à l'écran sans figurer dans la liste, et le temps affiché serait juste au
+    mauvais endroit.
+
+    ⚠️ **La part « temps » compte des mesures, pas des joueurs**, et c'est la
+    limite connue. Vingt passages d'une même personne convergent vers le temps
+    de cette personne, pas vers celui des joueurs : le score dirait cent là où
+    une seule main a parlé. Le serveur ne distingue pas encore les
+    contributeurs ; le jour où il le fera, c'est le nombre de joueurs distincts
+    qui devra plafonner cette part.
+
+    En attendant, deux garde-fous. Le nombre brut de mesures est **toujours
+    affiché à côté**, donc le score n'ajoute rien qu'on ne puisse vérifier et
+    ne remplace aucune information. Et la formule est écrite ici, en clair.
+    """
+    if samples is None or samples <= 0:
+        return 0
+    temps = min(100, round(100 * samples / FULL_SCORE_AT))
+    return temps if placed else min(temps, UNPLACED_CAP)
+
+
 def confidence_colour(samples: int | None) -> str:
     """La couleur qui dit ce que vaut un temps, d'un coup d'œil.
 

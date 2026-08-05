@@ -31,9 +31,22 @@ from typing import Any, Final
 from ..capture import Rect, ScreenCapture, banner_region, find_game_window, tracker_region
 from ..placement import choose, conflicts
 from ..reference import Catalog
+from ..references import ReferenceClient
 from ..settings import LANGUAGES, LIMITS, load, save
-from .presentation import ZoneState, describe_conflict, describe_reading, describe_zone
-from .theme import COLORS, FAMILY, MONO_FAMILY
+from ..timing import Quality
+from ..upcoming import upcoming
+from .presentation import (
+    ZoneState,
+    describe_conflict,
+    describe_reading,
+    describe_zone,
+    format_duration,
+    format_gap,
+    format_reference,
+    format_upcoming_line,
+)
+from .session import MeasuringSession
+from .theme import COLORS, FAMILY, MONO_FAMILY, confidence_score
 from .theme import apply as apply_theme
 
 #: Taille de la fenêtre. Assez large pour un nom de quête complet, assez étroite
@@ -49,12 +62,17 @@ REFRESH_MS: Final = 125
 class RubinApp:
     """La fenêtre principale, ses trois onglets et ses réglages."""
 
-    def __init__(self, home: Path, catalog: Catalog | None = None) -> None:
+    def __init__(
+        self, home: Path, catalog: Catalog | None = None, server: str | None = None
+    ) -> None:
         self._home = home
         self._settings = load(home)
         self._catalog = catalog
         self._messages: queue.Queue[tuple[str, Any]] = queue.Queue()
         self._stop = threading.Event()
+        self._server = server
+        self._references = ReferenceClient(server)
+        self._engine: MeasuringSession | None = None
 
         self.root = tk.Tk()
         self.root.title("Rubin, chronomètre de quêtes")
@@ -106,14 +124,32 @@ class RubinApp:
         self._build_settings()
 
     def _build_session(self) -> None:
-        self._etat = ttk.Label(self._session, text="", style="Faible.TLabel", anchor="w")
-        self._etat.pack(fill="x", padx=12, pady=(12, 4))
+        commandes = ttk.Frame(self._session)
+        commandes.pack(fill="x", padx=12, pady=(12, 6))
+        self._bouton = ttk.Button(
+            commandes,
+            text="Je commence mes quêtes",
+            style="Accent.TButton",
+            command=self.toggle_session,
+        )
+        self._bouton.pack(side="left")
+
+        self._etat = ttk.Label(
+            self._session, text="", style="Faible.TLabel", anchor="w", wraplength=400
+        )
+        self._etat.pack(fill="x", padx=12, pady=(0, 6))
+
+        ttk.Label(
+            self._session, text="QUÊTES FAITES", style="Section.TLabel", anchor="w"
+        ).pack(fill="x", padx=12, pady=(2, 3))
+        self._faites = self._text_box(self._session, height=6)
+        self._faites.pack(fill="both", expand=True, padx=12)
 
         ttk.Label(
             self._session, text="LES QUÊTES QUI SUIVENT", style="Section.TLabel", anchor="w"
-        ).pack(fill="x", padx=12, pady=(6, 4))
+        ).pack(fill="x", padx=12, pady=(8, 3))
 
-        self._liste = self._text_box(self._session, height=13)
+        self._liste = self._text_box(self._session, height=7)
         self._liste.pack(fill="both", expand=True, padx=12)
 
         legende = ttk.Frame(self._session)
@@ -430,21 +466,119 @@ class RubinApp:
     def _handle(self, genre: str, charge: Any) -> None:
         if genre == "etat":
             self._etat.config(text=str(charge))
-        elif genre == "compteurs":
-            self._compteurs.config(text=str(charge))
-        elif genre == "suivantes":
-            self._liste.config(state="normal")
-            self._liste.delete("1.0", "end")
-            self._liste.insert("1.0", str(charge))
-            self._liste.config(state="disabled")
+        elif genre == "demarre":
+            self._set_running(bool(charge))
+        elif genre == "progres":
+            self._show_progress(charge)
+        elif genre == "mesure":
+            self._add_measure(*charge)
+        elif genre == "position":
+            self._show_upcoming(*charge)
+
+    def _set_running(self, running: bool) -> None:
+        self._bouton.config(
+            text="Arrêter" if running else "Je commence mes quêtes",
+            style="TButton" if running else "Accent.TButton",
+        )
+
+    def _show_progress(self, progress: Any) -> None:
+        morceaux = [f"{progress.measured} mesurées"]
+        if progress.deduced:
+            morceaux.append(f"{progress.deduced} déduites")
+        if progress.failed:
+            # Dit ce qui a échoué plutôt que de le taire : un silence total ne
+            # distingue pas « le jeu ne montre rien » de « je ne sais pas lire ».
+            morceaux.append(f"{progress.failed} illisibles")
+        morceaux.append(f"{int(progress.elapsed)} s")
+        self._compteurs.config(text="   ".join(morceaux))
+
+    def _add_measure(self, measure: Any, language: str) -> None:
+        """Ajoute une quête terminée en haut de la liste des faites."""
+        quest = self._catalog.get(measure.quest_id, language) if self._catalog else None
+        nom = quest.name if quest else str(measure.quest_id)
+        reference = self._references.quest(measure.quest_id) if self._references else None
+        échantillons = reference.samples if reference else 0
+        score = confidence_score(échantillons)
+        écart = reference.compare(measure.seconds) if reference else ""
+        marque = "" if measure.quality is Quality.EXACT else "  (déduite)"
+
+        self._faites.config(state="normal")
+        self._faites.insert("1.0", f"{format_duration(measure.seconds)}  {nom}{marque}\n")
+        self._faites.insert("1.0", "")  # ancre pour la balise de couleur
+        self._faites.tag_add(_tag_for(échantillons), "1.0", "1.end")
+        détail = f"    {score}/100  ({échantillons} mesures)"
+        if écart:
+            détail += f"  {écart}"
+        self._faites.insert("2.0", "")
+        self._faites.config(state="disabled")
+        self._faites.see("1.0")
+
+    def _show_upcoming(self, chain: int, position: int, references: Any) -> None:
+        """Réaffiche la liste des quêtes à venir, avec leur score."""
+        if self._catalog is None:
+            return
+        suivantes = upcoming(
+            self._catalog,
+            chain,
+            position,
+            language=self._settings.language,
+            count=self._settings.upcoming_count,
+            references=references,
+        )
+        self._liste.config(state="normal")
+        self._liste.delete("1.0", "end")
+        for item in suivantes:
+            trou = format_gap(item)
+            if trou:
+                self._liste.insert("end", f"  {trou}\n", "faible")
+            échantillons = item.reference.samples if item.reference else 0
+            # Un trou juste avant plafonne le score : le temps peut être bon,
+            # la place ne l'est pas, et les deux moitiés de la question doivent
+            # tenir ensemble.
+            score = confidence_score(échantillons, placed=not item.gap_before)
+            self._liste.insert("end", f"{score:>3}  ", _tag_for(échantillons))
+            self._liste.insert("end", f"{format_upcoming_line(item)}\n")
+            self._liste.insert("end", f"     {format_reference(item)}\n", "faible")
+        self._liste.config(state="disabled")
 
     def publish(self, genre: str, charge: Any) -> None:
         """Dépose un message pour l'affichage. Appelable depuis n'importe quel fil."""
         self._messages.put((genre, charge))
 
+    def toggle_session(self) -> None:
+        """Démarre ou arrête la mesure, selon l'état.
+
+        Un bouton, pas un démarrage automatique : capturer l'écran de
+        quelqu'un doit être un geste qu'il fait. Il dit aussi au logiciel
+        « je commence les quêtes », ce qu'une session ouverte pendant qu'on
+        est au marché ne dirait pas.
+        """
+        if self._engine is not None and self._engine.running:
+            self._etat.config(text="arrêt en cours, bilan de la session…")
+            self._engine.stop()
+            return
+        if self._catalog is None:
+            self._etat.config(text="référentiel indisponible, mesure impossible")
+            return
+        self._engine = MeasuringSession(
+            self._home, self._catalog, self._settings, self.publish, self._server
+        )
+        self._engine.start()
+
     def close(self) -> None:
+        # Le moteur d'abord : il écrit le lot de la session, et le perdre
+        # parce qu'on a fermé la fenêtre serait irrattrapable.
+        if self._engine is not None and self._engine.running:
+            self._engine.stop()
         self._stop.set()
         self.root.destroy()
 
     def run(self) -> None:
         self.root.mainloop()
+
+
+def _tag_for(samples: int) -> str:
+    """La balise de couleur d'un score, selon ce qui l'adosse."""
+    if samples <= 0:
+        return "absent"
+    return "sur" if samples >= 5 else "moyen"
