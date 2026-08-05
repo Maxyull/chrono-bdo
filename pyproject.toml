@@ -70,8 +70,11 @@ markers = [
 ]
 filterwarnings = ["error"]
 
+# Le paquet s'appelle `rubin` depuis le renommage. Tant que ce chemin
+# pointait `src/chrono`, la couverture mesurait un dossier inexistant et
+# rendait un rapport vide sans se plaindre.
 [tool.coverage.run]
-source = ["src/chrono"]
+source = ["src/rubin"]
 branch = true
 
 [tool.coverage.report]
