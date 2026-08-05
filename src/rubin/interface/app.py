@@ -35,7 +35,7 @@ from ..references import ReferenceClient
 from ..settings import LANGUAGES, LIMITS, load, save
 from ..timing import Quality
 from ..upcoming import upcoming
-from .picker import ZonePicker
+from .picker import ZonePicker, png_data
 from .presentation import (
     ZoneState,
     describe_conflict,
@@ -58,6 +58,32 @@ WINDOW_SIZE: Final = (460, 560)
 #: seconde suffisent : c'est déjà la cadence de capture, et l'œil n'en demande
 #: pas plus sur du texte.
 REFRESH_MS: Final = 125
+
+#: Largeur des aperçus de zone, en pixels.
+PREVIEW_WIDTH: Final = 400
+
+#: Les deux zones lues, et **à quoi elles servent**.
+#:
+#: Le rôle est affiché sous chaque titre. Sans lui, le joueur voit deux
+#: rectangles sans savoir lequel compte, ni ce qu'il casse en le déplaçant. Or
+#: les deux n'ont pas du tout le même poids : sans le bandeau, rien n'est jamais
+#: mesuré ; sans le panneau, on perd seulement de quoi lever une ambiguïté.
+ZONE_ROLES: Final = (
+    (
+        "banner",
+        "BANDEAU DE QUÊTE",
+        "En bas à droite. Il apparaît quand vous acceptez ou terminez une "
+        "quête, et c'est LUI qui déclenche le chronomètre. Mal placé, rien "
+        "n'est jamais mesuré.",
+    ),
+    (
+        "tracker",
+        "PANNEAU DE SUIVI",
+        "Sous la minimap. Il dit dans quelle chaîne vous êtes, ce qui permet "
+        "de trancher quand un nom lu désigne plusieurs quêtes. Mal placé, on "
+        "mesure quand même, on identifie seulement moins bien.",
+    ),
+)
 
 
 class RubinApp:
@@ -219,16 +245,29 @@ class RubinApp:
 
         self._zone_labels: dict[str, ttk.Label] = {}
         self._zone_readings: dict[str, tk.Text] = {}
-        for clé, nom in (("banner", "BANDEAU DE QUÊTE"), ("tracker", "PANNEAU DE SUIVI")):
+        self._zone_previews: dict[str, ttk.Label] = {}
+        self._zone_photos: dict[str, tk.PhotoImage] = {}
+        for clé, nom, rôle in ZONE_ROLES:
             ttk.Label(self._zones, text=nom, style="Section.TLabel", anchor="w").pack(
-                fill="x", padx=12, pady=(6, 2)
+                fill="x", padx=12, pady=(8, 1)
             )
+            # À quoi sert cette zone, en une phrase. Sans elle, le joueur voit
+            # deux rectangles sans savoir lequel compte ni ce qu'il casse en le
+            # déplaçant.
+            ttk.Label(
+                self._zones, text=rôle, style="Faible.TLabel", anchor="w",
+                justify="left", wraplength=400,
+            ).pack(fill="x", padx=12)
             self._zone_labels[clé] = ttk.Label(
                 self._zones, text="", style="Faible.TLabel", anchor="w"
             )
-            self._zone_labels[clé].pack(fill="x", padx=12)
-            lecture = self._text_box(self._zones, height=4, mono=True)
-            lecture.pack(fill="both", expand=True, padx=12, pady=(4, 2))
+            self._zone_labels[clé].pack(fill="x", padx=12, pady=(2, 0))
+            # L'image de ce qui est réellement capturé. Une position en chiffres
+            # ne dit pas si elle tombe au bon endroit ; l'image le dit d'un coup.
+            self._zone_previews[clé] = ttk.Label(self._zones, background=COLORS["carte"])
+            self._zone_previews[clé].pack(fill="x", padx=12, pady=(4, 0))
+            lecture = self._text_box(self._zones, height=3, mono=True)
+            lecture.pack(fill="both", expand=True, padx=12, pady=(3, 2))
             self._zone_readings[clé] = lecture
 
         boutons = ttk.Frame(self._zones)
@@ -418,11 +457,39 @@ class RubinApp:
         for clé, zone in zip(("banner", "tracker"), self.zones(fenêtre), strict=True):
             try:
                 with ScreenCapture(zone) as capture:
+                    image = capture.grab_color()
                     lignes = lecteur.read(capture.grab_gray())
             except Exception:  # pragma: pas de couverture
                 lignes = []
+            else:
+                self._show_preview(clé, image, zone)
             self._set_reading(clé, tuple(texte for texte, _score in lignes))
         self.refresh_zones()
+
+    def _show_preview(self, clé: str, image: object, zone: Rect) -> None:
+        """Montre l'image de ce que la zone capture vraiment.
+
+        Une position en chiffres ne dit pas si elle tombe au bon endroit.
+        L'image le dit d'un coup, et c'est elle qui a révélé, sur ce poste, que
+        la zone du bandeau lisait le chat de guilde.
+        """
+        try:
+            from PIL import Image
+
+            vignette = Image.fromarray(image)  # type: ignore[arg-type]
+            largeur = min(PREVIEW_WIDTH, zone.width)
+            hauteur = max(1, int(zone.height * largeur / zone.width))
+            vignette = vignette.resize((largeur, hauteur))
+            # Gardée sur l'instance : Tk ne retient pas ses images, et une image
+            # ramassée par le collecteur laisse un cadre vide, sans erreur.
+            self._zone_photos[clé] = tk.PhotoImage(data=png_data(vignette))
+            self._zone_previews[clé].config(image=self._zone_photos[clé])
+        except Exception as erreur:  # pragma: pas de couverture
+            # Un aperçu est un confort : son échec ne doit pas empêcher de lire
+            # la zone, qui est l'information utile. Mais il se dit, plutôt que
+            # de laisser un cadre vide qu'on prendrait pour une zone qui ne
+            # capture rien, ce qui est un tout autre problème.
+            self._zone_previews[clé].config(image="", text=f"aperçu indisponible : {erreur}")
 
     def _set_reading(self, clé: str, lignes: tuple[str, ...]) -> None:
         état = ZoneState(clé, Rect(0, 0, 1, 1), chosen=False, lines=lignes)
