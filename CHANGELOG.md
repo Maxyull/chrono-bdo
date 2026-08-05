@@ -71,6 +71,33 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
   celui-là est un parcours OAuth2 dans le serveur, sans jeton de robot, sans
   passerelle et sans présence dans un salon. Les deux vivent l'un sans l'autre.
 
+- **Un compteur de couverture côté serveur, `GET /v1/couverture`.** Il rend
+  combien de quêtes sont **bien mesurées**, cinq mesures ou plus, et combien le
+  sont **peu**, de une à quatre. Ce sont les seuils que la fenêtre emploie déjà
+  pour ses pastilles vertes et orange. Une seule requête SQL groupe les mesures
+  par quête et les répartit en tranches, sans rien rapatrier pour le compter en
+  Python.
+
+  Il ne rend **pas** les quêtes jamais mesurées, et c'est le cœur de la
+  décision. Le serveur ne connaît que les quêtes dont il a reçu au moins une
+  mesure ; les 3 924 quêtes principales sont un fait du catalogue, que le client
+  porte et que le serveur n'a jamais vu. Il aurait été facile de lui faire
+  soustraire deux nombres et d'annoncer les grises : c'eût été lui faire dire un
+  chiffre qu'aucune de ses tables ne contient. Le serveur dit ce qu'il sait, le
+  client complètera avec ce qu'il sait.
+
+  Aucun pourcentage non plus. Avec onze mesures d'un seul joueur sur une seule
+  chaîne, la réponse honnête ressemble à « 0 bien mesurée, 11 peu mesurées », et
+  c'est ce chiffre-là qui doit se lire, sans arrondi flatteur.
+
+  ⚠️ Limite connue, signalée et non corrigée ici : **ces tranches comptent des
+  mesures, pas des contributeurs.** Un joueur a jusqu'à 44 personnages et refait
+  chaque quête sur chacun, donc cinq passages d'une seule main suffisent à
+  peindre une quête en vert.
+
+  L'affichage en bas de la fenêtre viendra séparément : ce lot est le point
+  d'entrée serveur, rien du client n'est touché.
+
 ## [0.4.0] - 2026-08-05
 
 La première version qu'on peut mettre entre les mains d'un testeur : elle ne
