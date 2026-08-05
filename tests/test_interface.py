@@ -21,6 +21,8 @@ from rubin.interface import (
     format_reference,
     format_upcoming_line,
 )
+from rubin.interface.app import ZONE_KEYS, ZONE_ROLES
+from rubin.interface.help import EXAMPLES
 from rubin.interface.theme import (
     COLORS,
     FULL_SCORE_AT,
@@ -30,6 +32,7 @@ from rubin.interface.theme import (
 )
 from rubin.reference import Quest, QuestId
 from rubin.references import QuestReference
+from rubin.settings import Settings
 from rubin.upcoming import UpcomingQuest
 
 JEU = Rect(0, 0, 2559, 1439)
@@ -184,6 +187,66 @@ class TestZones:
 
         assert "Tissu haut de gamme" in texte
         assert texte.count("\n") == 1
+
+
+class TestLesTroisZones:
+    """Les trois surfaces lisibles du domaine, et le même nom pour chacune partout.
+
+    Rien ici ne dessine : ce sont des tables qui doivent rester d'accord entre
+    elles. Le jour où elles ne le sont plus, l'interface propose un bouton qui
+    n'enregistre rien, ou apparie une zone à la lecture d'une autre, et aucun
+    des deux ne lève la moindre erreur.
+    """
+
+    def test_les_memes_trois_zones_dans_les_trois_tables(self) -> None:
+        assert ZONE_KEYS == ("banner", "tracker", "choice")
+        assert tuple(EXAMPLES) == ZONE_KEYS
+        # Et chacune a bien son champ de réglage, sans quoi le tracé du joueur
+        # partirait dans le vide au premier enregistrement.
+        for clé in ZONE_KEYS:
+            assert hasattr(Settings(), clé)
+
+    def test_chaque_role_dit_ce_qu_on_perd_a_le_placer_de_travers(self) -> None:
+        # C'est l'intérêt du rôle affiché : le joueur voit trois rectangles et
+        # doit savoir lequel compte. Les trois n'ont pas le même poids.
+        rôles = {clé: rôle for clé, _nom, rôle in ZONE_ROLES}
+        assert "rien n'est jamais mesuré" in rôles["banner"]
+        assert "on mesure quand même" in rôles["tracker"]
+        assert "aucune durée n'est perdue" in rôles["choice"]
+
+    def test_le_role_du_panneau_de_choix_annonce_ses_deux_apports(self) -> None:
+        # Identifier les noms coupés, et savoir quelle branche a été prise. Le
+        # second est ce qu'aucune autre zone ne sait donner.
+        rôle = {clé: texte for clé, _nom, texte in ZONE_ROLES}["choice"]
+        assert "préfixe de région" in rôle
+        assert "branches" in rôle
+        assert "ESTIMÉE" in rôle
+
+    def test_l_aide_du_panneau_de_choix_n_invente_ni_image_ni_lecture(self) -> None:
+        """Régression attendue : aucune capture de ce panneau n'existe.
+
+        Les deux autres entrées d'aide montrent de VRAIES captures, avec leurs
+        défauts, et c'est écrit dans l'en-tête de `help.py` : un dessin propre
+        ferait viser une cible qui n'existe pas et donnerait au joueur
+        l'impression que sa capture à lui est ratée.
+
+        La même règle interdit d'en fabriquer une ici, et interdit d'inventer
+        les lignes que la reconnaissance en tirerait, puisque personne n'a
+        jamais lu ce panneau. L'entrée est donc rendue sans image et sans
+        exemple de lecture, et le texte dit pourquoi.
+        """
+        _titre, fichier, texte, lignes = EXAMPLES["choice"]
+
+        assert fichier is None
+        assert lignes == ()
+        assert "AUCUNE CAPTURE" in texte
+
+    def test_les_deux_zones_mesurees_gardent_leur_vraie_capture(self) -> None:
+        # L'entrée sans image est une exception, pas la nouvelle règle.
+        for clé in ("banner", "tracker"):
+            _titre, fichier, _texte, lignes = EXAMPLES[clé]
+            assert fichier is not None
+            assert lignes
 
 
 class TestCouleurDeConfiance:

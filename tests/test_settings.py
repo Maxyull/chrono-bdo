@@ -33,6 +33,7 @@ class TestValeursParDefaut:
         reglages = Settings()
         assert reglages.banner is None
         assert reglages.tracker is None
+        assert reglages.choice is None
 
 
 class TestLangueDuJeu:
@@ -124,11 +125,25 @@ class TestAllerRetour:
             opacity=0.5,
             banner=Rect(2210, 1186, 349, 115),
             tracker=Rect(2090, 440, 340, 380),
+            choice=Rect(639, 359, 1280, 720),
         )
 
         save(origine, tmp_path)
 
         assert load(tmp_path) == origine
+
+    def test_la_zone_de_choix_tracee_survit_a_l_ecriture(self, tmp_path: Path) -> None:
+        """Régression attendue : c'est la zone qu'il FAUT tracer à la main.
+
+        Son calcul d'origine est une estimation, pas une mesure : aucune
+        capture du panneau de choix n'existe. Le tracé du joueur est donc, pour
+        cette zone-là, la seule source fiable, et le perdre au redémarrage
+        reviendrait à lui redemander à chaque session la mesure que le projet
+        n'a pas.
+        """
+        save(Settings(choice=Rect(700, 400, 1200, 640)), tmp_path)
+
+        assert load(tmp_path).choice == Rect(700, 400, 1200, 640)
 
     def test_les_zones_non_choisies_ne_sont_pas_ecrites(self, tmp_path: Path) -> None:
         # Écrire les zones calculées les figerait, et un joueur qui change de
@@ -139,6 +154,7 @@ class TestAllerRetour:
 
         assert "zone_bandeau" not in données
         assert "zone_suivi" not in données
+        assert "zone_choix" not in données
 
     def test_le_fichier_est_lisible_a_la_main(self, tmp_path: Path) -> None:
         # Les clés sont en français, comme tout ce qu'un humain lit dans ce
@@ -203,6 +219,17 @@ class TestFichierAbime:
         )
 
         assert load(tmp_path).tracker is None
+
+    def test_une_zone_de_choix_plate_est_ignoree(self, tmp_path: Path) -> None:
+        # Même traitement que les deux autres : on revient au calcul d'origine,
+        # même s'il n'est ici qu'une estimation, plutôt que de garder un
+        # rectangle qui capture une image vide à chaque lecture.
+        (tmp_path / "reglages.json").write_text(
+            json.dumps({"zone_choix": {"x": 10, "y": 20, "largeur": 0, "hauteur": 720}}),
+            encoding="utf-8",
+        )
+
+        assert load(tmp_path).choice is None
 
     def test_un_contenu_qui_n_est_pas_un_objet_rend_les_defauts(self, tmp_path: Path) -> None:
         (tmp_path / "reglages.json").write_text("[1, 2, 3]", encoding="utf-8")

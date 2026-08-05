@@ -3,7 +3,15 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from rubin.capture import REFERENCE_SIZE, Rect, ScreenCapture, banner_region, find_game_window
+from rubin.capture import (
+    REFERENCE_SIZE,
+    Rect,
+    ScreenCapture,
+    banner_region,
+    choice_region,
+    find_game_window,
+    tracker_region,
+)
 from rubin.capture.window import GAME_EXECUTABLES, Candidate, choose_window
 
 
@@ -79,6 +87,83 @@ class TestBannerRegion:
     def test_refuse_une_echelle_absurde(self, scale: float) -> None:
         with pytest.raises(ValueError, match="échelle"):
             banner_region(Rect(0, 0, *REFERENCE_SIZE), ui_scale=scale)
+
+
+class TestChoiceRegion:
+    """La zone du panneau de choix, la seule des trois qui soit estimée.
+
+    Ces tests ne valident pas des mesures, puisqu'il n'y en a aucune : ils
+    valident les seules propriétés qu'on puisse tenir sans capture, à savoir
+    qu'elle est centrée, qu'elle est large, qu'elle reste dans la fenêtre, et
+    qu'elle ne vient pas manger les deux zones mesurées.
+    """
+
+    def test_est_centree_dans_la_fenetre(self) -> None:
+        # C'est LA différence avec les deux autres zones, et la raison pour
+        # laquelle le calcul ne pouvait pas être recopié : le bandeau et le
+        # panneau de suivi sont ancrés à un coin, le panneau de choix s'ouvre
+        # au milieu de l'écran.
+        window = Rect(0, 0, *REFERENCE_SIZE)
+        region = choice_region(window)
+        # À un pixel près : l'écran de référence fait 2559 de large, donc les
+        # deux marges ne peuvent pas être égales en nombres entiers.
+        assert abs((region.left - window.left) - (window.right - region.right)) <= 1
+        assert abs((region.top - window.top) - (window.bottom - region.bottom)) <= 1
+
+    def test_couvre_la_moitie_de_la_fenetre(self) -> None:
+        # Large exprès : à défaut de connaître la taille du panneau, capturer
+        # du décor autour coûte une reconnaissance plus lente, alors que le
+        # couper coûte un nom tronqué, donc une quête jamais reconnue.
+        region = choice_region(Rect(0, 0, *REFERENCE_SIZE))
+        assert region == Rect(639, 359, 1280, 720)
+
+    def test_suit_la_fenetre_quand_elle_n_est_pas_a_l_origine(self) -> None:
+        # Second écran, en coordonnées négatives comme sur le poste où Rubin a
+        # été mis au point.
+        décalée = choice_region(Rect(-1280, -17, *REFERENCE_SIZE))
+        assert (décalée.left, décalée.top) == (-1280 + 639, -17 + 359)
+
+    def test_grandit_avec_l_echelle_d_interface(self) -> None:
+        window = Rect(0, 0, *REFERENCE_SIZE)
+        assert choice_region(window, ui_scale=1.5).width > choice_region(window).width
+
+    def test_ne_sort_jamais_de_la_fenetre(self) -> None:
+        # Une échelle absurde donnerait des coordonnées hors écran, que la
+        # capture refuserait avec une erreur système peu parlante.
+        window = Rect(0, 0, 200, 150)
+        region = choice_region(window, ui_scale=8.0)
+        assert (region.left, region.top) == (0, 0)
+        assert (region.right, region.bottom) == (200, 150)
+
+    def test_n_est_jamais_plate(self) -> None:
+        # Une zone de largeur nulle capture une image vide, que la
+        # reconnaissance traite comme un écran sans panneau : le symptôme
+        # serait « rien lu », sans distinguer les deux causes.
+        region = choice_region(Rect(0, 0, 3, 3), ui_scale=0.5)
+        assert region.width >= 1
+        assert region.height >= 1
+
+    @pytest.mark.parametrize("scale", [0.0, -1.0])
+    def test_refuse_une_echelle_absurde(self, scale: float) -> None:
+        with pytest.raises(ValueError, match="échelle"):
+            choice_region(Rect(0, 0, *REFERENCE_SIZE), ui_scale=scale)
+
+    def test_ne_recouvre_aucune_des_deux_zones_mesurees(self) -> None:
+        """Une zone estimée ne doit pas avaler les zones qui, elles, sont mesurées.
+
+        Le panneau de choix est cadré large faute de mesure, et c'est le bon
+        arbitrage. Mais s'il débordait jusqu'au panneau de suivi, ancré en haut
+        à droite, les lignes des quêtes épinglées se retrouveraient dans la
+        lecture du carrefour. Le joueur croirait lire un choix là où il lit sa
+        liste de suivi, et le tracé de la zone semblerait bon.
+
+        Vérifié sur l'écran de référence, 2559x1439, le seul où les deux autres
+        zones aient été relevées.
+        """
+        window = Rect(0, 0, *REFERENCE_SIZE)
+        choix = choice_region(window)
+        assert not choix.overlaps(tracker_region(window))
+        assert not choix.overlaps(banner_region(window))
 
 
 class TestScreenCapture:
