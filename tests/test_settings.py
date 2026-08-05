@@ -91,6 +91,22 @@ class TestBornes:
     def test_le_nombre_de_quetes_reste_entier(self) -> None:
         assert Settings(upcoming_count=7.9).normalised().upcoming_count == 7
 
+    def test_la_fenetre_est_opaque_par_defaut(self) -> None:
+        """Régression : la fenêtre était livrée translucide, donc illisible.
+
+        À 0,92 d'opacité, le jeu traversait le texte. Sur un décor clair,
+        mouvant et texturé, on ne distinguait plus les lettres. La transparence
+        est un confort, la lisibilité est la fonction : on ne sacrifie pas la
+        seconde à la première par défaut.
+
+        Le curseur reste là pour qui la veut, mais son plancher n'est pas zéro :
+        une fenêtre invisible qu'on ne retrouve plus est un piège dont on ne
+        sort qu'en supprimant le fichier de réglages.
+        """
+        assert Settings().opacity == 1.0
+        assert LIMITS["opacity"][2] == 1.0
+        assert LIMITS["opacity"][0] > 0
+
     def test_zero_quete_affichee_est_permis(self) -> None:
         # C'est un choix légitime, pas une valeur aberrante : certains veulent
         # mesurer sans rien lire à l'écran.

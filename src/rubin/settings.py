@@ -65,7 +65,15 @@ LIMITS: Final = {
     "presence_threshold": (0.30, 0.99, 0.70),
     "poll_interval": (0.05, 1.0, 0.125),
     "upcoming_count": (0, 20, 5),
-    "opacity": (0.30, 1.0, 0.92),
+    # Opaque par défaut, et c'est un choix corrigé après coup. La fenêtre était
+    # livrée à 0,92, ce qui laissait passer le jeu à travers le texte : sur un
+    # décor clair et mouvant, plus rien n'était lisible. La transparence est un
+    # confort, la lisibilité est la fonction ; on ne sacrifie pas la seconde à
+    # la première par défaut. Le curseur reste là pour qui la veut.
+    #
+    # Le plancher n'est pas 0 : une fenêtre invisible qu'on ne retrouve plus est
+    # un piège dont on ne sort qu'en supprimant le fichier de réglages.
+    "opacity": (0.40, 1.0, 1.0),
 }
 
 
@@ -100,7 +108,7 @@ class Settings:
     presence_threshold: float = 0.70
     poll_interval: float = 0.125
     upcoming_count: int = 5
-    opacity: float = 0.92
+    opacity: float = 1.0
     banner: Rect | None = None
     tracker: Rect | None = None
 
@@ -149,7 +157,7 @@ class Settings:
             presence_threshold=_float(données, "seuil_presence", 0.70),
             poll_interval=_float(données, "cadence", 0.125),
             upcoming_count=int(_float(données, "quetes_affichees", 5)),
-            opacity=_float(données, "opacite", 0.92),
+            opacity=_float(données, "opacite", 1.0),
             banner=_rect_from_dict(données.get("zone_bandeau")),
             tracker=_rect_from_dict(données.get("zone_suivi")),
         ).normalised()
