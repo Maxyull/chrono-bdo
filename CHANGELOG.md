@@ -241,6 +241,47 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
   d'une résolution, n'est **pas** fait : c'est un envoi nouveau, il tombe sous
   la règle « rien n'est envoyé sans `--envoyer` ».
 
+- **Une session de jeu ne peut plus être perdue.** Chaque mesure est écrite sur
+  le disque **dès qu'elle existe**, dans un journal en ajout, une ligne par
+  mesure. Un journal resté orphelin est relu et envoyé au démarrage suivant.
+
+  La fermeture par la croix était déjà couverte, et vérifiée. Trois cas ne
+  l'étaient pas : le processus tué, Windows qui redémarre, le logiciel qui
+  plante. Une session de deux heures y disparaissait entièrement, et une partie
+  ne se rejoue pas.
+
+  ⚠️ **Le remède n'est pas d'attraper plus d'événements de fermeture.** On n'en
+  attrape jamais tout, un `kill` ne se négocie pas, et chaque piège ajouté donne
+  une fausse impression de sûreté, ce qui est pire que de savoir qu'on n'est pas
+  couvert. Un processus tué au milieu d'une écriture ne peut abîmer que la
+  dernière ligne du journal, que la relecture jette sans toucher au reste.
+
+- **Les mesures partent après chaque quête terminée**, et non plus seulement à
+  l'arrêt. Une quête finie est un événement naturel et la mesure y est complète,
+  alors qu'un minuteur enverrait au milieu d'une quête un lot à rattraper : le
+  temps ne dit rien sur l'état de la donnée, une quête terminée si.
+
+  ⚠️ **Seules les mesures jamais transmises repartent**, et c'est la pièce
+  centrale. Renvoyer toute la session à chaque quête ferait recevoir au serveur
+  les mêmes mesures des dizaines de fois. Elles gonfleraient `samples` et
+  entreraient dans les médianes, et ce serait **invisible** : rien ne distingue
+  une mesure reçue deux fois de deux mesures réelles. Le curseur de ce qui est
+  parti est écrit dans le journal, donc une reprise après plantage ne renvoie
+  rien non plus.
+
+  Un envoi dont on ignore le sort, faute de réponse du serveur, n'est jamais
+  représenté : il a pu aboutir, et un doublon ne se rattrape jamais alors qu'une
+  mesure manquante reste sur le disque. Un envoi refusé par un serveur qui a
+  répondu, lui, repart plus tard : on sait qu'il n'a rien enregistré.
+
+  L'envoi part dans un fil à part, un seul à la fois, et le fil de mesure ne
+  l'attend jamais. Un serveur lent ne doit faire rater aucun bandeau.
+
+  Au passage, une affirmation corrigée dans `protocol.py` et `upload.py` : ils
+  promettaient qu'« aucune requête réseau ne part pendant que le joueur joue ».
+  C'était déjà faux, `ReferenceClient` interroge le serveur à chaque quête pour
+  afficher les temps des autres.
+
 ## [0.4.0] - 2026-08-05
 
 La première version qu'on peut mettre entre les mains d'un testeur : elle ne

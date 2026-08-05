@@ -201,6 +201,22 @@ session réelle : 77 quêtes/heure au rythme médian, 36 réellement produites.
 **Rien n'est envoyé sans `--envoyer`.** Transmettre les données de quelqu'un
 sans qu'il l'ait demandé serait une décision prise à sa place.
 
+**En revanche, du réseau part bien pendant que le joueur joue**, et il faut le
+dire parce que le contraire a longtemps été écrit dans `protocol.py` et
+`upload.py` : « en fin de session et non au fil de l'eau, cela évite toute
+requête réseau pendant que le joueur joue ». C'était faux. `ReferenceClient`
+interroge le serveur **à chaque quête**, pendant la partie, pour afficher les
+temps des autres. Les mesures partent donc elles aussi après chaque quête
+terminée, sur le même fil, sans ouvrir aucune catégorie de risque nouvelle.
+
+**Chaque mesure est écrite sur le disque dès qu'elle existe**, dans un journal
+en ajout, et **seules les mesures jamais transmises sont envoyées**. Les deux
+règles répondent à des dangers opposés : la première à la session perdue, quand
+le processus est tué, que Windows redémarre ou que le logiciel plante ; la
+seconde au **double comptage**, qui est le seul risque réel du fil de l'eau.
+Une mesure reçue deux fois gonfle `samples`, entre deux fois dans la médiane, et
+rien ne la distingue de deux mesures réelles.
+
 **Aucune interaction avec le jeu.** Pas de lecture mémoire, pas d'injection,
 pas de surcouche, pas de touche simulée. C'est une limite de conception, pas
 une étape à franchir plus tard. Une proposition qui la franchit est refusée,

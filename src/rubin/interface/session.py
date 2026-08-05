@@ -39,29 +39,56 @@ Le jour où l'on saura détecter un objectif manqué, ils pourront monter.
 Il dépose dans une file que la boucle de Tk vide depuis le bon fil. Un appel
 direct à un composant depuis ici produirait des blocages qui n'arrivent qu'une
 fois sur cent, donc jamais pendant qu'on regarde.
+
+## Une session ne peut plus être perdue
+
+Chaque mesure est écrite sur le disque **dès qu'elle existe**, dans un journal
+en ajout, et envoyée dans la foulée si un serveur a été demandé. La fermeture
+par la croix était déjà couverte ; le processus tué, Windows qui redémarre et le
+logiciel qui plante ne le seront jamais par un événement de fermeture, parce
+qu'aucun n'en envoie. Voir l'en-tête de `upload.py`.
+
+⚠️ **L'envoi ne bloque jamais la mesure.** Il part dans un fil à part, un seul à
+la fois, et n'emporte que les mesures jamais transmises. Le fil de mesure ne
+l'attend pas, et un serveur lent ne fait donc rater aucun bandeau.
 """
 
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from ..capture import ScreenCapture, banner_region, find_game_window
 from ..deferred import DeferredWatcher
 from ..failures import FailureStore
-from ..protocol import PlayerIdentity, build_session
+from ..protocol import MeasurePayload, PlayerIdentity, SessionPayload, build_session
 from ..reading import BannerKind, RapidOcrReader
 from ..reference import Catalog
 from ..reference.source import catalog_date
 from ..references import ReferenceClient
 from ..settings import Settings
 from ..timing import Quality, Timeline
-from ..upload import save_session, send_session
+from ..upload import (
+    JOURNAL_SUFFIX,
+    IncrementalSender,
+    SessionJournal,
+    orphan_journals,
+    read_journal,
+    save_session,
+    send_session,
+)
 from ..watching import BannerWatcher
+
+#: Âge minimal d'un journal pour être tenu pour orphelin, en secondes.
+#: Voir `orphan_journals` : un journal écrit à l'instant est peut-être celui
+#: d'un autre Rubin en train de mesurer, et le reprendre ferait partir deux fois
+#: les mêmes mesures.
+_ORPHAN_MIN_AGE: Final = 60.0
 
 
 @dataclass(frozen=True)
@@ -100,6 +127,7 @@ class MeasuringSession:
         self._server = server
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._sending: threading.Thread | None = None
         self.timeline: Timeline | None = None
 
     @property
@@ -145,6 +173,14 @@ class MeasuringSession:
         # La purge a lieu au démarrage et non à l'arrêt : une session se termine
         # souvent par une fermeture brutale, et un ménage placé à la fin ne
         # serait jamais fait.
+
+        # Même raisonnement, et c'est ce qui referme la boucle : les journaux
+        # d'une session que rien n'a close sont repris ICI, avant que le nôtre
+        # existe, donc jamais confondus avec lui.
+        self._replay_orphans()
+        journal, sender = self._open_journal()
+        envoyables: list[MeasurePayload] = []
+        écartées = 0
 
         zone = self._settings.banner or banner_region(window, ui_scale=self._settings.ui_scale)
         self._publish("etat", f"mesure en cours, zone {zone.width}x{zone.height}")
@@ -200,6 +236,25 @@ class MeasuringSession:
                                 jalon = at
                             if mesure is not None:
                                 self._publish("mesure", (mesure, langue))
+                                # Écrite sur le disque dès qu'elle existe, et
+                                # avant tout ce qui pourrait échouer : un arrêt
+                                # brutal peut tomber ici, et une partie ne se
+                                # rejoue pas.
+                                lot_mesure = MeasurePayload.from_measure(mesure)
+                                if lot_mesure.is_plausible:
+                                    envoyables.append(lot_mesure)
+                                else:
+                                    écartées += 1
+                                perdues = timeline.dropped + écartées
+                                if journal is not None and lot_mesure.is_plausible:
+                                    journal.record(lot_mesure, dropped=perdues)
+                                if sender is not None:
+                                    # Après chaque quête terminée, jamais toutes
+                                    # les X minutes : une quête finie est un
+                                    # événement naturel et la mesure y est
+                                    # complète, alors qu'un minuteur enverrait au
+                                    # milieu d'une quête un lot à rattraper.
+                                    self._send_apart(sender, envoyables, perdues)
                             ici = (timeline.current_chain, timeline.current_position)
                             if ici[0] is None:
                                 # Le nom a été lu mais ne s'est résolu en aucune
@@ -232,18 +287,173 @@ class MeasuringSession:
             # perdre ce qui a déjà été mesuré.
             self._publish("etat", f"mesure interrompue : {erreur}")
         finally:
-            self._finish(timeline, time.monotonic() - début)
+            self._finish(timeline, time.monotonic() - début, journal, sender)
             self._publish("demarre", False)
 
-    def _finish(self, timeline: Timeline, elapsed: float) -> None:
-        """Écrit le lot sur le disque, et l'envoie si un serveur a été demandé.
+    # ------------------------------------------------------- le fil de l'eau
+
+    def _open_journal(self) -> tuple[SessionJournal | None, IncrementalSender | None]:
+        """Ouvre le journal de cette session, et l'envoyeur qui va avec.
+
+        L'identité et la date du référentiel sont lues ici, une fois, plutôt
+        qu'à l'arrêt : elles doivent figurer dans l'en-tête du journal, sans
+        quoi une session interrompue serait relue sans savoir de qui ni de
+        quand elle vient, donc inutilisable.
+
+        Rend `(None, None)` si rien ne peut être ouvert. La mesure continue :
+        perdre le filet de sécurité est un moindre mal devant perdre la session.
+        """
+        try:
+            identity = PlayerIdentity.load_or_create(self._home / "identite")
+            base = SessionPayload(
+                player=identity.value,
+                language=self._settings.language,
+                catalog_date=catalog_date(self._settings.language),
+            )
+        except Exception as erreur:  # pragma: pas de couverture
+            self._publish("etat", f"journal de session indisponible : {erreur}")
+            return None, None
+        journal = SessionJournal(
+            self._home / "sessions" / f"session-{int(time.time())}{JOURNAL_SUFFIX}", base
+        )
+        if not self._server:
+            # Rien n'est envoyé sans que le joueur l'ait demandé. Le journal,
+            # lui, est purement local et n'a rien à demander à personne.
+            return journal, None
+        return journal, IncrementalSender(self._server, base, journal=journal)
+
+    def _send_apart(
+        self, sender: IncrementalSender, measures: Sequence[MeasurePayload], dropped: int
+    ) -> None:
+        """Envoie les mesures neuves depuis un fil à part.
+
+        ⚠️ **Jamais depuis le fil de mesure.** Un serveur lent le bloquerait
+        jusqu'à trente secondes, pendant lesquelles l'écran cesserait d'être
+        regardé et un bandeau apparu dans l'intervalle serait perdu en silence.
+        C'est exactement le défaut que la capture différée a corrigé, et le
+        réintroduire par l'envoi serait un comble.
+
+        Un seul envoi à la fois. Si le précédent court encore, celui-ci est
+        abandonné sans regret : le suivant emportera de toute façon tout ce qui
+        n'est pas encore parti, puisque l'envoyeur ne raisonne que sur son
+        curseur.
+        """
+        if self._sending is not None and self._sending.is_alive():
+            return
+        instantané = tuple(measures)
+        self._sending = threading.Thread(
+            target=self._send_now, args=(sender, instantané, dropped), daemon=True
+        )
+        self._sending.start()
+
+    def _send_now(
+        self, sender: IncrementalSender, measures: Sequence[MeasurePayload], dropped: int
+    ) -> None:
+        résultat = sender.flush(measures, dropped)
+        if résultat is not None and not résultat.ok:
+            # Le dire, mais sans dramatiser : tout est sur le disque, et la
+            # session continue de mesurer.
+            self._publish("etat", f"envoi en cours de session impossible : {résultat.detail}")
+
+    def _replay_orphans(self) -> None:
+        """Reprend les journaux qu'aucun arrêt n'a fermés.
+
+        La liste est relevée **tout de suite**, avant que le journal de cette
+        session existe, pour qu'il ne s'y retrouve jamais. Le travail, lui, part
+        dans un fil à part : un serveur injoignable retarderait sinon le début
+        de la mesure de trente secondes, pendant que le joueur joue.
+        """
+        chemins = orphan_journals(self._home / "sessions", min_age=_ORPHAN_MIN_AGE)
+        if not chemins:
+            return
+        threading.Thread(target=self._replay_now, args=(chemins,), daemon=True).start()
+
+    def _replay_now(self, chemins: Sequence[Path]) -> None:
+        """Relit chaque journal orphelin, le remet au format normal, et l'envoie.
+
+        ⚠️ **Seules les mesures jamais transmises repartent.** Le journal porte
+        le curseur de ce qui était déjà parti avant le plantage ; l'ignorer
+        ferait recevoir deux fois les mêmes mesures, qui gonfleraient `samples`
+        et entreraient dans les médianes sans que rien ne le signale.
+        """
+        for chemin in chemins:
+            contenu = read_journal(chemin)
+            if contenu is None:
+                # Illisible jusque dans son en-tête. Le mettre de côté plutôt
+                # que de le relire à chaque démarrage sans jamais rien en tirer,
+                # et le garder plutôt que l'effacer : c'est une pièce à
+                # conviction, pas un déchet.
+                with contextlib.suppress(OSError):
+                    chemin.rename(chemin.with_name(chemin.name + ".illisible"))
+                continue
+
+            if contenu.payload.measures:
+                # La session interrompue existe désormais comme les autres, au
+                # même format et dans le même dossier.
+                with contextlib.suppress(OSError):
+                    save_session(contenu.payload, chemin.with_suffix(".json"))
+
+            reste = contenu.unsent
+            if not reste.measures:
+                self._forget(chemin)
+                continue
+            if not self._server:
+                nombre = len(reste.measures)
+                accord = "mesure" if nombre == 1 else "mesures"
+                self._publish(
+                    "etat",
+                    f"{nombre} {accord} d'une session interrompue attendent, "
+                    "elles partiront quand un serveur sera indiqué",
+                )
+                continue
+
+            résultat = send_session(reste, self._server)
+            if not résultat.ok and résultat.answered:
+                # Le serveur a répondu et n'a rien enregistré : réessayer plus
+                # tard ne peut fabriquer aucun doublon, donc le journal reste.
+                self._publish(
+                    "etat", f"session interrompue non envoyée, elle reste : {résultat.detail}"
+                )
+                continue
+            self._forget(chemin)
+            if résultat.ok:
+                self._publish(
+                    "etat",
+                    f"session interrompue rattrapée : {résultat.stored} mesures envoyées",
+                )
+
+    def _forget(self, chemin: Path) -> None:
+        with contextlib.suppress(OSError):
+            chemin.unlink()
+
+    # ------------------------------------------------------------- le bilan
+
+    def _finish(
+        self,
+        timeline: Timeline,
+        elapsed: float,
+        journal: SessionJournal | None = None,
+        sender: IncrementalSender | None = None,
+    ) -> None:
+        """Écrit le lot sur le disque, et envoie ce qui n'est pas encore parti.
 
         L'écriture a toujours lieu, l'envoi jamais tout seul. Une session
         mesurée puis perdue parce que le réseau a hoqueté serait irrattrapable :
         la partie, elle, ne se rejoue pas.
+
+        ⚠️ **Ce n'est plus le lot entier qui part ici.** Les mesures envoyées au
+        fil de l'eau ne repartent pas : les renvoyer les compterait deux fois,
+        et un `samples` gonflé ne se distingue jamais de vraies mesures.
         """
+        if self._sending is not None:
+            # Laisser un envoi en cours se terminer, pour que le curseur soit à
+            # jour avant le dernier tour.
+            self._sending.join(timeout=5.0)
+            self._sending = None
         if not timeline.measures:
             self._publish("etat", f"arrêtée, aucune quête mesurée en {int(elapsed)} s")
+            if journal is not None:
+                journal.discard()
             return
         try:
             identity = PlayerIdentity.load_or_create(self._home / "identite")
@@ -261,11 +471,25 @@ class MeasuringSession:
             return
 
         message = f"arrêtée, {len(timeline.measures)} quêtes mesurées, lot écrit dans {écrit}"
-        if self._server:
+        if sender is not None:
+            résultat = sender.flush(lot.measures, lot.dropped)
+            if résultat is None:
+                message += " — tout était déjà envoyé au fil de l'eau"
+            elif résultat.ok:
+                message += f" — envoyé, {résultat.stored} enregistrées"
+            else:
+                message += f" — envoi impossible, le lot est conservé ({résultat.detail})"
+        elif self._server:
+            # Pas de journal, donc rien n'est parti pendant la session : le lot
+            # entier peut partir sans risque de doublon.
             résultat = send_session(lot, self._server)
             message += (
                 f" — envoyé, {résultat.stored} enregistrées"
                 if résultat.ok
                 else f" — envoi impossible, le lot est conservé ({résultat.detail})"
             )
+        if journal is not None:
+            # Le bloc complet est sur le disque : le journal n'a plus rien à
+            # protéger.
+            journal.discard()
         self._publish("etat", message)
