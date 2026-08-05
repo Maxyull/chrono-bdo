@@ -7,6 +7,57 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+## [0.5.4] - 2026-08-05
+
+### Corrigé
+
+- **Console cachée au double-clic** (#83). L'exécutable ouvrait une fenêtre de
+  terminal vide à côté de la fenêtre de Rubin, que rien ne justifiait sur ce
+  chemin. `console=False`, avec `AttachConsole` dans `point_entree.py` pour
+  que `rubin verifier`/`suivre`/`echecs` gardent leur texte quand elles sont
+  lancées depuis un vrai terminal.
+- **L'onglet Session défile** (#83). La légende des couleurs et la couverture,
+  en bas, restaient invisibles une fois la liste des quêtes faites assez
+  longue.
+
+## [0.5.3] - 2026-08-05
+
+### Ajouté
+
+- **Le record personnel du joueur s'affiche pendant qu'il joue une quête**
+  (#80), à côté du meilleur temps connu de tous. Relu dans ses propres
+  sessions passées (`history.py`), aucune donnée envoyée au réseau pour ça.
+- **Un arbre alphabétique des 3 924 quêtes principales** (#81), groupées par
+  lettre, avec pour chacune si elle est déjà mesurée et son meilleur temps.
+  ⚠️ Vérifié seulement par capture d'écran hors jeu, pas encore en jouant
+  pour de vrai.
+
+### Corrigé
+
+- **L'archive n'est plus en LZMA** (#82). `ZIP_LZMA` compresse mieux, mais ni
+  l'explorateur Windows ni `Expand-Archive` de PowerShell ne savent le
+  décompresser : trois releases (v0.5.0 à v0.5.2) étaient illisibles par les
+  outils natifs. `ZIP_DEFLATED, compresslevel=9` désormais.
+
+## [0.5.2] - 2026-08-05
+
+### Modifié
+
+- **`rubin fenetre` se connecte au serveur sans qu'on le demande** (#79).
+  Défaut désormais `https://rubin.maxyull.fr` pour ce sous-comman­de : le
+  joueur qui double-clique ne doit taper aucune commande. `rubin suivre`
+  garde son propre défaut, sans envoi.
+
+## [0.5.1] - 2026-08-05
+
+### Corrigé
+
+- **Le double-clic sur l'exécutable ouvre la fenêtre** (#78). Sans
+  sous-commande, il ouvrait `referentiel`, un reste de l'époque CLI : un
+  double-clic sans commande tapée n'atteignait donc jamais la fenêtre.
+
+## [0.5.0] - 2026-08-05
+
 ### Ajouté
 
 - **Une fenêtre, `rubin fenetre`.** Trois onglets. **Session** dit où l'on en
@@ -348,6 +399,41 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
   dénominateur reste 3 924. Rubin ne mesure que les principales, et c'est
   délibéré : chronométrer une quête répétable n'a aucun sens puisqu'on la refait
   indéfiniment. Les mêler donnerait un chiffre décourageant **et** faux.
+
+- **La fenêtre dit ce que la surveillance voit, en direct** (#63) : images
+  capturées, bandeaux vus, lectures. Une session aveugle se voit désormais à
+  l'écran au lieu de se déduire d'une base vide une heure plus tard.
+- **Une image est gardée quand la surveillance ne voit rien pendant deux
+  minutes** (#67), dans `echecs/`, même sans lecture ratée à proprement
+  parler : jusque-là, une zone qui ne présentait jamais de bandeau ne
+  laissait aucune trace du tout.
+- **Les captures qui répètent la précédente sont comptées** (#68), pour
+  distinguer une vraie panne de lecture d'un simple silence de jeu.
+- **Les zones sont verrouillées pendant la mesure**, et Rubin dit pourquoi
+  (#65, #66) : les modifier en cours de session pouvait égarer une zone déjà
+  vérifiée sans avertissement.
+- **Les lignes d'un alphabet que le client de jeu n'affiche pas sont
+  écartées** (#64) : du bruit de reconnaissance sur écran localisé polluait
+  parfois les noms reconstruits.
+- **La table de zones par taille de fenêtre (0.5.0 ci-dessus) est enfin
+  branchée** (#58 → #70). Elle existait et ses tests passaient depuis 0.5.0,
+  mais rien ne l'appelait : une zone tracée à la mauvaise résolution restait
+  active des heures durant sans qu'aucun signal ne le dise. C'était la cause
+  racine de la panne de mesure constatée le 05/08 au matin.
+- **Le nom d'une quête faite, dans le tableau de session, est cliquable** et
+  mène à sa fiche dans le classement (#71).
+- **Le meilleur temps connu s'affiche pendant qu'on joue une quête** (#72),
+  au record et non à la médiane : ce widget-là ne classe personne, il
+  informe, voir `format_current_reference`.
+- **La couverture et le classement se rafraîchissent après chaque quête
+  mesurée** (#73), au lieu de rester figés depuis le lancement de la fenêtre.
+- **La requête au référentiel, dans `_add_measure`, est sortie du fil de
+  Tk** (#74) : elle pouvait geler la fenêtre jusqu'à cinq secondes à la
+  première quête inconnue d'une session.
+- **La fenêtre est enfin incluse dans l'exécutable construit** (#77).
+  `tkinter` était dans les `excludes` de `rubin.spec`, un retrait forcé par
+  PyInstaller : la 0.4.0 publiée le 5 août ne contenait pas la fenêtre,
+  malgré des tests verts, parce qu'aucun test ne construit l'exécutable.
 
 ### Corrigé
 
