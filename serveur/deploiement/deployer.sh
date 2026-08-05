@@ -91,7 +91,14 @@ sudo python3 -m venv "${CIBLE}/.venv" 2>/dev/null || true
 sudo "${CIBLE}/.venv/bin/pip" install --quiet --upgrade pip
 sudo "${CIBLE}/.venv/bin/pip" install --quiet -e "${CIBLE}" -e "${CIBLE}/serveur[postgres]"
 
-echo "--- service"
+# La version annoncée aux clients est celle du code qu'on vient de déployer :
+# la déduire évite qu'elle reste figée sur une valeur écrite ailleurs, ce qui
+# ferait annoncer au serveur une version périmée de son propre logiciel.
+# Extraction sans expression régulière à échappements : ceux-ci ne survivent
+# pas au passage dans un document en ligne, et rendaient ici un caractère de
+# contrôle au lieu du numéro de version.
+VERSION="$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+' "${CIBLE}/src/chrono/__init__.py" | head -1)"
+echo "--- service (version annoncée : ${VERSION})"
 sudo tee /etc/systemd/system/chrono.service >/dev/null <<UNIT
 [Unit]
 Description=Chrono BDO, serveur de classement
@@ -103,6 +110,11 @@ Type=exec
 # Pas de conteneur : le VPS n'a que 2 Go de mémoire disponible, et un service
 # Python en systemd en consomme dix fois moins qu'une pile Docker.
 Environment=CHRONO_DB=postgresql+psycopg://${CHRONO_PG_USER}:${CHRONO_PG_PASSWORD}@127.0.0.1/${CHRONO_PG_DATABASE}
+Environment=CHRONO_LATEST=${VERSION}
+# La version minimale reste en arrière : n'exiger une mise à jour que lorsque
+# c'est indispensable, sinon chaque publication couperait les joueurs qui
+# n'ont pas encore retéléchargé.
+Environment=CHRONO_MIN_CLIENT=0.1.0
 ExecStart=${CIBLE}/.venv/bin/uvicorn chrono_serveur.main:app --host 127.0.0.1 --port ${CHRONO_PORT}
 WorkingDirectory=${CIBLE}/serveur
 Restart=always
@@ -167,6 +179,13 @@ curl -fsS "http://127.0.0.1:${CHRONO_PORT}/sante" && echo
 DISTANT
 
 echo
-echo "==> déployé. Reste une chose que je ne peux pas faire :"
-echo "    créer l'enregistrement DNS A  ${CHRONO_DOMAINE}  ->  ${VPS_HOST}"
-echo "    Tant qu'il manque, Caddy ne peut obtenir aucun certificat."
+# Le message n'est affiché que si le DNS manque réellement : le laisser en
+# toutes circonstances finirait par être ignoré, y compris le jour où il
+# compte.
+if getent hosts "$CHRONO_DOMAINE" >/dev/null 2>&1 || nslookup "$CHRONO_DOMAINE" >/dev/null 2>&1; then
+  echo "==> déployé et joignable : https://${CHRONO_DOMAINE}"
+else
+  echo "==> déployé. Reste une chose que je ne peux pas faire :"
+  echo "    créer l'enregistrement DNS A  ${CHRONO_DOMAINE}  ->  ${VPS_HOST}"
+  echo "    Tant qu'il manque, Caddy ne peut obtenir aucun certificat."
+fi
