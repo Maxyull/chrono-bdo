@@ -1057,7 +1057,7 @@ class RubinApp:
         le moteur de mesure.
 
         Appelée au lancement, puis à nouveau après chaque quête mesurée, voir
-        `_add_measure`.
+        `_finish_measure`.
 
         ⚠️ Ce commentaire a longtemps affirmé l'inverse, « une seule fois par
         lancement, rien ne peut bouger pendant la session, puisque les mesures
@@ -1385,6 +1385,8 @@ class RubinApp:
             self._show_progress(charge)
         elif genre == "mesure":
             self._add_measure(*charge)
+        elif genre == "mesure_reference":
+            self._finish_measure(*charge)
         elif genre == "vu":
             self._show_seen(*charge)
         elif genre == "etat_zone":
@@ -1540,15 +1542,40 @@ class RubinApp:
         self._sous_titre.config(text=quoi)
 
     def _add_measure(self, measure: Any, language: str) -> None:
+        """Demande la référence de la quête dans un fil, avant d'en afficher la mesure.
+
+        Appelée depuis `_handle`, donc depuis le fil de Tk, à chaque bandeau de
+        fin lu. `ReferenceClient.quest` fait un GET synchrone quand la quête
+        n'est pas déjà en cache, et un appel peut durer jusqu'à cinq secondes
+        quand le serveur ne répond pas, voir `_ask_server`. La conserver ici
+        aurait gelé la fenêtre entière à chaque première mesure d'une quête
+        inconnue de la session, exactement le défaut que `_ask_server` et
+        `_query_reference` évitent déjà en passant par un fil.
+
+        Le fil ne touche à aucun composant, il dépose la référence obtenue dans
+        la file : `_finish_measure`, appelée depuis `_handle` comme ici, termine
+        l'affichage sur le fil de Tk une fois la réponse connue.
+        """
+
+        def demander() -> None:
+            reference = self._references.quest(measure.quest_id) if self._references else None
+            self.publish("mesure_reference", (measure, language, reference))
+
+        threading.Thread(target=demander, daemon=True).start()
+
+    def _finish_measure(self, measure: Any, language: str, reference: Any) -> None:
         """Ajoute une quête terminée en haut de la liste des faites.
 
         Le nom est cliquable, s'il a pu être résolu en une vraie quête : voir
         `_go_to_ranking`. Demandé par Maxime le 05/08/2026, une fois les
         mesures enfin revenues après la panne du jour.
+
+        Suite de `_add_measure`, une fois sa référence connue : voir l'en-tête
+        de `_add_measure` pour pourquoi cette partie ne peut pas s'exécuter
+        avant, sur le fil qui a lu le bandeau.
         """
         quest = self._catalog.get(measure.quest_id, language) if self._catalog else None
         nom = quest.name if quest else str(measure.quest_id)
-        reference = self._references.quest(measure.quest_id) if self._references else None
         échantillons = reference.samples if reference else 0
         score = confidence_score(échantillons)
         écart = reference.compare(measure.seconds) if reference else ""
