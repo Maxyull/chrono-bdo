@@ -193,6 +193,7 @@ Pearl Abyss, ni approuvé par eux.
 | Fichier | Ce qu'il contient |
 |---|---|
 | [CHANGELOG.md](CHANGELOG.md) | ce qui a changé, version par version |
+| [docs/ou-va-le-projet.md](docs/ou-va-le-projet.md) | où va le projet, dans quel ordre, et les pièges déjà repérés sur la route |
 | [docs/versionnage.md](docs/versionnage.md) | les trois choses qui versionnent séparément, et pourquoi les confondre serait une erreur |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | langue du projet, politique de tests, ce que Rubin ne fera jamais |
 
