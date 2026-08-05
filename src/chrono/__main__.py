@@ -21,6 +21,7 @@ from .protocol import PlayerIdentity, build_session
 from .reading import RapidOcrReader
 from .reference import Catalog
 from .reference.source import catalog_date, load
+from .references import ReferenceClient
 from .timing import Measure, Quality, Timeline
 from .upload import save_session, send_session
 from .watching import BannerWatcher
@@ -55,11 +56,33 @@ def _format_duration(seconds: float) -> str:
     return f"{minutes} min {rest:02d} s" if minutes else f"{rest} s"
 
 
-def _print_measure(measure: Measure, catalog: Catalog, language: str) -> None:
+def _print_measure(
+    measure: Measure,
+    catalog: Catalog,
+    language: str,
+    references: ReferenceClient | None = None,
+) -> None:
     quest = catalog.get(measure.quest_id, language)
     name = quest.name if quest else str(measure.quest_id)
     mark = "" if measure.quality is Quality.EXACT else "  (déduite)"
-    print(f"  {_format_duration(measure.seconds):>12}   {name}{mark}")
+
+    # La référence est la seule information vraiment utile sur le moment : une
+    # durée seule ne dit rien tant qu'on ne sait pas à quoi la comparer.
+    suffix = ""
+    if references is not None and references.enabled:
+        known = references.quest(measure.quest_id)
+        if known is not None:
+            echantillons = "mesure" if known.samples == 1 else "mesures"
+            suffix = (
+                f"   [référence {_format_duration(known.median_seconds)}"
+                f" sur {known.samples} {echantillons}, {known.compare(measure.seconds)}]"
+            )
+        else:
+            # Le dire plutôt que de laisser un blanc : une quête que personne
+            # n'a mesurée est une information en soi, et c'est celle que la
+            # session du joueur vient justement de combler.
+            suffix = "   [aucune référence, vous êtes le premier]"
+    print(f"  {_format_duration(measure.seconds):>12}   {name}{mark}{suffix}")
 
 
 def command_reference(args: argparse.Namespace) -> int:
@@ -113,6 +136,9 @@ def command_watch(args: argparse.Namespace) -> int:
     timeline = Timeline(catalog=catalog, language=args.language)
     started = time.monotonic()
     reader = RapidOcrReader()
+    # Les références sont lues sur le serveur d'envoi, sans qu'envoyer soit
+    # nécessaire pour les consulter : la lecture est publique.
+    references = ReferenceClient(args.server or args.references)
     try:
         with ScreenCapture(region) as capture:
             watcher = BannerWatcher(capture, reader)
@@ -128,7 +154,7 @@ def command_watch(args: argparse.Namespace) -> int:
                         # allongée de la durée de sa propre reconnaissance.
                         measure = timeline.record(reading, at=at)
                         if measure is not None:
-                            _print_measure(measure, catalog, args.language)
+                            _print_measure(measure, catalog, args.language, references)
     except KeyboardInterrupt:
         pass
 
@@ -157,8 +183,49 @@ def command_watch(args: argparse.Namespace) -> int:
         # qui s'annonce reste utilisable.
         print(f"{timeline.dropped} quêtes vues mais non mesurables")
 
+    _print_chain_summary(timeline, references, catalog, args.language)
     _finish_session(timeline, args)
     return 0
+
+
+def _print_chain_summary(
+    timeline: Timeline, references: ReferenceClient, catalog: Catalog, language: str
+) -> None:
+    """Situe la session dans les chaînes parcourues.
+
+    C'est la question qui compte quand il reste des milliers de quêtes à
+    faire : où j'en suis, et ce qu'il reste dans celle-ci.
+    """
+    if not timeline.measures or not references.enabled:
+        return
+    toutes = catalog.chains(language, kind=None)
+    for number in sorted({m.quest_id.chain for m in timeline.measures}):
+        chain = toutes.get(number)
+        total = len(chain) if chain else 0
+        faites = {m.quest_id.position for m in timeline.measures if m.quest_id.chain == number}
+        print()
+        accord = "mesurée" if len(faites) <= 1 else "mesurées"
+        titre = f"chaîne {number} : {len(faites)} {accord} cette session"
+        if total:
+            titre += f", {total} quêtes au total"
+        print(titre)
+        known = references.chain(number)
+        if known is None:
+            continue
+        print(
+            f"  référence : {known.measured_quests} quêtes connues, "
+            f"{known.quests_per_hour:.0f} quêtes/heure au rythme médian"
+        )
+        if total and known.measured_quests < total:
+            # Le total connu est un plancher tant que tout n'est pas mesuré,
+            # et le présenter autrement serait mentir.
+            manquantes = total - known.measured_quests
+            print(f"  {manquantes} quêtes de cette chaîne n'ont jamais été chronométrées")
+    if references.failures:
+        # Dire que les références manquaient, plutôt que de laisser croire que
+        # ces quêtes n'avaient jamais été mesurées par personne.
+        print()
+        print(f"({references.failures} références n'ont pas pu être lues)")
 
 
 def _finish_session(timeline: Timeline, args: argparse.Namespace) -> None:
@@ -211,6 +278,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="URL",
         help="adresse du serveur où envoyer les mesures en fin de session",
+    )
+    watch.add_argument(
+        "--references",
+        dest="references",
+        default=None,
+        metavar="URL",
+        help="serveur à consulter pour les temps de référence, sans y envoyer",
     )
     watch.add_argument(
         "--echelle",
