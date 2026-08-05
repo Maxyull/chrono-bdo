@@ -25,6 +25,7 @@ les temps de référence des autres. La chaîne complète tient debout.
 | Exécutable Windows | ✅ **0.4.0 publiée**, 59 Mo |
 | Vérification de version | ✅ le serveur annonce 0.4.0 |
 | Rétention des lectures ratées | ✅ local, envoi manuel |
+| Interface graphique | ✅ 3 onglets, zones réglables |
 | Rattachement Discord | ⏸ en ligne, **503** faute d'identifiants |
 | Robot Discord de consultation | ⏸ écrit et testé, jamais lancé |
 

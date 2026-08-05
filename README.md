@@ -147,6 +147,26 @@ ligne. Un étirement de contraste avant lecture est obligatoire.
 C'est la leçon principale du projet : un jeu de test figé valide la lecture
 d'une image, pas le comportement d'une interface vivante.
 
+Ouvrir la fenêtre :
+
+```bash
+python -m rubin fenetre
+```
+
+Trois onglets. **Session** dit où vous en êtes et ce qui vient. **Zones** montre
+les deux rectangles que Rubin lit **et ce qu'il y lit à l'instant**, ce qui
+répond en une seconde à « pourquoi ça ne mesure rien ». **Réglages** porte les
+curseurs, la langue du client et l'opacité.
+
+La fenêtre se pose d'elle-même à côté du panneau de quêtes, **jamais dessus**.
+Ce n'est pas une coquetterie : Rubin lit une capture d'écran, donc une fenêtre
+posée sur une zone de lecture est lue à la place de cette zone. Elle prévient
+quand vous l'y déplacez, et la transparence n'y change rien puisque c'est le
+mélange des deux qui est capturé.
+
+Ce n'est **pas une surcouche** : rien n'est injecté dans le jeu, c'est une
+fenêtre Windows ordinaire.
+
 Voir l'état du référentiel :
 
 ```bash

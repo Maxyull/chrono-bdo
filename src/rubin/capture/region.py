@@ -33,6 +33,26 @@ class Rect:
         """Forme attendue par `mss.grab`."""
         return {"left": self.left, "top": self.top, "width": self.width, "height": self.height}
 
+    def overlaps(self, other: Rect) -> bool:
+        """Vrai si les deux rectangles se chevauchent, ne serait-ce que d'un pixel.
+
+        Deux rectangles qui se touchent bord à bord ne se chevauchent pas : une
+        fenêtre posée exactement contre une zone de lecture n'en cache aucun
+        pixel, et l'interdire ferait perdre la seule place disponible sur un
+        écran encombré.
+
+        Sert à empêcher l'interface de se poser sur une zone qu'elle lit. La
+        capture prend ce qui est **composé** à l'écran : une fenêtre posée sur
+        le bandeau est lue à sa place, et la transparence n'y change rien
+        puisque le mélange, lui, est bien à l'écran.
+        """
+        return (
+            self.left < other.right
+            and other.left < self.right
+            and self.top < other.bottom
+            and other.top < self.bottom
+        )
+
 
 # Mesures relevées sur des captures réelles en 2559x1439, écran 1440p, jeu en
 # plein écran sans bordure, échelle d'interface par défaut. La zone couvre la
