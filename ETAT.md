@@ -189,6 +189,25 @@ apparaît au même instant, se trouve masqué ou décalé par elle.
 bandeau attendu à ce moment-là est bien manqué, ou la coïncidence du 5 août
 était-elle sans rapport.
 
+### Piste ouverte, pas explorée : les filtres du journal de quêtes en jeu
+
+Repérée en jouant le 5 août 2026 au soir. Le journal de quêtes du jeu porte
+neuf icônes de filtre, dans l'ordre : toutes, **principale**, esprit occulte,
+général, aventure, profession, contenu, événement, répétable. Il affiche
+aussi, en tête, « Quêtes terminées X/Y (Famille : … / Personnage : …) ».
+
+Deux pistes que ça ouvre, aucune vérifiée :
+
+- filtrer sur « principale » donnerait, côté jeu, un compte de référence
+  indépendant de tout ce que Rubin lit par ailleurs, utile pour vérifier
+  qu'aucune quête principale n'est oubliée ;
+- le compteur « Personnage » pourrait recouper le total mesuré par Rubin pour
+  ce personnage, si jamais ce nombre est lisible et stable.
+
+Rien de tout cela n'est codé. Le principe du projet s'applique comme
+ailleurs : une mesure faite à partir de ce panneau devra être vérifiée en
+jeu avant d'entrer dans quoi que ce soit qui compte.
+
 ### En prime : le panneau de suivi est illisible de nuit
 
 Il n'a aucun fond opaque, contrairement au bandeau. La luminance de toute la
