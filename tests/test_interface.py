@@ -11,15 +11,20 @@ import pytest
 
 from rubin.capture import Rect, banner_region, tracker_region
 from rubin.interface import (
+    COVERAGE_TAGS,
     FRAGILE_BELOW,
     ZoneState,
     describe_conflict,
     describe_reading,
     describe_zone,
+    format_coverage,
     format_duration,
     format_gap,
     format_reference,
+    format_running,
     format_upcoming_line,
+    main_quest_total,
+    running_seconds,
 )
 from rubin.interface.app import ZONE_KEYS, ZONE_ROLES
 from rubin.interface.help import EXAMPLES
@@ -30,8 +35,8 @@ from rubin.interface.theme import (
     confidence_colour,
     confidence_score,
 )
-from rubin.reference import Quest, QuestId
-from rubin.references import QuestReference
+from rubin.reference import Catalog, Quest, QuestId
+from rubin.references import Coverage, QuestReference
 from rubin.settings import Settings
 from rubin.upcoming import UpcomingQuest
 
@@ -67,6 +72,135 @@ class TestDurees:
     )
     def test_ecrit_une_duree_lisible(self, secondes: float, attendu: str) -> None:
         assert format_duration(secondes) == attendu
+
+
+class TestChronometreEnDirect:
+    def test_compte_le_temps_de_la_quete_en_cours(self) -> None:
+        assert running_seconds(1_000.0, 1_042.5) == pytest.approx(42.5)
+
+    def test_ne_compte_rien_quand_aucune_quete_n_est_ouverte(self) -> None:
+        assert running_seconds(None, 1_042.5) is None
+
+    def test_ecrit_le_temps_qui_court(self) -> None:
+        assert format_running(65.0) == "chronomètre : 1 min 05 s"
+        assert format_running(0.0) == "chronomètre : 0 s"
+
+    def test_un_depart_ignore_le_dit_au_lieu_de_se_taire(self) -> None:
+        """Régression : « ça va trop vite et certaines quêtes ne sont pas comptées ».
+
+        Signalé par Maxime le 05/08/2026. Deux bandeaux consécutifs se
+        ressemblent beaucoup, et le second peut être refusé avant lecture comme
+        trop proche du premier : la quête n'est alors jamais comptée. Le défaut
+        est aujourd'hui **parfaitement silencieux**, et ne se découvre qu'une
+        heure plus tard, en comptant les quêtes manquantes.
+
+        Il faut donc que « rien n'est chronométré » s'écrive, et qu'il ne
+        s'écrive pas comme « ça vient de démarrer ». Un blanc ou un « 0 s » se
+        liraient exactement à l'envers, comme la colonne vide d'une quête jamais
+        mesurée se lisait « instantané ».
+        """
+        assert format_running(None) == "aucune quête chronométrée"
+        assert format_running(None) != format_running(0.0)
+        assert format_running(None).strip() != ""
+
+    def test_ne_montre_jamais_un_chronometre_negatif(self) -> None:
+        """Régression : l'instant courant est lu avant le journal.
+
+        Les deux lectures sont séparées d'une poignée de microsecondes, pendant
+        lesquelles le fil de mesure peut ouvrir une quête. Le départ est alors
+        postérieur à l'instant courant, et la soustraction rendrait « -0 s »,
+        qui n'a aucun sens à l'écran.
+        """
+        assert running_seconds(1_042.5, 1_042.0) == 0.0
+        assert format_running(running_seconds(1_042.5, 1_042.0)) == "chronomètre : 0 s"
+
+
+class TestCouverture:
+    def test_compte_les_grises_en_soustrayant_du_catalogue(self) -> None:
+        couverture = Coverage(
+            well_measured=0, lightly_measured=11, threshold=5, measured_quests=11
+        )
+        # L'espace des milliers est insécable, U+00A0, écrite ici en clair : à
+        # l'œil, elle est indiscernable d'une espace ordinaire.
+        assert format_coverage(couverture, 3_924) == (
+            "0 verte",
+            "11 orange",
+            "3 913 jamais mesurées",
+        )
+
+    def test_le_serveur_ne_rend_pas_les_grises_et_c_est_au_client_de_soustraire(
+        self,
+    ) -> None:
+        """Régression : réclamer au serveur un chiffre qu'il n'a pas.
+
+        `GET /v1/couverture` rend aujourd'hui, en production, exactement
+        `{"well_measured": 0, "lightly_measured": 11, "threshold": 5,
+        "measured_quests": 11}`. Les quêtes jamais mesurées **n'y sont pas**, et
+        ce n'est pas un oubli : le serveur ne connaît que les quêtes dont il a
+        reçu une mesure, et rien ne lui garantit que tous les clients lisent le
+        même catalogue.
+
+        Les 3 924 quêtes principales sont un fait du catalogue, que ce client
+        porte. La soustraction lui appartient, et son résultat, 3 913, est le
+        seul chiffre qui donne l'échelle de ce qui reste.
+        """
+        couverture = Coverage(
+            well_measured=0, lightly_measured=11, threshold=5, measured_quests=11
+        )
+        parts = format_coverage(couverture, 3_924)
+        assert parts is not None
+        assert parts[2].startswith("3\u00a0913")
+        # Le total du serveur, lui, ne dit rien des grises.
+        assert couverture.measured_quests == 11
+
+    def test_un_serveur_muet_ne_produit_aucun_chiffre(self) -> None:
+        """Régression : trois zéros affirment ce qu'on ne sait pas.
+
+        « 0 verte, 0 orange, 3 924 jamais mesurées » se lit comme « personne n'a
+        jamais rien mesuré ». C'est une affirmation, et elle est fausse quand
+        c'est seulement le serveur qui n'a pas répondu. La bonne réponse est
+        « je ne sais pas », donc rien du tout.
+        """
+        assert format_coverage(None, 3_924) is None
+
+    def test_ne_compte_rien_sans_catalogue(self) -> None:
+        couverture = Coverage(
+            well_measured=0, lightly_measured=11, threshold=5, measured_quests=11
+        )
+        assert format_coverage(couverture, 0) is None
+
+    def test_ne_rend_jamais_un_nombre_negatif_de_grises(self) -> None:
+        # Un référentiel plus court que ce que le serveur a reçu : client
+        # d'une version antérieure, ou langue en retard.
+        couverture = Coverage(
+            well_measured=40, lightly_measured=30, threshold=5, measured_quests=70
+        )
+        parts = format_coverage(couverture, 10)
+        assert parts is not None
+        assert parts[2] == "0 jamais mesurée"
+
+    def test_accorde_le_singulier_et_le_pluriel(self) -> None:
+        couverture = Coverage(
+            well_measured=1, lightly_measured=1, threshold=5, measured_quests=2
+        )
+        assert format_coverage(couverture, 3) == ("1 verte", "1 orange", "1 jamais mesurée")
+
+    def test_les_trois_tranches_portent_les_couleurs_de_la_legende(self) -> None:
+        """Les balises du compteur sont celles de la légende juste au-dessus.
+
+        Deux listes parallèles finiraient par diverger, et un compte peint de la
+        couleur du voisin ne lève aucune erreur : il se croit sur parole.
+        """
+        assert COVERAGE_TAGS == ("sur", "moyen", "absent")
+        for balise in COVERAGE_TAGS:
+            assert balise in COLORS
+
+    def test_compte_les_quetes_principales_du_catalogue(self, catalog: Catalog) -> None:
+        # Les quêtes principales seulement : ce sont les seules mesurées, donc
+        # les seules dont une couverture veut dire quelque chose. L'échantillon
+        # de test en porte quatorze sur trente-trois.
+        assert main_quest_total(catalog, "fr") == 14
+        assert main_quest_total(catalog, "fr") < len(catalog)
 
 
 class TestTempsDeReference:

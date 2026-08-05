@@ -33,25 +33,35 @@ porte les erreurs qu'on ne voit pas.
 """
 
 from .presentation import (
+    COVERAGE_TAGS,
     FRAGILE_BELOW,
     ZoneState,
     describe_conflict,
     describe_reading,
     describe_zone,
+    format_coverage,
     format_duration,
     format_gap,
     format_reference,
+    format_running,
     format_upcoming_line,
+    main_quest_total,
+    running_seconds,
 )
 
 __all__ = [
+    "COVERAGE_TAGS",
     "FRAGILE_BELOW",
     "ZoneState",
     "describe_conflict",
     "describe_reading",
     "describe_zone",
+    "format_coverage",
     "format_duration",
     "format_gap",
     "format_reference",
+    "format_running",
     "format_upcoming_line",
+    "main_quest_total",
+    "running_seconds",
 ]
