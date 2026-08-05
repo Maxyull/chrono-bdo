@@ -48,6 +48,19 @@ sessions = Table(
     Column("dropped", Integer, nullable=False, default=0),
 )
 
+#: Rattachement facultatif d'un contributeur à un compte Discord.
+#:
+#: Table séparée des sessions, et non colonne ajoutée : le rattachement se fait
+#: une fois pour toutes tandis qu'un joueur envoie des dizaines de sessions, et
+#: il doit pouvoir disparaître sans emporter les mesures avec lui.
+players = Table(
+    "players",
+    metadata,
+    Column("player", String(64), primary_key=True),
+    Column("discord_id", String(32), nullable=False, index=True),
+    Column("discord_name", String(64), nullable=False),
+)
+
 measures = Table(
     "measures",
     metadata,
@@ -226,6 +239,38 @@ class Storage:
         stats.sort(key=lambda s: s.quests_per_hour, reverse=True)
         return stats[:limit]
 
+    def link_discord(self, player: str, discord_id: str, discord_name: str) -> None:
+        """Rattache un contributeur à un compte Discord, ou met à jour son nom.
+
+        Un même compte Discord peut se rattacher à plusieurs identifiants : le
+        joueur a réinstallé, ou joue sur deux machines. On ne l'interdit pas,
+        parce que l'empêcher n'apporterait rien et casserait un cas légitime.
+        """
+        with self.engine.begin() as connection:
+            existing = connection.execute(
+                select(players.c.player).where(players.c.player == player)
+            ).first()
+            if existing:
+                connection.execute(
+                    players.update()
+                    .where(players.c.player == player)
+                    .values(discord_id=discord_id, discord_name=discord_name)
+                )
+            else:
+                connection.execute(
+                    players.insert().values(
+                        player=player, discord_id=discord_id, discord_name=discord_name
+                    )
+                )
+
+    def display_name(self, player: str) -> str | None:
+        """Nom à afficher pour ce contributeur, ou `None` s'il est resté anonyme."""
+        with self.engine.connect() as connection:
+            row = connection.execute(
+                select(players.c.discord_name).where(players.c.player == player)
+            ).first()
+        return str(row.discord_name) if row else None
+
     def counts(self) -> dict[str, int]:
         with self.engine.connect() as connection:
             return {
@@ -237,5 +282,8 @@ class Storage:
                 ).scalar_one(),
                 "players": connection.execute(
                     select(func.count(func.distinct(sessions.c.player)))
+                ).scalar_one(),
+                "linked": connection.execute(
+                    select(func.count()).select_from(players)
                 ).scalar_one(),
             }

@@ -137,7 +137,14 @@ class TestStockage:
                     measures=(MeasurePayload("1/1", 42.0, "exacte", 0.9),),
                 )
             )
-        assert stockage.counts() == {"sessions": 3, "measures": 3, "players": 2}
+        assert stockage.counts() == {
+            "sessions": 3,
+            "measures": 3,
+            "players": 2,
+            # Personne n'a rattaché de compte Discord : contribuer n'en demande
+            # aucun, et la plupart des contributeurs resteront anonymes.
+            "linked": 0,
+        }
 
 
 class TestTempsTotal:
@@ -179,3 +186,65 @@ class TestVersion:
         qu'il est trop ancien, et resterait bloqué sans le savoir.
         """
         assert client.get("/v1/version").status_code == 200
+
+
+class TestDiscord:
+    def test_signe_et_relit_un_etat(self) -> None:
+        from rubin_serveur.discord import read_state, sign_state
+
+        assert read_state(sign_state("joueur42", "secret"), "secret") == "joueur42"
+
+    def test_refuse_un_etat_falsifie(self) -> None:
+        """Régression : sans signature, on peut voler les temps d'un autre.
+
+        Discord renvoie l'état tel quel au retour. Non signé, n'importe qui
+        pourrait forger un retour rattachant son propre compte Discord au
+        numéro d'un autre contributeur, et s'attribuer ses mesures.
+        """
+        from rubin_serveur.discord import read_state, sign_state
+
+        vrai = sign_state("joueur42", "secret")
+        falsifie = "victime." + vrai.partition(".")[2]
+        assert read_state(falsifie, "secret") is None
+
+    def test_refuse_un_etat_sans_signature(self) -> None:
+        from rubin_serveur.discord import read_state
+
+        assert read_state("joueur42", "secret") is None
+        assert read_state("", "secret") is None
+
+    def test_ne_se_configure_pas_sans_identifiants(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Absente n'est pas une erreur : le serveur doit tourner sans connexion
+        # Discord et le dire, plutôt que de refuser de démarrer.
+        from rubin_serveur.discord import DiscordConfig
+
+        monkeypatch.delenv("RUBIN_DISCORD_ID", raising=False)
+        monkeypatch.delenv("RUBIN_DISCORD_SECRET", raising=False)
+        assert DiscordConfig.from_env() is None
+
+    def test_ne_demande_que_l_identite(self) -> None:
+        # Ni courriel, ni serveurs fréquentés, ni liste d'amis : ce qu'on ne
+        # demande pas ne peut pas fuiter.
+        from rubin_serveur.discord import SCOPE, DiscordConfig, authorize_url
+
+        config = DiscordConfig("id", "secret", "https://exemple.test/retour", "etat")
+        url = authorize_url(config, "joueur42")
+        assert SCOPE == "identify"
+        assert "scope=identify" in url
+        assert "email" not in url
+
+    def test_rattache_un_compte_et_le_retrouve(self) -> None:
+        stockage = Storage("sqlite+pysqlite:///:memory:")
+        assert stockage.display_name("joueur42") is None
+        stockage.link_discord("joueur42", "9876", "Maxyull")
+        assert stockage.display_name("joueur42") == "Maxyull"
+
+    def test_met_a_jour_un_rattachement_existant(self) -> None:
+        # Les pseudonymes Discord changent : on garde le dernier connu plutôt
+        # que d'afficher indéfiniment un nom que la personne n'utilise plus.
+        stockage = Storage("sqlite+pysqlite:///:memory:")
+        stockage.link_discord("joueur42", "9876", "Ancien")
+        stockage.link_discord("joueur42", "9876", "Nouveau")
+        assert stockage.display_name("joueur42") == "Nouveau"
