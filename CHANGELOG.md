@@ -9,6 +9,26 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 Rien pour l'instant.
 
+## [0.3.0] - 2026-08-05
+
+### Changé
+
+- **Le projet s'appelle désormais Rubin**, du nom du héraut de Calpheon qui
+  donne les vingt-trois quêtes contre-la-montre du jeu, seul endroit où Black
+  Desert mesure lui-même une durée. Le nom précédent disait ce que fait le
+  logiciel sans rien dire du jeu.
+- Le serveur a suivi : `rubin.maxyull.fr`, avec les mesures déjà collectées.
+
+### Ajouté
+
+- **Les embranchements sont repérés.** 69 quêtes principales, réparties sur 38
+  chaînes, sont des branches d'un choix : le jeu propose deux quêtes et une
+  seule sera faite. Une chaîne qui en contient ne sera donc jamais terminée en
+  entier, et le total de ses quêtes surestime ce qu'il reste à faire. Le bilan
+  de session le signale.
+
+Rien pour l'instant.
+
 ## [0.2.0] - 2026-08-05
 
 Le chronomètre fonctionne, mesure de vraies quêtes et publie ses résultats.

@@ -26,26 +26,26 @@ SECRETS="$(cd "$RACINE/../.." && pwd)/secrets"
 set -a; source "$SECRETS/bdi-infra.env"; set +a
 
 # Le mot de passe de la base du chronomètre, lui, est propre au projet.
-CONF_CHRONO="$SECRETS/rubin-bdo.env"
-if [[ ! -f "$CONF_CHRONO" ]]; then
+CONF_RUBIN="$SECRETS/rubin-bdo.env"
+if [[ ! -f "$CONF_RUBIN" ]]; then
   echo "-> premier déploiement : génération du mot de passe de la base"
   # Sans passer par `tr | head` : sous `pipefail`, `head` ferme le tube, `tr`
   # meurt d'un SIGPIPE, et le script s'arrête sur ce qui n'est pas une erreur.
   # Le mot de passe reste alphanumérique, car il traverse une ligne de commande
   # ssh où un caractère spécial demanderait un échappement de plus.
   MDP="$(python -c 'import secrets,string; print("".join(secrets.choice(string.ascii_letters+string.digits) for _ in range(40)))')"
-  cat >"$CONF_CHRONO" <<EOF
+  cat >"$CONF_RUBIN" <<EOF
 # Serveur de classement de Rubin. Généré le $(date +%F).
 # Hors de tout dépôt git, comme tous les secrets.
-RUBIN_PG_USER=chrono
+RUBIN_PG_USER=rubin
 RUBIN_PG_PASSWORD=$MDP
-RUBIN_PG_DATABASE=chrono
+RUBIN_PG_DATABASE=rubin
 RUBIN_PORT=8010
 RUBIN_DOMAINE=rubin.maxyull.fr
 EOF
 fi
 # shellcheck disable=SC1090
-set -a; source "$CONF_CHRONO"; set +a
+set -a; source "$CONF_RUBIN"; set +a
 
 DEPOT="https://github.com/Maxyull/rubin-bdo.git"
 CIBLE="/opt/rubin"
@@ -97,7 +97,7 @@ sudo "${CIBLE}/.venv/bin/pip" install --quiet -e "${CIBLE}" -e "${CIBLE}/serveur
 # Extraction sans expression régulière à échappements : ceux-ci ne survivent
 # pas au passage dans un document en ligne, et rendaient ici un caractère de
 # contrôle au lieu du numéro de version.
-VERSION="$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+' "${CIBLE}/src/chrono/__init__.py" | head -1)"
+VERSION="$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+' "${CIBLE}/src/rubin/__init__.py" | head -1)"
 echo "--- service (version annoncée : ${VERSION})"
 sudo tee /etc/systemd/system/rubin.service >/dev/null <<UNIT
 [Unit]
