@@ -138,3 +138,26 @@ Pearl Abyss, ni approuvé par eux.
 ## Licence
 
 MIT, voir [LICENSE](LICENSE).
+
+## Politique de signature
+
+Le code de ce projet est écrit et relu par Maxime Lacoste, seul mainteneur. Il
+est publié sur [github.com/Maxyull/chrono-bdo](https://github.com/Maxyull/chrono-bdo),
+sous licence MIT, sans composant propriétaire ni double licence commerciale.
+
+Les versions publiées sont construites par `empaquetage/construire.py` à partir
+de l'état du dépôt, et l'empreinte SHA-256 de chaque archive est publiée à côté
+d'elle.
+
+⚠️ **L'exécutable n'est pas encore signé.** Windows et certains antivirus
+peuvent donc l'annoncer comme provenant d'un éditeur inconnu, ce qui est un
+faux positif courant des programmes Python empaquetés. Deux précautions sont
+prises en attendant : le programme n'est pas compressé par UPX, et il est
+distribué en dossier plutôt qu'en fichier auto-extractible, deux traits que les
+antivirus associent aux logiciels malveillants.
+
+Vérifier une archive téléchargée :
+
+```powershell
+Get-FileHash chrono-windows.zip -Algorithm SHA256
+```
