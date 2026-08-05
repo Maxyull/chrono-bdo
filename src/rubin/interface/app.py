@@ -35,6 +35,7 @@ from ..references import ReferenceClient
 from ..settings import LANGUAGES, LIMITS, load, save
 from ..timing import Quality
 from ..upcoming import upcoming
+from .picker import ZonePicker, png_data
 from .presentation import (
     ZoneState,
     describe_conflict,
@@ -57,6 +58,32 @@ WINDOW_SIZE: Final = (460, 560)
 #: seconde suffisent : c'est déjà la cadence de capture, et l'œil n'en demande
 #: pas plus sur du texte.
 REFRESH_MS: Final = 125
+
+#: Largeur des aperçus de zone, en pixels.
+PREVIEW_WIDTH: Final = 400
+
+#: Les deux zones lues, et **à quoi elles servent**.
+#:
+#: Le rôle est affiché sous chaque titre. Sans lui, le joueur voit deux
+#: rectangles sans savoir lequel compte, ni ce qu'il casse en le déplaçant. Or
+#: les deux n'ont pas du tout le même poids : sans le bandeau, rien n'est jamais
+#: mesuré ; sans le panneau, on perd seulement de quoi lever une ambiguïté.
+ZONE_ROLES: Final = (
+    (
+        "banner",
+        "BANDEAU DE QUÊTE",
+        "En bas à droite. Il apparaît quand vous acceptez ou terminez une "
+        "quête, et c'est LUI qui déclenche le chronomètre. Mal placé, rien "
+        "n'est jamais mesuré.",
+    ),
+    (
+        "tracker",
+        "PANNEAU DE SUIVI",
+        "Sous la minimap. Il dit dans quelle chaîne vous êtes, ce qui permet "
+        "de trancher quand un nom lu désigne plusieurs quêtes. Mal placé, on "
+        "mesure quand même, on identifie seulement moins bien.",
+    ),
+)
 
 
 class RubinApp:
@@ -218,16 +245,29 @@ class RubinApp:
 
         self._zone_labels: dict[str, ttk.Label] = {}
         self._zone_readings: dict[str, tk.Text] = {}
-        for clé, nom in (("banner", "BANDEAU DE QUÊTE"), ("tracker", "PANNEAU DE SUIVI")):
+        self._zone_previews: dict[str, ttk.Label] = {}
+        self._zone_photos: dict[str, tk.PhotoImage] = {}
+        for clé, nom, rôle in ZONE_ROLES:
             ttk.Label(self._zones, text=nom, style="Section.TLabel", anchor="w").pack(
-                fill="x", padx=12, pady=(6, 2)
+                fill="x", padx=12, pady=(8, 1)
             )
+            # À quoi sert cette zone, en une phrase. Sans elle, le joueur voit
+            # deux rectangles sans savoir lequel compte ni ce qu'il casse en le
+            # déplaçant.
+            ttk.Label(
+                self._zones, text=rôle, style="Faible.TLabel", anchor="w",
+                justify="left", wraplength=400,
+            ).pack(fill="x", padx=12)
             self._zone_labels[clé] = ttk.Label(
                 self._zones, text="", style="Faible.TLabel", anchor="w"
             )
-            self._zone_labels[clé].pack(fill="x", padx=12)
-            lecture = self._text_box(self._zones, height=4, mono=True)
-            lecture.pack(fill="both", expand=True, padx=12, pady=(4, 2))
+            self._zone_labels[clé].pack(fill="x", padx=12, pady=(2, 0))
+            # L'image de ce qui est réellement capturé. Une position en chiffres
+            # ne dit pas si elle tombe au bon endroit ; l'image le dit d'un coup.
+            self._zone_previews[clé] = ttk.Label(self._zones, background=COLORS["carte"])
+            self._zone_previews[clé].pack(fill="x", padx=12, pady=(4, 0))
+            lecture = self._text_box(self._zones, height=3, mono=True)
+            lecture.pack(fill="both", expand=True, padx=12, pady=(3, 2))
             self._zone_readings[clé] = lecture
 
         boutons = ttk.Frame(self._zones)
@@ -238,6 +278,13 @@ class RubinApp:
         ttk.Button(boutons, text="Zones calculées", command=self.reset_zones).pack(
             side="left", padx=8
         )
+
+        tracer = ttk.Frame(self._zones)
+        tracer.pack(fill="x", padx=12, pady=(0, 4))
+        for clé, libellé in (("banner", "Tracer le bandeau"), ("tracker", "Tracer le suivi")):
+            ttk.Button(
+                tracer, text=libellé, command=self._pick(clé)
+            ).pack(side="left", padx=(0, 8))
 
         self._avertissement = ttk.Label(
             self._zones, text="", style="Alerte.TLabel", anchor="w", justify="left", wraplength=400
@@ -410,11 +457,39 @@ class RubinApp:
         for clé, zone in zip(("banner", "tracker"), self.zones(fenêtre), strict=True):
             try:
                 with ScreenCapture(zone) as capture:
+                    image = capture.grab_color()
                     lignes = lecteur.read(capture.grab_gray())
             except Exception:  # pragma: pas de couverture
                 lignes = []
+            else:
+                self._show_preview(clé, image, zone)
             self._set_reading(clé, tuple(texte for texte, _score in lignes))
         self.refresh_zones()
+
+    def _show_preview(self, clé: str, image: object, zone: Rect) -> None:
+        """Montre l'image de ce que la zone capture vraiment.
+
+        Une position en chiffres ne dit pas si elle tombe au bon endroit.
+        L'image le dit d'un coup, et c'est elle qui a révélé, sur ce poste, que
+        la zone du bandeau lisait le chat de guilde.
+        """
+        try:
+            from PIL import Image
+
+            vignette = Image.fromarray(image)  # type: ignore[arg-type]
+            largeur = min(PREVIEW_WIDTH, zone.width)
+            hauteur = max(1, int(zone.height * largeur / zone.width))
+            vignette = vignette.resize((largeur, hauteur))
+            # Gardée sur l'instance : Tk ne retient pas ses images, et une image
+            # ramassée par le collecteur laisse un cadre vide, sans erreur.
+            self._zone_photos[clé] = tk.PhotoImage(data=png_data(vignette))
+            self._zone_previews[clé].config(image=self._zone_photos[clé])
+        except Exception as erreur:  # pragma: pas de couverture
+            # Un aperçu est un confort : son échec ne doit pas empêcher de lire
+            # la zone, qui est l'information utile. Mais il se dit, plutôt que
+            # de laisser un cadre vide qu'on prendrait pour une zone qui ne
+            # capture rien, ce qui est un tout autre problème.
+            self._zone_previews[clé].config(image="", text=f"aperçu indisponible : {erreur}")
 
     def _set_reading(self, clé: str, lignes: tuple[str, ...]) -> None:
         état = ZoneState(clé, Rect(0, 0, 1, 1), chosen=False, lines=lignes)
@@ -423,6 +498,42 @@ class RubinApp:
         composant.delete("1.0", "end")
         composant.insert("1.0", describe_reading(état))
         composant.config(state="disabled")
+
+    def _pick(self, which: str) -> Callable[[], None]:
+        """Ouvre le tracé de zone, sur une photographie du jeu.
+
+        Une fabrique et non une lambda : les deux boutons naissent d'une boucle,
+        et une lambda y capturerait la variable, donc la même zone pour les deux.
+        """
+
+        def ouvrir() -> None:
+            fenêtre = find_game_window()
+            if fenêtre is None:
+                self._avertissement.config(text="jeu introuvable, impossible de tracer")
+                return
+            titre = "Bandeau de quête" if which == "banner" else "Panneau de suivi"
+            ZonePicker(self.root, fenêtre, titre, self._zone_chosen(which))
+
+        return ouvrir
+
+    def _zone_chosen(self, which: str) -> Callable[[Rect], None]:
+        def retenir(zone: Rect) -> None:
+            # Deux branches explicites plutôt qu'un nom de champ calculé :
+            # le vérificateur de types ne sait rien d'une clé construite à
+            # l'exécution, et une faute de frappe y passerait inaperçue
+            # jusqu'au moment où le réglage ne s'enregistre pas.
+            if which == "banner":
+                self._settings = replace(self._settings, banner=zone)
+            else:
+                self._settings = replace(self._settings, tracker=zone)
+            save(self._settings, self._home)
+            self.refresh_zones()
+            # Lire tout de suite : le seul moyen de savoir si le tracé est bon
+            # est de voir ce qu'on en tire, et l'attente d'une session entière
+            # est précisément ce qu'on cherche à supprimer.
+            self.read_zones_now()
+
+        return retenir
 
     def reset_zones(self) -> None:
         """Oublie les zones choisies, et revient au calcul qui suit la fenêtre."""
