@@ -39,6 +39,7 @@ from rubin.interface import (
     format_lettred_quest,
     format_link,
     format_measure_line,
+    format_note_placeholder,
     format_other_quests,
     format_personal_best,
     format_quest_times,
@@ -362,6 +363,24 @@ class TestRecordPersonnel:
 
         assert "1 min 37 s" in texte
         assert "ton meilleur temps" in texte
+
+
+class TestNoteDeQuete:
+    """La note personnelle d'une quête : le monstre à tuer, l'instance, le
+    choix pris, un mot ou un nombre relevé dans le chat. Demandée par Maxime
+    le 05/08/2026 au soir. Purement locale, voir `notes.py`.
+    """
+
+    def test_invite_a_ecrire_quand_rien_n_est_note(self) -> None:
+        texte = format_note_placeholder(has_note=False)
+
+        assert "aucune note" in texte
+
+    def test_dit_qu_une_note_existe_deja(self) -> None:
+        texte = format_note_placeholder(has_note=True)
+
+        assert "enregistrée" in texte
+        assert "aucune note" not in texte
 
 
 class TestLignesAVenir:
