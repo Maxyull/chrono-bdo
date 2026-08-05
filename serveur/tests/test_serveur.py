@@ -163,3 +163,19 @@ class TestTempsTotal:
         # moins que la réalité.
         au_rythme_median = 4 * 3600 / stats["quests_per_hour"]
         assert au_rythme_median < stats["measured_total_seconds"] / 10
+
+
+class TestVersion:
+    def test_annonce_la_version_et_le_lien(self, client: TestClient) -> None:
+        corps = client.get("/v1/version").json()
+        assert corps["protocole"] == PROTOCOL_VERSION
+        assert corps["telechargement"].startswith("https://")
+
+    def test_repond_sans_condition(self, client: TestClient) -> None:
+        """Régression : un client trop vieux doit pouvoir l'apprendre.
+
+        Si cette adresse exigeait un protocole à jour, un logiciel devenu trop
+        ancien pour envoyer ses mesures serait aussi incapable de découvrir
+        qu'il est trop ancien, et resterait bloqué sans le savoir.
+        """
+        assert client.get("/v1/version").status_code == 200
