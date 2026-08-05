@@ -40,7 +40,16 @@ rubin_bot = ["py.typed"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-q --strict-markers --strict-config"
-filterwarnings = ["error"]
+filterwarnings = [
+  "error",
+  # `discord.py` importe `audioop` pour la voix, dès la racine du paquet, donc
+  # sans qu'on puisse l'éviter : le robot n'a pourtant aucune fonction vocale.
+  # Le module est déprécié en 3.12 et retiré en 3.13, ce qui transformait le
+  # simple `import discord` en erreur de collecte sous 3.12. Le filtre est
+  # nominatif, et non un assouplissement général : toute autre alerte reste une
+  # erreur. À retirer le jour où `discord.py` cessera cet import.
+  "ignore:'audioop' is deprecated:DeprecationWarning",
+]
 
 [tool.ruff]
 line-length = 100
