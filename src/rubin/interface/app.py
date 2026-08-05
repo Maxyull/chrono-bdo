@@ -39,6 +39,7 @@ from ..references import ReferenceClient
 from ..settings import LANGUAGES, LIMITS, load, save
 from ..timing import Quality
 from ..upcoming import upcoming
+from .autozone import search as search_banner_zone
 from .help import HelpWindow
 from .picker import ZonePicker, png_data
 from .presentation import (
@@ -117,6 +118,7 @@ class RubinApp:
         self._server = server
         self._references = ReferenceClient(server)
         self._engine: MeasuringSession | None = None
+        self._auto: threading.Thread | None = None
 
         self.root = tk.Tk()
         self.root.title("Rubin, chronomètre de quêtes")
@@ -312,6 +314,9 @@ class RubinApp:
         ttk.Button(boutons, text="Zones calculées", command=self.reset_zones).pack(
             side="left", padx=8
         )
+        ttk.Button(
+            boutons, text="Choix automatique", command=self.auto_zone
+        ).pack(side="left")
         tracer = ttk.Frame(self._zones)
         tracer.pack(fill="x", padx=12, pady=(0, 6))
         for clé, libellé in (("banner", "Tracer le bandeau"), ("tracker", "Tracer le suivi")):
@@ -599,6 +604,27 @@ class RubinApp:
         composant.insert("1.0", describe_reading(état))
         composant.config(state="disabled")
 
+    def auto_zone(self) -> None:
+        """Cherche seule où le bandeau apparaît, pendant que le joueur joue.
+
+        Lancée dans un fil : la recherche dure jusqu'à deux minutes, et la
+        fenêtre doit rester vivante pendant ce temps. Le fil ne touche à aucun
+        composant, il passe par la file comme le moteur de mesure.
+        """
+        if self._auto is not None and self._auto.is_alive():
+            return
+
+        def chercher() -> None:
+            zone = search_banner_zone(
+                lambda message: self.publish("etat_zone", message),
+                self._stop.is_set,
+            )
+            if zone is not None:
+                self.publish("zone_trouvee", zone)
+
+        self._auto = threading.Thread(target=chercher, daemon=True)
+        self._auto.start()
+
     def _help(self, which: str) -> Callable[[], None]:
         """Ouvre l'exemple de ce que cette zone doit contenir."""
 
@@ -693,6 +719,13 @@ class RubinApp:
             self._add_measure(*charge)
         elif genre == "vu":
             self._show_seen(*charge)
+        elif genre == "etat_zone":
+            self._avertissement.config(text=str(charge))
+        elif genre == "zone_trouvee":
+            self._settings = replace(self._settings, banner=charge)
+            save(self._settings, self._home)
+            self.refresh_zones()
+            self.read_zones_now()
         elif genre == "sous_chrono":
             self._add_split(*charge)
         elif genre == "sans_chaine":
