@@ -73,6 +73,38 @@ devant un « aucune quête mesurée » sans explication.
   numéro d'un autre contributeur, donc de s'attribuer ses mesures. La date ne
   supprime pas la fuite, elle en ferme la fenêtre.
 
+- **Un robot Discord de consultation**, dans le nouveau dossier `bot/`, avec son
+  propre `pyproject.toml` et son propre environnement, sur le modèle de
+  `serveur/`. Trois commandes, toutes en lecture : `/rapides` pour les chaînes
+  les plus rapides, `/chaine` pour le rythme d'une chaîne, `/quete` pour le
+  temps d'une quête. Il n'envoie aucune mesure, n'en reçoit aucune, ne publie
+  rien de lui-même, et n'exerce aucun pouvoir d'administration sur un serveur
+  Discord.
+
+  Deux choses n'y sont jamais tues, pour les mêmes raisons que dans la liste
+  des quêtes suivantes. **Chaque temps porte son nombre de mesures**, et en
+  dessous de cinq il porte une marque : la base entière compte onze mesures,
+  toutes d'un seul joueur sur une seule chaîne, donc presque toutes les réponses
+  seront vides ou fragiles, et c'est l'état réel du projet. Une quête que
+  personne n'a chronométrée s'affiche « jamais mesurée », jamais une colonne
+  vide, qui se lirait « instantané ». **Aucune durée totale** n'est annoncée :
+  le module qui lit l'API ne lit même pas le champ `measured_total_seconds` que
+  le serveur publie, parce qu'un total bâti sur des médianes ment du simple au
+  double, 77 quêtes/heure au rythme médian contre 36 réellement produites.
+
+  ⚠️ Le robot est **écrit, vérifié, et pas démarré** : il lui faut un jeton de
+  robot dans `RUBIN_BOT_JETON`, donc une application créée à la main sur le
+  portail développeur Discord, ce qui n'est pas du code. Sans jeton, il dit ce
+  qui manque et rend la main, sans trace de pile et sans rien envoyer à Discord.
+  Contrairement au serveur web, un robot est un processus qui tourne en
+  permanence : il lui faudra son propre service systemd, sans bloc Caddy
+  puisque rien n'entre. Tout est décrit dans `bot/README.md`, rien n'est
+  déployé.
+
+  À ne pas confondre avec le rattachement de compte ci-dessus : celui-là est un
+  parcours OAuth2 dans le serveur, sans jeton de robot, sans passerelle et sans
+  présence dans un salon. Les deux vivent l'un sans l'autre.
+
 ### Corrigé
 
 - 🔴 **Le navigateur était pris pour le jeu.** `find_game_window` retenait la

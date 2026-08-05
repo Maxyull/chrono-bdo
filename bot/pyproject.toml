@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rubin-bot"
+version = "0.1.0"
+description = "Robot Discord qui consulte les temps de quêtes publiés par Rubin"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Maxime Lacoste" }]
+
+# Le robot ne dépend ni du client ni du serveur : il ne lit que leur interface
+# HTTP publique. Rien à partager, donc rien à faire diverger. C'est aussi ce
+# qui permet de le faire tourner sur une machine qui n'a ni écran, ni base.
+dependencies = [
+  "discord.py>=2.3",
+  "aiohttp>=3.9",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.6",
+  "mypy>=1.11",
+  "pip-audit>=2.7",
+]
+
+[project.scripts]
+rubin-bot = "rubin_bot.__main__:run"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+rubin_bot = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q --strict-markers --strict-config"
+filterwarnings = [
+  "error",
+  # `discord.py` importe `audioop` pour la voix, dès la racine du paquet, donc
+  # sans qu'on puisse l'éviter : le robot n'a pourtant aucune fonction vocale.
+  # Le module est déprécié en 3.12 et retiré en 3.13, ce qui transformait le
+  # simple `import discord` en erreur de collecte sous 3.12. Le filtre est
+  # nominatif, et non un assouplissement général : toute autre alerte reste une
+  # erreur. À retirer le jour où `discord.py` cessera cet import.
+  "ignore:'audioop' is deprecated:DeprecationWarning",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "A", "C4", "SIM", "PTH", "RUF", "S"]
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S104", "S105", "S106"]
+
+[tool.mypy]
+files = ["src"]
+strict = true
+warn_unreachable = true

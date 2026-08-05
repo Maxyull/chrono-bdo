@@ -76,3 +76,37 @@ jobs:
       - name: Tests
         run: pytest
         working-directory: serveur
+
+  bot:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Installer le robot
+        # Le robot ne dépend ni du client ni du serveur : il ne lit que leur
+        # interface HTTP publique. Rien à installer d'autre.
+        run: python -m pip install -e ./bot[dev]
+
+      - name: Style
+        run: ruff check .
+        working-directory: bot
+
+      - name: Types
+        run: mypy
+        working-directory: bot
+
+      - name: Tests
+        # Aucun jeton, aucun accès à Discord, aucun appel sortant : les tests
+        # montent un serveur HTTP sur la boucle locale et l'interrogent.
+        run: pytest
+        working-directory: bot
