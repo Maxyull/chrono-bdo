@@ -172,6 +172,14 @@ def lock_label(label: str, locked: bool) -> str:
 #: un lot vide.
 SILENCE_WARNING: Final = 45.0
 
+#: Part de captures répétées au-delà de laquelle la ligne devient un avertissement.
+#:
+#: Un quart, et pas moins : le jeu s'immobilise réellement de temps en temps,
+#: un menu ouvert, un chargement, et quelques répétitions isolées sont
+#: normales. C'est un TAUX SOUTENU qui trahit une capture qui ne renouvelle
+#: plus rien, pas une répétition de temps en temps.
+REPEAT_WARNING: Final = 0.25
+
 
 @dataclass(frozen=True)
 class Watching:
@@ -191,6 +199,9 @@ class Watching:
     reads: int = 0
     failed: int = 0
     overflowed: int = 0
+    #: Captures identiques à la précédente. Voir `BannerWatcher.stats.repeats`,
+    #: qui porte la mesure de fond et le cas qui l'a motivée.
+    repeated: int = 0
     #: Durée de la session, en secondes.
     elapsed: float = 0.0
     #: Secondes depuis le dernier bandeau vu, ou `None` s'il n'y en a jamais eu.
@@ -230,6 +241,13 @@ def format_watching(watching: Watching | None) -> str:
         # Jamais normal : la lecture ne suit plus la capture. Le dire plutôt que
         # de laisser croire à des bandeaux jamais apparus.
         morceaux.append(f"⚠ {_grouped(watching.overflowed)} images perdues")
+    if watching.frames and watching.repeated / watching.frames >= REPEAT_WARNING:
+        # Le jeu redessine en permanence, même un personnage immobile a de
+        # l'herbe qui bouge : un taux élevé d'images identiques signale une
+        # capture qui répète au lieu de produire du neuf, pas un joueur AFK.
+        morceaux.append(
+            f"⚠ {_grouped(watching.repeated)} images répétées sur {_grouped(watching.frames)}"
+        )
     ligne = ", ".join(morceaux)
     if watching.banners_seen == 0 and watching.elapsed >= SILENCE_WARNING:
         # Le seul cas où la ligne devient un avertissement. Voir la constante.

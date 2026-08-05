@@ -165,6 +165,19 @@ class WatchStats:
     banners_seen: int = 0
     reads: int = 0
     readings: int = 0
+    #: Captures rigoureusement identiques à la précédente, pixel pour pixel.
+    #:
+    #: Doit rester très bas. Le jeu redessine en permanence, et même un
+    #: personnage immobile a de l'herbe qui bouge : deux captures successives
+    #: rendues identiques signalent que la capture **répète une image déjà
+    #: prise** au lieu d'en produire une neuve.
+    #:
+    #: Ajouté après la séance du 5 août 2026, où une session a trouvé 2 images
+    #: avec bandeau là où un témoin extérieur en trouvait 47 sur la même zone et
+    #: la même période. Les images gardées à l'aveugle ont prouvé que la zone
+    #: était la bonne et le jeu bien vivant dedans ; il ne restait que le
+    #: soupçon d'images répétées, et rien pour le mesurer.
+    repeats: int = 0
 
     @property
     def read_ratio(self) -> float:
@@ -212,6 +225,7 @@ class BannerWatcher:
             "banners_seen": self.stats.banners_seen,
             "reads": self.stats.reads,
             "readings": self.stats.readings,
+            "repeats": self.stats.repeats,
         }
         for key, value in changes.items():
             current[key] += value
@@ -226,6 +240,11 @@ class BannerWatcher:
         millisecondes pendant lesquelles l'écran ne serait pas surveillé.
         """
         frame = self._source.grab_gray()
+        # Comparée AVANT d'écraser la précédente. `array_equal` sur 40 kilooctets
+        # coûte quelques dizaines de microsecondes, soit trois ordres de grandeur
+        # sous le glissement de l'icône qui suit.
+        if self.last_frame is not None and np.array_equal(self.last_frame, frame):
+            self._bump(repeats=1)
         self.last_frame = frame
         self._bump(frames=1)
 

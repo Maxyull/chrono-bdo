@@ -322,6 +322,7 @@ class MeasuringSession:
                                 reads=watcher.stats.reads,
                                 failed=deferred.failed,
                                 overflowed=deferred.overflowed,
+                                repeated=watcher.stats.repeats,
                                 elapsed=time.monotonic() - début,
                                 since_banner=(
                                     None

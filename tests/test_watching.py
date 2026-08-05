@@ -290,3 +290,60 @@ class TestBannerWatcher:
         watcher = BannerWatcher(ScriptedSource([chat]), ScriptedReader())
         list(watcher.watch(max_polls=7))
         assert watcher.stats.frames == 7
+
+
+class TestImagesRepetees:
+    """Le compteur de captures identiques à la précédente.
+
+    Ajouté après la séance du 5 août 2026 : une session a trouvé 2 bandeaux là
+    où un témoin extérieur, sur la même zone et la même période, en trouvait
+    47. Les images gardées à l'aveugle (#67) ont montré la bonne zone sur le
+    jeu vivant, écartant une capture périmée ou mal placée. Il ne restait que
+    le soupçon d'une capture qui répète une image déjà prise, et rien pour le
+    mesurer.
+    """
+
+    def test_deux_images_identiques_comptent_une_repetition(self, chat: GrayFrame) -> None:
+        source = ScriptedSource([chat, chat.copy(), chat.copy()])
+        guetteur = BannerWatcher(source, ScriptedReader([]))
+
+        for _ in range(3):
+            guetteur.capture_pending()
+
+        assert guetteur.stats.repeats == 2
+
+    def test_des_images_qui_changent_ne_comptent_aucune_repetition(
+        self, chat: GrayFrame
+    ) -> None:
+        rng = np.random.default_rng(2026)
+        images = [rng.integers(0, 256, chat.shape, dtype=np.uint8) for _ in range(5)]
+        source = ScriptedSource(images)
+        guetteur = BannerWatcher(source, ScriptedReader([]))
+
+        for _ in range(5):
+            guetteur.capture_pending()
+
+        assert guetteur.stats.repeats == 0
+
+    def test_regression_le_cas_du_5_aout_une_capture_qui_stagne(
+        self, chat: GrayFrame
+    ) -> None:
+        """Régression : ce que verrait le compteur sur une capture qui stagne.
+
+        Le fait mesuré ce jour-là : un témoin voyait 47 bandeaux sur une
+        période où la session n'en trouvait que 2, sur la même zone. Si la
+        capture avait rendu la même image en boucle au lieu d'en produire une
+        neuve à chaque tour, c'est exactement ce chiffre qui l'aurait montré
+        AVANT d'écrire cinq programmes de diagnostic hors du logiciel.
+
+        Le test fige la propriété attendue d'un tel cas : un taux de
+        répétition proche de 100 %, et non quelques pourcents de bruit normal.
+        """
+        source = ScriptedSource([chat] * 40)  # la même image, quarante fois
+        guetteur = BannerWatcher(source, ScriptedReader([]))
+
+        for _ in range(40):
+            guetteur.capture_pending()
+
+        assert guetteur.stats.repeats == 39
+        assert guetteur.stats.repeats / guetteur.stats.frames > 0.9
