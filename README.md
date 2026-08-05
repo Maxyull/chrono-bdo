@@ -99,6 +99,7 @@ ligne de classement. Aucune table de traduction n'est écrite à la main.
 | Exécutable Windows | ✅ publié en release |
 | Rétention des lectures ratées | ✅ locale, envoi manuel |
 | Rattachement d'un compte Discord | ⏸ écrit, en attente d'identifiants |
+| Robot Discord de consultation | ⏸ écrit, en attente d'un jeton de robot |
 
 En ligne :
 
@@ -218,6 +219,8 @@ Pearl Abyss, ni approuvé par eux.
 | [docs/ou-va-le-projet.md](docs/ou-va-le-projet.md) | où va le projet, dans quel ordre, et les pièges déjà repérés sur la route |
 | [docs/versionnage.md](docs/versionnage.md) | les trois choses qui versionnent séparément, et pourquoi les confondre serait une erreur |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | langue du projet, politique de tests, ce que Rubin ne fera jamais |
+| [serveur/README.md](serveur/README.md) | le serveur de classement, son interface et son déploiement |
+| [bot/README.md](bot/README.md) | le robot Discord de consultation, et ce qu'il reste à créer à la main |
 
 ## Licence
 
@@ -234,6 +237,11 @@ Cela vaut aussi pour les lectures ratées gardées par `rubin echecs`. Elles
 restent sur votre disque, s'effacent d'elles-mêmes au bout de quatre-vingt-dix
 jours, et **aucune requête réseau ne les concerne**. Les envoyer est un geste
 manuel, entièrement le vôtre, sur un fichier que vous pouvez ouvrir d'abord.
+
+Cela vaut enfin pour le robot Discord de `bot/`, qui ne fait que lire le
+classement public et n'affiche aujourd'hui **aucun pseudonyme**. Le jour où une
+commande en afficherait un, la politique de confidentialité devrait être mise à
+jour d'abord : elle promet en l'état qu'aucun pseudonyme n'est transmis.
 
 ## Politique de signature
 
