@@ -35,6 +35,7 @@ from ..references import ReferenceClient
 from ..settings import LANGUAGES, LIMITS, load, save
 from ..timing import Quality
 from ..upcoming import upcoming
+from .help import HelpWindow
 from .picker import ZonePicker, png_data
 from .presentation import (
     ZoneState,
@@ -248,8 +249,14 @@ class RubinApp:
         self._zone_previews: dict[str, ttk.Label] = {}
         self._zone_photos: dict[str, tk.PhotoImage] = {}
         for clé, nom, rôle in ZONE_ROLES:
-            ttk.Label(self._zones, text=nom, style="Section.TLabel", anchor="w").pack(
-                fill="x", padx=12, pady=(8, 1)
+            entête = ttk.Frame(self._zones)
+            entête.pack(fill="x", padx=12, pady=(8, 1))
+            ttk.Label(entête, text=nom, style="Section.TLabel", anchor="w").pack(side="left")
+            # Le « ? » montre une VRAIE capture de la cible : décrire « le
+            # bandeau en bas à droite » désigne une zone que le joueur croit
+            # connaître, jusqu'à ce qu'il tombe à côté.
+            ttk.Button(entête, text="?", width=2, command=self._help(clé)).pack(
+                side="left", padx=8
             )
             # À quoi sert cette zone, en une phrase. Sans elle, le joueur voit
             # deux rectangles sans savoir lequel compte ni ce qu'il casse en le
@@ -498,6 +505,14 @@ class RubinApp:
         composant.delete("1.0", "end")
         composant.insert("1.0", describe_reading(état))
         composant.config(state="disabled")
+
+    def _help(self, which: str) -> Callable[[], None]:
+        """Ouvre l'exemple de ce que cette zone doit contenir."""
+
+        def ouvrir() -> None:
+            HelpWindow(self.root, which)
+
+        return ouvrir
 
     def _pick(self, which: str) -> Callable[[], None]:
         """Ouvre le tracé de zone, sur une photographie du jeu.
