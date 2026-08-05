@@ -344,6 +344,10 @@ class MeasuringSession:
             # perdre ce qui a déjà été mesuré.
             self._publish("etat", f"mesure interrompue : {erreur}")
             self._log_crash(erreur)
+            # À part de « demarre » : la fenêtre doit savoir que CET arrêt-là
+            # n'est pas un clic sur « Arrêter », pour proposer de reprendre.
+            # Voir `RubinApp._ask_resume_after_crash`.
+            self._publish("panne", str(erreur))
         finally:
             self._finish(timeline, time.monotonic() - début, journal, sender)
             self._publish("demarre", False)

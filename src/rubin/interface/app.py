@@ -27,7 +27,7 @@ import webbrowser
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
-from tkinter import ttk
+from tkinter import messagebox, ttk
 from typing import Any, Final
 
 import requests
@@ -225,6 +225,13 @@ class RubinApp:
         #: tant qu'aucune quête n'est en cours. Même garde-fou de fraîcheur
         #: que `_show_current_reference` : voir `_save_note`.
         self._note_quest_id: QuestId | None = None
+
+        #: Le message d'une panne qui vient d'arrêter la session, en attente
+        #: d'être montré. `None` tant qu'aucune panne n'a eu lieu, ou une fois
+        #: la question posée : voir `_ask_resume_after_crash`. Distingue une
+        #: panne d'un clic volontaire sur « Arrêter », qui ne publie jamais
+        #: « panne ».
+        self._crash_message: str | None = None
 
         self.root = tk.Tk()
         self.root.title("Rubin, chronomètre de quêtes")
@@ -1612,6 +1619,13 @@ class RubinApp:
             self._etat.config(text=str(charge))
         elif genre == "demarre":
             self._set_running(bool(charge))
+        elif genre == "panne":
+            # Retenu ici, jamais montré tout de suite : « panne » arrive
+            # avant « demarre » à `False` dans le même passage de `_run`
+            # (voir sa docstring), et la question ne doit se poser qu'une
+            # fois `_set_running` revenu à l'état arrêté, sans quoi une
+            # reprise immédiate croirait la session encore en cours.
+            self._crash_message = str(charge)
         elif genre == "surveillance":
             self._surveillance.config(text=format_watching(charge))
         elif genre == "progres":
@@ -1689,6 +1703,34 @@ class RubinApp:
             self._note_champ.config(state="disabled")
             self._note_bouton.config(state="disabled")
         self._lock_zone_controls(running)
+        if not running and self._crash_message is not None:
+            message, self._crash_message = self._crash_message, None
+            self._ask_resume_after_crash(message)
+
+    def _ask_resume_after_crash(self, message: str) -> None:
+        """Demande si le joueur fait encore des quêtes, après un arrêt non voulu.
+
+        Demandé par Maxime le 06/08/2026 : la session se désactivait parfois
+        toute seule, et rien ne le signalait autrement qu'une ligne de texte
+        vite recouverte (voir `_log_crash` dans `session.py`, qui garde la
+        trace complète sur le disque pour comprendre la cause). Le bouton
+        revenant à « Je commence mes quêtes » se voit à peine si le joueur a
+        les yeux sur le jeu, pas sur Rubin.
+
+        Une boîte de dialogue **bloquante** est le bon outil ici, alors que le
+        reste de la fenêtre s'interdit tout ce qui gèle l'affichage : c'est la
+        seule façon de garantir que le joueur la voit avant de continuer à
+        jouer sans que rien ne se mesure. Elle n'apparaît jamais pour un clic
+        volontaire sur « Arrêter », qui ne publie pas « panne ».
+        """
+        reprendre = messagebox.askyesno(
+            "Rubin s'est arrêté",
+            "Rubin a rencontré un problème et a arrêté la mesure :\n"
+            f"{message}\n\n"
+            "Faites-vous encore des quêtes ?",
+        )
+        if reprendre:
+            self.toggle_session()
 
     def _over_zones_tab(self, x: int, y: int) -> bool:
         """La souris est-elle sur l'étiquette de l'onglet Zones ?
