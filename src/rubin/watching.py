@@ -22,6 +22,11 @@ enchaînements ; se fier à son contenu confondrait deux étapes successives de 
 même quête, qui affichent exactement le même texte. On compare donc l'image à
 celle de la dernière lecture : si elle a changé alors qu'un bandeau est
 toujours là, c'est qu'un autre a pris sa place.
+
+⚠️ **Cette dernière comparaison ne porte pas sur l'image entière**, et c'est le
+défaut qui faisait perdre des quêtes quand le joueur enchaînait vite. Voir
+`banner_change` : la moyenne sur toute la zone est diluée par le décor, qui
+occupe la majeure partie des pixels et ne dit rien du bandeau.
 """
 
 from __future__ import annotations
@@ -32,7 +37,13 @@ from typing import Final, Protocol
 
 import numpy as np
 
-from .capture import GrayFrame, has_banner
+from .capture import (
+    ICON_SIZE,
+    ICON_TOP,
+    PRESENCE_THRESHOLD,
+    GrayFrame,
+    locate_icon,
+)
 from .reading import BannerReading, TextReader, parse_banner
 
 #: Différence moyenne par pixel en dessous de laquelle l'image est jugée
@@ -45,10 +56,31 @@ STABLE_DIFF: Final = 3.0
 #: le joueur, suffisant pour laisser passer un fondu.
 MIN_STABLE_FRAMES: Final = 2
 
-#: Différence moyenne par pixel au-delà de laquelle on considère qu'un autre
-#: bandeau a pris la place du précédent. Plus élevé que le seuil d'immobilité :
-#: il s'agit de repérer un changement de contenu, pas un frémissement.
-NEW_BANNER_DIFF: Final = 8.0
+#: Au-delà, on considère qu'un autre bandeau a pris la place du précédent.
+#:
+#: ⚠️ **Ce seuil s'applique à `banner_change`, pas à `frame_difference`.** Il
+#: valait 8,0 sur la moyenne de la zone entière, et cette mesure est diluée : le
+#: décor occupe la majeure partie des pixels et ne change pas quand le nom de la
+#: quête change. Mesuré sur les vingt minutes de jeu du 5 août 2026, **huit
+#: paires de bandeaux voisins sur vingt-huit** passaient sous 8,0 alors que les
+#: deux bandeaux étaient bel et bien différents, la plus faible à **2,15**. Le
+#: cas le plus net est le passage de « Quête accomplie / [Mediah] Les marchands
+#: d'Altinova II » à « Nouvelle quête / [Mediah] Les marchands d'Altinova III » :
+#: **2,54 sur la zone entière**, donc un départ de quête jamais compté.
+#:
+#: Sur `banner_change`, ces mêmes vingt-huit paires sortent toutes au-dessus de
+#: **6,78**. Le seuil est posé à 5,0, soit un quart de marge sous la plus faible
+#: valeur réellement observée.
+#:
+#: L'asymétrie décide du sens de l'erreur : **relire un bandeau déjà lu ne coûte
+#: qu'un peu de calcul**, la mesure suivante écrasant la précédente pour la même
+#: quête, alors que **rater un bandeau coûte une quête entière**. Le risque du
+#: côté généreux est de noyer la file de lecture, et il est borné : sur cette
+#: même session, un bandeau n'est présent à l'écran que 5 à 11 % du temps, donc
+#: **relire absolument toutes** les images qui en portent un donnerait 0,4 à
+#: 0,9 lecture par seconde à huit images par seconde, contre 1 à 3 que le moteur
+#: soutient, avec les 500 places de `MAX_PENDING` comme matelas.
+NEW_BANNER_DIFF: Final = 5.0
 
 
 def frame_difference(a: GrayFrame | None, b: GrayFrame) -> float:
@@ -61,6 +93,62 @@ def frame_difference(a: GrayFrame | None, b: GrayFrame) -> float:
     if a is None or a.shape != b.shape or b.size == 0:
         return float("inf")
     return float(np.mean(np.abs(a.astype(np.float32) - b.astype(np.float32))))
+
+
+def banner_change(a: GrayFrame | None, b: GrayFrame, icon_x: int) -> float:
+    """De combien le **bandeau** a changé, sans compter le décor autour.
+
+    C'est la mesure qui répond à « est-ce un autre bandeau ? », et la moyenne
+    sur la zone entière ne savait pas y répondre. Deux corrections, chacune
+    mesurée sur les vingt minutes de jeu du 5 août 2026.
+
+    **On ne regarde que la barre du bandeau.** Elle occupe les mêmes lignes que
+    son icône, dont la hauteur ne bouge pas d'un bandeau à l'autre, et s'étend
+    de l'icône jusqu'au bord droit. Tout le reste de la zone est du décor, ou du
+    chat de guilde que la barre opaque masque justement sur ces lignes. Le décor
+    est la majeure partie des pixels et il ne dit rien de la quête : le compter
+    revient à noyer le seul signal utile.
+
+    ⚠️ **Ni la largeur ni la hauteur de la zone n'apparaissent ici.** Le
+    découpage vient de l'icône, retrouvée par glissement, exactement comme la
+    détection de présence. Un seuil d'abscisse calé sur des captures est le
+    deuxième piège du projet, et la barre du bandeau se déplace de 150 pixels
+    d'une quête à l'autre puisqu'elle s'adapte à la longueur du nom.
+
+    **On retient la ligne qui a le plus changé, pas la moyenne des lignes.** Un
+    bandeau ne se distingue du précédent que par son titre et par son nom, soit
+    deux ou trois lignes de texte sur la cinquantaine que compte la barre. Faire
+    la moyenne les dilue ; prendre le maximum les laisse parler.
+
+    Ce que ça donne sur les vingt-huit paires de bandeaux voisins de la session
+    réelle, toutes différentes deux à deux :
+
+    | Mesure | Plus faible valeur observée | Paires sous 8,0 |
+    |---|---|---|
+    | moyenne de la zone entière | 2,15 | **8 sur 28** |
+    | moyenne de la bande du nom | 0,84 | pire encore |
+    | maximum par ligne sur la barre | **6,78** | 0 sur 28 |
+
+    La bande du nom seule, qui semblait la piste évidente, est **la pire des
+    trois** : deux quêtes qui se suivent dans une chaîne portent souvent le même
+    nom à un chiffre romain près, et c'est le titre, « Quête accomplie » puis
+    « Nouvelle quête », qui porte alors toute la différence.
+
+    Renvoie l'infini quand les images ne sont pas comparables, comme
+    `frame_difference` : une valeur infinie ne franchit aucun seuil vers le bas,
+    donc une image inattendue est toujours traitée comme un nouveau bandeau.
+    Une zone trop petite pour contenir la barre retombe sur l'image entière,
+    faute de mieux, plutôt que de comparer un découpage vide qui vaudrait zéro
+    et déclarerait « déjà lu » pour toujours.
+    """
+    if a is None or a.shape != b.shape or b.size == 0:
+        return float("inf")
+    top, bottom, left = ICON_TOP, ICON_TOP + ICON_SIZE, icon_x + ICON_SIZE
+    bar_a, bar_b = a[top:bottom, left:], b[top:bottom, left:]
+    if bar_a.size == 0:
+        return frame_difference(a, b)
+    rows = np.mean(np.abs(bar_a.astype(np.float32) - bar_b.astype(np.float32)), axis=1)
+    return float(rows.max())
 
 
 class FrameSource(Protocol):
@@ -132,7 +220,12 @@ class BannerWatcher:
         frame = self._source.grab_gray()
         self._bump(frames=1)
 
-        if not has_banner(frame):
+        # L'icône est cherchée une fois et sa position resservie plus bas, pour
+        # découper la barre du bandeau. `has_banner` la chercherait à nouveau,
+        # et ce glissement est la partie coûteuse du tour : 10 des 14
+        # millisecondes.
+        score, icon_x = locate_icon(frame)
+        if score < PRESENCE_THRESHOLD:
             # Plus de bandeau : la prochaine apparition sera forcément nouvelle.
             self._previous = None
             self._last_read = None
@@ -150,11 +243,20 @@ class BannerWatcher:
         if self._stable_run < self._min_stable_frames:
             return None
 
-        if frame_difference(self._last_read, frame) < self._new_banner_diff:
+        if banner_change(self._last_read, frame, icon_x) < self._new_banner_diff:
             return None  # même bandeau qu'à la dernière lecture
 
         # On note l'image avant de connaître le résultat de sa lecture : une
         # lecture qui échoue ne doit pas être retentée à chaque tour.
+        #
+        # ⚠️ Ça retient donc aussi les bandeaux saisis pendant leur animation
+        # d'entrée, dont le titre sort tronqué, « Quete acc » ou « Nou », et qui
+        # ne correspondent à aucun titre connu. Vingt et un cas sur la session
+        # du 5 août 2026. Ces images-là n'apportent rien, et pire, elles
+        # servaient de référence au bandeau posé qui suivait : mesuré sur une
+        # paire réelle, 7,66 sur la zone entière, donc **sous l'ancien seuil de
+        # 8,0**, et le bandeau posé était perdu. Sur `banner_change` la même
+        # paire vaut 17,31, très au-dessus des 5,0.
         self._last_read = frame
         self._bump(reads=1)
         return frame

@@ -6,18 +6,41 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from rubin.capture import GrayFrame
+from rubin.capture import ICON_SIZE, ICON_TOP, GrayFrame, locate_icon
 from rubin.reading import BannerKind
-from rubin.watching import BannerWatcher, frame_difference
+from rubin.watching import NEW_BANNER_DIFF, BannerWatcher, banner_change, frame_difference
 
 DATA = Path(__file__).parent / "data"
+
+
+def _load(name: str) -> GrayFrame:
+    with Image.open(DATA / name) as image:
+        return np.asarray(image.convert("L"), dtype=np.uint8)
 
 
 @pytest.fixture(scope="session")
 def banner() -> GrayFrame:
     """Vraie capture de la zone, bandeau « Nouvelle quête » affiché."""
-    with Image.open(DATA / "banner_present.png") as image:
-        return np.asarray(image.convert("L"), dtype=np.uint8)
+    return _load("banner_present.png")
+
+
+@pytest.fixture(scope="session")
+def chaine_fin() -> GrayFrame:
+    """Vraie capture, 5 août 2026 à 13:45:00.
+
+    « Quête accomplie / [Mediah] Les marchands d'Altinova II ».
+    """
+    return _load("banner_chaine_fin.png")
+
+
+@pytest.fixture(scope="session")
+def chaine_debut() -> GrayFrame:
+    """Vraie capture, 5 août 2026 à 13:45:02, deux secondes après la précédente.
+
+    « Nouvelle quête / [Mediah] Les marchands d'Altinova III ». Rien entre les
+    deux dans le journal d'observation : ce sont bien deux bandeaux voisins.
+    """
+    return _load("banner_chaine_debut.png")
 
 
 @pytest.fixture
@@ -88,6 +111,80 @@ class TestFrameDifference:
         assert frame_difference(a, b) == float("inf")
 
 
+class TestBannerChange:
+    def test_vaut_zero_pour_deux_images_identiques(self, banner: GrayFrame) -> None:
+        assert banner_change(banner, banner, locate_icon(banner)[1]) == 0.0
+
+    def test_ignore_ce_qui_change_hors_de_la_barre(self, banner: GrayFrame) -> None:
+        """Le décor au-dessus et en dessous du bandeau ne dit rien de la quête.
+
+        C'est exactement ce que la moyenne sur la zone entière comptait, et ce
+        qui la rendait aveugle : ces pixels sont les plus nombreux.
+        """
+        autre = banner.copy()
+        autre[: ICON_TOP - 1] = 255
+        autre[ICON_TOP + ICON_SIZE + 1 :] = 255
+        assert banner_change(autre, banner, locate_icon(banner)[1]) == 0.0
+        # La mesure sur la zone entière, elle, se serait affolée.
+        assert frame_difference(autre, banner) > 50.0
+
+    def test_retient_la_ligne_qui_a_le_plus_change(self, banner: GrayFrame) -> None:
+        # Une seule ligne de texte modifiée sur la cinquantaine de la barre :
+        # la moyenne la dilue, le maximum par ligne la voit.
+        autre = banner.copy()
+        ligne = ICON_TOP + ICON_SIZE // 2
+        autre[ligne, :] = np.clip(autre[ligne, :].astype(np.int16) + 40, 0, 255)
+        icon_x = locate_icon(banner)[1]
+        assert banner_change(autre, banner, icon_x) == pytest.approx(40.0)
+        assert frame_difference(autre, banner) < 1.0
+
+    def test_traite_l_absence_d_image_comme_un_nouveau_bandeau(
+        self, banner: GrayFrame
+    ) -> None:
+        assert banner_change(None, banner, 0) == float("inf")
+
+    def test_traite_un_changement_de_taille_comme_un_nouveau_bandeau(
+        self, banner: GrayFrame
+    ) -> None:
+        assert banner_change(np.zeros((8, 8), dtype=np.uint8), banner, 0) == float("inf")
+
+    def test_retombe_sur_l_image_entiere_quand_la_zone_est_trop_petite(self) -> None:
+        # Un découpage vide vaudrait zéro, donc « déjà lu » pour toujours, et la
+        # surveillance ne lirait plus jamais rien sans que rien ne le dise.
+        a = np.zeros((4, 4), dtype=np.uint8)
+        b = np.full((4, 4), 10, dtype=np.uint8)
+        assert banner_change(a, b, 0) == pytest.approx(10.0)
+
+    def test_separe_deux_bandeaux_reels_que_la_zone_entiere_confondait(
+        self, chaine_fin: GrayFrame, chaine_debut: GrayFrame
+    ) -> None:
+        """Régression : « ça va trop vite et certaines quêtes ne sont pas comptées ».
+
+        Signalé par Maxime en jouant le 5 août 2026, puis retrouvé dans les
+        images d'une session réelle. À 13:45:00 le jeu affiche « Quête accomplie
+        / [Mediah] Les marchands d'Altinova II », à 13:45:02 « Nouvelle quête /
+        [Mediah] Les marchands d'Altinova III ». Deux bandeaux voisins, rien
+        entre eux dans le journal d'observation.
+
+        Sur la zone entière ils ne diffèrent que de **2,54**, très en dessous
+        des 8,0 d'alors : le second était pris pour le premier, et le départ de
+        la quête suivante n'était **jamais compté**. Sur les vingt minutes
+        observées, huit paires voisines sur vingt-huit étaient dans ce cas.
+
+        La bande du nom seule, qui semblait la piste évidente, aurait donné
+        **0,84**, donc pire : les deux quêtes portent le même nom à un chiffre
+        romain près, et toute la différence est dans le titre.
+
+        Sur la barre du bandeau, ligne par ligne, la même paire donne **34,95**.
+        """
+        icon_x = locate_icon(chaine_debut)[1]
+        assert frame_difference(chaine_fin, chaine_debut) == pytest.approx(2.54, abs=0.01)
+        assert banner_change(chaine_fin, chaine_debut, icon_x) == pytest.approx(
+            34.95, abs=0.01
+        )
+        assert banner_change(chaine_fin, chaine_debut, icon_x) > NEW_BANNER_DIFF
+
+
 class TestBannerWatcher:
     def test_ne_lit_rien_sans_bandeau(self, chat: GrayFrame) -> None:
         reader = ScriptedReader()
@@ -140,6 +237,24 @@ class TestBannerWatcher:
         frames = [banner] * 4 + [altered(banner, 60)] * 4
         watcher = BannerWatcher(ScriptedSource(frames), reader)
         assert len(list(watcher.watch(max_polls=len(frames)))) == 2
+
+    def test_compte_les_deux_quetes_d_un_enchainement_reel(
+        self, chaine_fin: GrayFrame, chaine_debut: GrayFrame
+    ) -> None:
+        """Régression : deux vrais bandeaux voisins, séparés de deux secondes.
+
+        Les mêmes captures que `test_separe_deux_bandeaux_reels_...`, passées
+        cette fois par la boucle entière. Avec l'ancienne mesure, 2,54 sur la
+        zone entière contre un seuil de 8,0, la boucle ne rendait **qu'une
+        seule** lecture : « Nouvelle quête / [Mediah] Les marchands d'Altinova
+        III » était prise pour le « Quête accomplie » qui la précédait, et le
+        chronomètre de cette quête ne démarrait jamais.
+        """
+        reader = ScriptedReader()
+        frames = [chaine_fin] * 4 + [chaine_debut] * 4
+        watcher = BannerWatcher(ScriptedSource(frames), reader)
+        assert len(list(watcher.watch(max_polls=len(frames)))) == 2
+        assert reader.calls == 2
 
     def test_ne_relit_pas_une_image_qui_a_juste_fremi(self, banner: GrayFrame) -> None:
         # Le bandeau est semi-transparent : le décor qui bouge derrière fait
