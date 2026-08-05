@@ -1,8 +1,8 @@
-# Chrono
+# Rubin
 
 **Le chronomètre de quêtes pour Black Desert Online.**
 
-Chrono mesure le temps que prend chaque quête principale, sans que vous ayez à
+Rubin mesure le temps que prend chaque quête principale, sans que vous ayez à
 appuyer sur quoi que ce soit. Vous jouez normalement, il lit l'écran, et il vous
 dit quelles chaînes de quêtes rapportent le plus de quêtes par heure.
 
@@ -24,7 +24,7 @@ les quêtes par récompense, jamais par temps. Or une chaîne de 117 quêtes cou
 et groupées vaut mieux que vingt quêtes isolées qui obligent à traverser la
 carte entre chacune, même si les secondes par quête sont comparables.
 
-Chrono mesure ce que personne ne mesure : le **débit**, en quêtes par heure et
+Rubin mesure ce que personne ne mesure : le **débit**, en quêtes par heure et
 par chaîne.
 
 ## Comment ça marche
@@ -36,20 +36,20 @@ Le jeu affiche un bandeau en bas à droite à chaque changement d'état de quêt
 | `Nouvelle quête` | jaune | départ du chronomètre |
 | `Quête accomplie` | cyan | arrêt du chronomètre |
 
-Les deux portent le nom complet de la quête, avec sa région. Chrono surveille
+Les deux portent le nom complet de la quête, avec sa région. Rubin surveille
 cette seule zone, environ 400 × 160 pixels, et ne réveille la reconnaissance de
 caractères que lorsque les pixels changent. En pratique, quelques dizaines de
 lectures par heure au lieu de plusieurs milliers.
 
 **Aucune interaction avec le jeu.** Pas de lecture mémoire, pas d'injection,
-pas de surcouche, pas de touche simulée. Chrono regarde une capture d'écran,
+pas de surcouche, pas de touche simulée. Rubin regarde une capture d'écran,
 exactement comme un logiciel d'enregistrement vidéo. C'est une limite de
 conception, pas une étape à franchir plus tard.
 
 ## Ce qui rend la mesure difficile
 
 **Les bandeaux se ratent.** Quand on enchaîne vite, un bandeau d'accomplissement
-peut passer sans être vu. Chrono n'est donc pas un minuteur mais un journal
+peut passer sans être vu. Rubin n'est donc pas un minuteur mais un journal
 d'événements : il note ce qu'il voit, et reconstruit les durées après coup en
 indiquant leur qualité.
 
@@ -66,7 +66,7 @@ s'achever.
 **Un nom ne suffit pas à identifier une quête.** 705 quêtes principales, soit
 18 % d'entre elles, partagent leur nom avec une autre. `[Serendia] Boss des
 Fogans` désigne trois quêtes distinctes. Seule la chaîne en cours permet de
-trancher, et quand elle ne suffit pas, Chrono renonce à la mesure plutôt que de
+trancher, et quand elle ne suffit pas, Rubin renonce à la mesure plutôt que de
 l'attribuer au hasard.
 
 > **Rater une mesure donne un chiffre incomplet. En inventer une donne un
@@ -87,7 +87,7 @@ ligne de classement. Aucune table de traduction n'est écrite à la main.
 | Référentiel des quêtes, deux langues | ✅ fonctionne, testé |
 | Reconstitution des chaînes | ✅ 267 chaînes sur 349 complètes |
 | Capture et lecture des bandeaux | ✅ fonctionne en jeu |
-| Chronométrage et journal d'événements | ✅ fonctionne en jeu |
+| Rubinmétrage et journal d'événements | ✅ fonctionne en jeu |
 | Suivi de quête, pour lever les ambiguïtés de noms | ⬜ à écrire |
 | Envoi au serveur et classement | ⬜ à écrire |
 
@@ -109,19 +109,19 @@ Chacun suffisait à lui seul pour qu'aucune quête ne soit jamais mesurée.
 Voir l'état du référentiel :
 
 ```bash
-python -m chrono referentiel
+python -m rubin referentiel
 ```
 
-Chronométrer une session :
+Rubinmétrer une session :
 
 ```bash
-python -m chrono suivre
+python -m rubin suivre
 ```
 
 ## Sources des données
 
 Le catalogue des quêtes provient de [BDO Codex](https://bdocodex.com/). Ces
-données appartiennent à Pearl Abyss ; Chrono les télécharge chez vous au premier
+données appartiennent à Pearl Abyss ; Rubin les télécharge chez vous au premier
 lancement et ne les redistribue pas.
 
 Black Desert Online est une marque de Pearl Abyss. Ce projet n'est ni affilié à
@@ -133,7 +133,7 @@ Pearl Abyss, ni approuvé par eux.
 |---|---|
 | [CHANGELOG.md](CHANGELOG.md) | ce qui a changé, version par version |
 | [docs/versionnage.md](docs/versionnage.md) | les trois choses qui versionnent séparément, et pourquoi les confondre serait une erreur |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | langue du projet, politique de tests, ce que Chrono ne fera jamais |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | langue du projet, politique de tests, ce que Rubin ne fera jamais |
 
 ## Licence
 
@@ -149,7 +149,7 @@ Le détail de ce qui part et de ce qui ne part pas est publié dans la
 ## Politique de signature
 
 Le code de ce projet est écrit et relu par Maxime Lacoste, seul mainteneur. Il
-est publié sur [github.com/Maxyull/chrono-bdo](https://github.com/Maxyull/chrono-bdo),
+est publié sur [github.com/Maxyull/rubin-bdo](https://github.com/Maxyull/rubin-bdo),
 sous licence MIT, sans composant propriétaire ni double licence commerciale.
 
 Les versions publiées sont construites par `empaquetage/construire.py` à partir
@@ -171,5 +171,5 @@ antivirus associent aux logiciels malveillants.
 Vérifier une archive téléchargée :
 
 ```powershell
-Get-FileHash chrono-windows.zip -Algorithm SHA256
+Get-FileHash rubin-windows.zip -Algorithm SHA256
 ```

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from chrono.capture import Rect, banner_region, tracker_region
-from chrono.reference import Catalog, QuestId
-from chrono.tracking import TrackedQuests, read_tracker
+from rubin.capture import Rect, banner_region, tracker_region
+from rubin.reference import Catalog, QuestId
+from rubin.tracking import TrackedQuests, read_tracker
 
 REFERENCE = Rect(0, 0, 2559, 1439)
 

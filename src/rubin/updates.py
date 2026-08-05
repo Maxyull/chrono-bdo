@@ -28,7 +28,7 @@ import requests
 from . import __version__
 
 _TIMEOUT: Final = 5
-_USER_AGENT: Final = "chrono-bdo"
+_USER_AGENT: Final = "rubin-bdo"
 _NUMBER = re.compile(r"\d+")
 
 

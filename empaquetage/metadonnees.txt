@@ -23,12 +23,12 @@ VSVersionInfo(
         '040C04B0',
         [
           StringStruct('CompanyName', 'Maxime Lacoste'),
-          StringStruct('FileDescription', 'Chrono, chronomètre de quêtes pour Black Desert Online'),
+          StringStruct('FileDescription', 'Rubin, chronomètre de quêtes pour Black Desert Online'),
           StringStruct('FileVersion', '0.2.0'),
-          StringStruct('InternalName', 'chrono'),
+          StringStruct('InternalName', 'rubin'),
           StringStruct('LegalCopyright', 'Copyright (c) 2026 Maxime Lacoste. Licence MIT.'),
-          StringStruct('OriginalFilename', 'chrono.exe'),
-          StringStruct('ProductName', 'Chrono BDO'),
+          StringStruct('OriginalFilename', 'rubin.exe'),
+          StringStruct('ProductName', 'Rubin'),
           StringStruct('ProductVersion', '0.2.0'),
         ],
       )

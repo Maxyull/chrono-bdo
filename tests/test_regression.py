@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from chrono.reference import Catalog, QuestId
+from rubin.reference import Catalog, QuestId
 
 #: nom affiché en jeu -> identifiant attendu, relevé sur les captures.
 SEEN_ON_SCREEN = {

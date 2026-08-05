@@ -31,7 +31,7 @@ import requests
 from .reference import QuestId
 
 _TIMEOUT: Final = 5
-_USER_AGENT: Final = "chrono-bdo"
+_USER_AGENT: Final = "rubin-bdo"
 
 
 @dataclass(frozen=True)

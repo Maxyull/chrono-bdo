@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from chrono.reference import Catalog, QuestId, fold
+from rubin.reference import Catalog, QuestId, fold
 
 
 class TestFold:

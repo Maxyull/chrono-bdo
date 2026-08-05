@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from chrono.capture import (
+from rubin.capture import (
     PRESENCE_THRESHOLD,
     GrayFrame,
     banner_score,

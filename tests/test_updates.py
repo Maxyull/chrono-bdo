@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 import requests
 
-from chrono.updates import UpdateStatus, check_for_update, parse_version
+from rubin.updates import UpdateStatus, check_for_update, parse_version
 
 
 class FakeResponse:

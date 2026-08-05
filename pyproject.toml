@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "chrono-bdo"
+name = "rubin-bdo"
 version = "0.2.0"
-description = "Chronomètre de quêtes pour Black Desert Online, pensé pour le client français"
+description = "Rubinmètre de quêtes pour Black Desert Online, pensé pour le client français"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -49,17 +49,17 @@ dev = [
 ]
 
 [project.urls]
-Source = "https://github.com/Maxyull/chrono-bdo"
-Bogues = "https://github.com/Maxyull/chrono-bdo/issues"
+Source = "https://github.com/Maxyull/rubin-bdo"
+Bogues = "https://github.com/Maxyull/rubin-bdo/issues"
 
 [project.scripts]
-chrono = "chrono.__main__:main"
+rubin = "rubin.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-chrono = ["py.typed", "capture/data/*.png"]
+rubin = ["py.typed", "capture/data/*.png"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

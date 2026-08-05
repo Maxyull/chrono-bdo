@@ -6,9 +6,9 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from chrono.capture import GrayFrame
-from chrono.reading import BannerKind
-from chrono.watching import BannerWatcher, frame_difference
+from rubin.capture import GrayFrame
+from rubin.reading import BannerKind
+from rubin.watching import BannerWatcher, frame_difference
 
 DATA = Path(__file__).parent / "data"
 

@@ -210,6 +210,15 @@ def _print_chain_summary(
         if total:
             titre += f", {total} quêtes au total"
         print(titre)
+        # Un embranchement fait que la chaîne ne sera jamais faite en entier :
+        # le total de ses quêtes surestime donc ce qu'il reste à faire.
+        embranchements = len(chain.crossroads) if chain else 0
+        if embranchements:
+            print(
+                f"  {embranchements} de ces quêtes sont des embranchements : "
+                "vous n'en ferez qu'une partie"
+            )
+
         known = references.chain(number)
         if known is None:
             continue
@@ -236,7 +245,7 @@ def _finish_session(timeline: Timeline, args: argparse.Namespace) -> None:
     données de quelqu'un sans qu'il l'ait demandé serait une décision prise à
     sa place, et le fait qu'elles soient anonymes n'y change rien.
     """
-    home = Path(user_data_dir("chrono-bdo", "maxyull"))
+    home = Path(user_data_dir("rubin-bdo", "maxyull"))
     identity = PlayerIdentity.load_or_create(home / "identite")
     payload = build_session(
         timeline,
@@ -331,7 +340,7 @@ def command_check(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="chrono", description="Chronomètre de quêtes BDO")
+    parser = argparse.ArgumentParser(prog="rubin", description="Rubinmètre de quêtes BDO")
     subparsers = parser.add_subparsers(dest="command")
 
     reference = subparsers.add_parser("referentiel", help="construit le catalogue et le décrit")

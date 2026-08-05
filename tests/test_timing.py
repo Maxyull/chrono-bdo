@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from chrono.reading import BannerKind, BannerReading
-from chrono.reference import Catalog, QuestId
-from chrono.timing import Quality, Timeline
+from rubin.reading import BannerKind, BannerReading
+from rubin.reference import Catalog, QuestId
+from rubin.timing import Quality, Timeline
 
 # Noms réels de la chaîne 21136, dans leur ordre de chaîne.
 JERON = "[Calpheon] Jeron, la tacticienne"  # 21136/1

@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from chrono.reference import QuestId, clean_text, parse_payload, parse_row, split_prefix
+from rubin.reference import QuestId, clean_text, parse_payload, parse_row, split_prefix
 
 # Une ligne conforme, calquée sur le format réel : onze colonnes, un identifiant
 # et une région servis comme objets `{display, sort_value}`, un nom noyé dans du

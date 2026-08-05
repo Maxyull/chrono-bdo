@@ -15,7 +15,7 @@ from typing import Any
 
 import pytest
 
-from chrono.reference import Catalog
+from rubin.reference import Catalog
 
 DATA = Path(__file__).parent / "data"
 

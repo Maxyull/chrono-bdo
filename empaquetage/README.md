@@ -4,7 +4,7 @@
 python empaquetage/construire.py
 ```
 
-Produit `dist/chrono/` et `dist/chrono-windows.zip`, prêt à distribuer.
+Produit `dist/rubin/` et `dist/rubin-windows.zip`, prêt à distribuer.
 Personne n'a besoin d'installer Python pour s'en servir.
 
 ## Poids
@@ -38,7 +38,7 @@ explicitement, ce que fait la recette.
 ## Vérifier le résultat
 
 ```bash
-dist\chrono\chrono.exe verifier
+dist\rubin\rubin.exe verifier
 ```
 
 Un fichier manquant dans un exécutable ne se voit qu'au moment où il sert,

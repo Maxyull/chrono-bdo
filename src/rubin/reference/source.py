@@ -30,7 +30,7 @@ from platformdirs import user_cache_dir
 LANGUAGE_CODES: Final[dict[str, str]] = {"fr": "fr", "en": "us"}
 
 _URL: Final = "https://bdocodex.com/query.php"
-_USER_AGENT: Final = "chrono-bdo/0.1 (+https://github.com/Maxyull/chrono-bdo)"
+_USER_AGENT: Final = "rubin-bdo/0.1 (+https://github.com/Maxyull/rubin-bdo)"
 _TIMEOUT: Final = 180
 #: Une semaine. Le catalogue ne change qu'aux mises à jour du jeu, et une
 #: quête ajoutée hier n'a de toute façon aucun temps de référence.
@@ -39,7 +39,7 @@ _MAX_AGE_SECONDS: Final = 7 * 24 * 3600
 
 def default_cache_dir() -> Path:
     """Emplacement du cache, hors du dépôt et hors du dossier du jeu."""
-    return Path(user_cache_dir("chrono-bdo", "maxyull"))
+    return Path(user_cache_dir("rubin-bdo", "maxyull"))
 
 
 def cache_path(language: str, cache_dir: Path | None = None) -> Path:

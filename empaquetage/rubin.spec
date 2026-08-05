@@ -1,4 +1,4 @@
-# Recette d'empaquetage de Chrono en exécutable Windows.
+# Recette d'empaquetage de Rubin en exécutable Windows.
 #
 # Lancée par `empaquetage/construire.py`, jamais à la main : ce fichier suppose
 # des chemins que le script calcule.
@@ -28,7 +28,7 @@ SITE = Path(SPECPATH).parent / ".venv" / "lib" / "site-packages"
 donnees = [
     (str(SITE / "rapidocr_onnxruntime" / "models"), "rapidocr_onnxruntime/models"),
     (str(SITE / "rapidocr_onnxruntime" / "config.yaml"), "rapidocr_onnxruntime"),
-    (str(RACINE / "src" / "chrono" / "capture" / "data"), "chrono/capture/data"),
+    (str(RACINE / "src" / "rubin" / "capture" / "data"), "rubin/capture/data"),
 ]
 
 # onnxruntime apporte des bibliothèques natives que l'analyse statique ne suit
@@ -40,7 +40,7 @@ a = Analysis(
     pathex=[str(RACINE / "src")],
     binaries=binaires,
     datas=donnees,
-    hiddenimports=["chrono", "chrono.capture", "chrono.reading", "chrono.reference"],
+    hiddenimports=["rubin", "rubin.capture", "rubin.reading", "rubin.reference"],
     hookspath=[],
     runtime_hooks=[],
     # Rien de tout cela ne sert au chronomètre, et chacun pèse lourd. Les
@@ -74,7 +74,7 @@ def sans_inutiles(entrees):
 avant = len(a.binaries) + len(a.datas)
 a.binaries = sans_inutiles(a.binaries)
 a.datas = sans_inutiles(a.datas)
-print(f"[chrono] {avant - len(a.binaries) - len(a.datas)} fichiers inutiles écartés")
+print(f"[rubin] {avant - len(a.binaries) - len(a.datas)} fichiers inutiles écartés")
 
 pyz = PYZ(a.pure)
 
@@ -83,7 +83,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="chrono",
+    name="rubin",
     debug=False,
     strip=False,
     upx=False,  # UPX déclenche des faux positifs d'antivirus, pour peu de gain
@@ -99,5 +99,5 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=False,
-    name="chrono",
+    name="rubin",
 )

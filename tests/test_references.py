@@ -5,8 +5,8 @@ from typing import Any
 import pytest
 import requests
 
-from chrono.reference import QuestId
-from chrono.references import ChainReference, QuestReference, ReferenceClient
+from rubin.reference import QuestId
+from rubin.references import ChainReference, QuestReference, ReferenceClient
 
 
 class FakeResponse:

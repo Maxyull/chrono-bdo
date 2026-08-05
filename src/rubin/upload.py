@@ -22,7 +22,7 @@ import requests
 from .protocol import SessionPayload
 
 _TIMEOUT: Final = 30
-_USER_AGENT: Final = "chrono-bdo"
+_USER_AGENT: Final = "rubin-bdo"
 
 
 @dataclass(frozen=True)

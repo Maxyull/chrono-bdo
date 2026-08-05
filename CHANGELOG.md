@@ -71,7 +71,7 @@ sens.
   compte 117, ce que le journal du jeu confirme.
 - **Résolution d'un nom vers un identifiant**, insensible aux accents et à la
   casse, qui **refuse de trancher** quand un nom désigne plusieurs quêtes.
-- **Commande `python -m chrono`**, qui construit le référentiel et rend compte
+- **Commande `python -m rubin`**, qui construit le référentiel et rend compte
   de son état.
 
 ### Connu
@@ -86,6 +86,6 @@ sens.
 - Le jeu annonce 19 235 quêtes, le référentiel en connaît 18 999. L'écart de 236
   n'est pas expliqué.
 
-[Non publié]: https://github.com/Maxyull/chrono-bdo/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/Maxyull/chrono-bdo/releases/tag/v0.2.0
-[0.1.0]: https://github.com/Maxyull/chrono-bdo/releases/tag/v0.1.0
+[Non publié]: https://github.com/Maxyull/rubin-bdo/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Maxyull/rubin-bdo/releases/tag/v0.2.0
+[0.1.0]: https://github.com/Maxyull/rubin-bdo/releases/tag/v0.1.0

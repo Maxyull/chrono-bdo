@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from chrono.reference import KIND_DAILY, KIND_MAIN, Chain, Quest, QuestId
+from rubin.reference import KIND_DAILY, KIND_MAIN, Chain, Quest, QuestId
 
 
 def make_quest(
@@ -46,7 +46,7 @@ class TestQuest:
         assert make_quest(1, 1, kind=KIND_MAIN).is_main
 
     def test_ecarte_une_quete_repetable(self) -> None:
-        # Chronométrer une quête qu'on refait tous les jours n'a pas de sens :
+        # Rubinmétrer une quête qu'on refait tous les jours n'a pas de sens :
         # il n'y a pas de « fois » à comparer.
         assert not make_quest(1, 1, kind=KIND_DAILY).is_main
 
@@ -83,3 +83,53 @@ class TestChain:
 
     def test_sa_longueur_est_son_nombre_de_quetes(self) -> None:
         assert len(Chain(42, tuple(make_quest(42, n) for n in (1, 2, 3)))) == 3
+
+
+class TestCarrefours:
+    def crossroad(self, position: int, name: str) -> Quest:
+        return Quest(
+            id=QuestId(42, position),
+            name=name,
+            prefix=None,
+            title=name,
+            region=None,
+            kind=KIND_MAIN,
+            level=1,
+        )
+
+    def test_reconnait_un_embranchement_en_francais(self) -> None:
+        assert self.crossroad(1, "[Carrefour] Du côté de Valks").is_crossroad
+
+    def test_reconnait_un_embranchement_en_anglais(self) -> None:
+        # Les deux clients affichent le même choix sous deux mots différents,
+        # et les identifiants étant communs, la détection doit valoir pour les
+        # deux sans table de correspondance.
+        assert self.crossroad(1, "[Crossroad] Prize Hunt").is_crossroad
+
+    def test_reconnait_un_embranchement_en_second_prefixe(self) -> None:
+        # Le cas réel : la région vient d'abord, le marqueur ensuite.
+        assert self.crossroad(1, "[Calpheon][Carrefour] Du côté d'Andre").is_crossroad
+
+    def test_ne_confond_pas_avec_un_nom_qui_parle_de_carrefour(self) -> None:
+        """Régression : le marqueur est cherché entre crochets, pas partout.
+
+        Une quête peut parler d'un carrefour sans en être un. Chercher le mot
+        n'importe où dans le nom ferait passer pour un embranchement une quête
+        ordinaire, et retirerait sa durée du total d'une chaîne sans raison.
+        """
+        assert not self.crossroad(1, "Le carrefour des marchands").is_crossroad
+
+    def test_une_quete_ordinaire_n_est_pas_un_embranchement(self) -> None:
+        assert not self.crossroad(1, "[Calpheon] Jeron, la tacticienne").is_crossroad
+
+    def test_une_chaine_expose_ses_embranchements(self) -> None:
+        quests = (
+            self.crossroad(1, "[Calpheon] Une quête ordinaire"),
+            self.crossroad(2, "[Calpheon][Carrefour] Première voie"),
+            self.crossroad(3, "[Calpheon][Carrefour] Seconde voie"),
+        )
+        chain = Chain(42, quests)
+        assert len(chain.crossroads) == 2
+        # Le total de la chaîne compte les deux voies alors qu'une seule sera
+        # faite : c'est ce que ce compte permet de signaler.
+        assert len(chain) == 3

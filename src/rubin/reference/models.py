@@ -8,6 +8,7 @@ donc une **chaîne**, puisque c'est ce que l'utilisateur voit.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Final
 
@@ -21,6 +22,13 @@ from typing import Final
 KIND_BLACK_SPIRIT: Final = 0
 KIND_MAIN: Final = 1
 KIND_DAILY: Final = 3
+
+#: Marqueurs d'embranchement, entre crochets dans le nom de la quête. Le jeu
+#: propose alors un choix entre deux quêtes et une seule sera faite.
+#:
+#: Cherchés entre crochets et non n'importe où dans le nom : une quête peut
+#: parler d'un carrefour sans en être un.
+CROSSROAD_MARKERS: Final = ("carrefour", "crossroad")
 
 #: Valeur que le référentiel emploie quand une quête n'est rattachée à aucune
 #: région. Plus de la moitié du catalogue est dans ce cas, ce qui rend la
@@ -77,6 +85,21 @@ class Quest:
     level: int
 
     @property
+    def is_crossroad(self) -> bool:
+        """Vrai si cette quête est l'une des branches d'un choix.
+
+        Le jeu affiche alors un panneau « Choisir une quête » : le joueur en
+        prend une et abandonne l'autre. Une chaîne qui en contient ne sera donc
+        jamais faite en entier, et additionner les temps de toutes ses quêtes
+        surestime sa durée.
+        """
+        return any(
+            marker in group.casefold()
+            for group in re.findall(r"\[([^\]]+)\]", self.name)
+            for marker in CROSSROAD_MARKERS
+        )
+
+    @property
     def is_main(self) -> bool:
         """Vrai pour les quêtes de l'onglet « Principales ».
 
@@ -115,6 +138,17 @@ class Chain:
         if not seen:
             return None
         return max(set(seen), key=seen.count)
+
+    @property
+    def crossroads(self) -> tuple[Quest, ...]:
+        """Les quêtes de cette chaîne qui sont des branches d'un choix.
+
+        Le référentiel dit lesquelles sont des embranchements, mais pas
+        lesquelles s'excluent entre elles : deux carrefours indépendants dans
+        une même chaîne y sont indiscernables d'un seul choix à quatre
+        branches. On expose donc le compte, sans prétendre trancher.
+        """
+        return tuple(q for q in self.quests if q.is_crossroad)
 
     @property
     def is_contiguous(self) -> bool:

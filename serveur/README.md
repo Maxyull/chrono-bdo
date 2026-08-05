@@ -1,4 +1,4 @@
-# Chrono, serveur de classement
+# Rubin, serveur de classement
 
 Reçoit les mesures des joueurs et publie les temps médians par quête et le
 débit par chaîne.
@@ -46,11 +46,11 @@ commencer quand il reste des milliers de quêtes à faire.
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e ".[dev]" -e ..
-uvicorn chrono_serveur.main:app --reload
+uvicorn rubin_serveur.main:app --reload
 ```
 
 La base par défaut est SQLite en mémoire : tout disparaît à l'arrêt, ce qui est
-le comportement voulu pour du développement. En production, `CHRONO_DB` pointe
+le comportement voulu pour du développement. En production, `RUBIN_DB` pointe
 vers Postgres.
 
 ## Licence
@@ -67,7 +67,7 @@ Le script se lance depuis le poste, sous Git Bash, et fait tout le travail sur
 le VPS. Il est **rejouable** : le relancer met à jour le code et redémarre le
 service sans rien détruire, ce qui en fait aussi le script de mise à jour.
 
-Il installe une base Postgres dédiée, le code dans `/opt/chrono`, un service
+Il installe une base Postgres dédiée, le code dans `/opt/rubin`, un service
 systemd et un bloc Caddy. Les conventions sont celles de `bdi-infra`, qui
 occupe la même machine : mêmes accès, un fichier `.caddyfile` par service.
 

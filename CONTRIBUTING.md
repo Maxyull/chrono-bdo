@@ -1,4 +1,4 @@
-# Contribuer à Chrono
+# Contribuer à Rubin
 
 Merci de vouloir aider. Ce fichier dit comment le projet fonctionne pour que
 vous n'ayez pas à le deviner. Les conventions sont celles de
@@ -7,7 +7,7 @@ reconnaissance avec ce projet.
 
 ## Langue du projet
 
-Chrono s'adresse d'abord aux joueurs francophones, donc **tout ce qui est lu par
+Rubin s'adresse d'abord aux joueurs francophones, donc **tout ce qui est lu par
 un humain est en français** : ce README, la documentation, les commentaires, les
 messages de commit, les issues et les pull requests.
 
@@ -92,7 +92,7 @@ chiffre faux entre dans les médianes et n'en ressort jamais, et rien dans
 l'interface ne signale qu'il est faux.
 
 Les deux erreurs ne coûtent pas la même chose, donc les réglages ne sont pas
-symétriques. Dans le doute, Chrono renonce.
+symétriques. Dans le doute, Rubin renonce.
 
 ## Versionnage
 
@@ -100,10 +100,10 @@ Voir [docs/versionnage.md](docs/versionnage.md). Trois choses versionnent
 séparément : le logiciel, le protocole d'envoi au serveur, et le référentiel des
 quêtes, qui suit le jeu et non nous.
 
-## Ce que Chrono ne fera jamais
+## Ce que Rubin ne fera jamais
 
 Aucune interaction avec le jeu : pas de lecture mémoire, pas d'injection, pas de
-surcouche graphique, pas de touche simulée. Chrono lit une capture d'écran,
+surcouche graphique, pas de touche simulée. Rubin lit une capture d'écran,
 comme un logiciel d'enregistrement vidéo.
 
 C'est une limite de conception, pas une étape à franchir plus tard. Une

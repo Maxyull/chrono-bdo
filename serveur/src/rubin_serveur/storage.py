@@ -16,7 +16,7 @@ import statistics
 from dataclasses import dataclass
 from typing import Any
 
-from chrono.protocol import SessionPayload
+from rubin.protocol import SessionPayload
 from sqlalchemy import (
     Column,
     Float,

@@ -23,8 +23,8 @@ import os
 from dataclasses import asdict
 from typing import Annotated, Any
 
-from chrono.protocol import PROTOCOL_VERSION, SessionPayload
 from fastapi import Body, FastAPI, HTTPException
+from rubin.protocol import PROTOCOL_VERSION, SessionPayload
 
 from .storage import Storage
 
@@ -41,20 +41,20 @@ MAX_MEASURES_PER_SESSION = 1000
 MIN_PROTOCOL = PROTOCOL_VERSION - 1
 
 app = FastAPI(
-    title="Chrono BDO",
+    title="Rubin",
     description="Temps de quêtes de Black Desert Online, mesurés par les joueurs.",
     version="0.1.0",
 )
-storage = Storage(os.environ.get("CHRONO_DB", "sqlite+pysqlite:///:memory:"))
+storage = Storage(os.environ.get("RUBIN_DB", "sqlite+pysqlite:///:memory:"))
 
 
 #: Dernière version publiée du logiciel, et version minimale encore acceptée.
 #: Le serveur en est la source : lui seul sait quand une correction devient
 #: indispensable, et lui seul est mis à jour d'un coup.
-LATEST_CLIENT = os.environ.get("CHRONO_LATEST", "0.1.0")
-MIN_CLIENT = os.environ.get("CHRONO_MIN_CLIENT", "0.1.0")
+LATEST_CLIENT = os.environ.get("RUBIN_LATEST", "0.1.0")
+MIN_CLIENT = os.environ.get("RUBIN_MIN_CLIENT", "0.1.0")
 DOWNLOAD_URL = os.environ.get(
-    "CHRONO_DOWNLOAD", "https://github.com/Maxyull/chrono-bdo/releases/latest"
+    "RUBIN_DOWNLOAD", "https://github.com/Maxyull/rubin-bdo/releases/latest"
 )
 
 

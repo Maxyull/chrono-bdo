@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import pytest
-from chrono.protocol import PROTOCOL_VERSION, MeasurePayload, SessionPayload
 from fastapi.testclient import TestClient
+from rubin.protocol import PROTOCOL_VERSION, MeasurePayload, SessionPayload
 
-from chrono_serveur import main
-from chrono_serveur.storage import Storage
+from rubin_serveur import main
+from rubin_serveur.storage import Storage
 
 
 @pytest.fixture(autouse=True)

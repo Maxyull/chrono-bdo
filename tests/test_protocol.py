@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from chrono.protocol import (
+from rubin.protocol import (
     MAX_SECONDS,
     PROTOCOL_VERSION,
     MeasurePayload,
@@ -13,9 +13,9 @@ from chrono.protocol import (
     SessionPayload,
     build_session,
 )
-from chrono.reading import BannerKind, BannerReading
-from chrono.reference import Catalog
-from chrono.timing import Timeline
+from rubin.reading import BannerKind, BannerReading
+from rubin.reference import Catalog
+from rubin.timing import Timeline
 
 JERON = "[Calpheon] Jeron, la tacticienne"
 HARPIES = "[Calpheon] Cris stridents des harpies"

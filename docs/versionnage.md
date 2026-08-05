@@ -1,10 +1,10 @@
 # Versionnage
 
-Chrono suit [SemVer 2.0.0](https://semver.org/lang/fr/) et tient son journal des
+Rubin suit [SemVer 2.0.0](https://semver.org/lang/fr/) et tient son journal des
 modifications au format [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
 Ces deux conventions sont l'usage courant, mais elles ont été pensées pour des
-bibliothèques dont on ne casse que l'interface de programmation. Chrono est
+bibliothèques dont on ne casse que l'interface de programmation. Rubin est
 autre chose : un logiciel installé chez des joueurs, qui envoie des mesures à un
 serveur, et qui s'appuie sur des données appartenant à un jeu qui évolue sans
 nous prévenir.
@@ -48,7 +48,7 @@ Une mesure mal interprétée entre dans les médianes et n'en ressort jamais.
 
 ## 3. La version du référentiel
 
-Le catalogue des quêtes vient de bdocodex et suit **le jeu**, pas Chrono. Il
+Le catalogue des quêtes vient de bdocodex et suit **le jeu**, pas Rubin. Il
 change quand Pearl Abyss ajoute, retire ou renomme des quêtes, ce qui ne
 demande à personne son avis.
 
@@ -73,7 +73,7 @@ git push origin v0.1.0
 ## Avant 1.0.0
 
 Tant que le numéro majeur vaut zéro, rien n'est stable et tout peut changer sans
-préavis, comme le prévoit SemVer. Chrono passera en `1.0.0` le jour où un temps
+préavis, comme le prévoit SemVer. Rubin passera en `1.0.0` le jour où un temps
 mesuré par un joueur pourra être comparé à celui d'un autre sans réserve. Ce
 n'est pas une question de fonctionnalités, c'est une question de confiance dans
 le chiffre.

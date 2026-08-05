@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "chrono-serveur"
+name = "rubin-serveur"
 version = "0.2.0"
-description = "Serveur de classement pour Chrono, le chronomètre de quêtes BDO"
+description = "Serveur de classement pour Rubin, le chronomètre de quêtes BDO"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -17,7 +17,7 @@ dependencies = [
   "sqlalchemy>=2.0",
   # Le client partage la définition du lot avec le serveur : une seule source
   # pour les deux évite que leurs deux idées du même message ne divergent.
-  "chrono-bdo",
+  "rubin-bdo",
 ]
 
 [project.optional-dependencies]

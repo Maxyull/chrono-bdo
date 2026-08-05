@@ -3,8 +3,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from chrono.reading import BannerKind, is_known_title, parse_banner, upscale
-from chrono.reading.ocr import stretch_contrast
+from rubin.reading import BannerKind, is_known_title, parse_banner, upscale
+from rubin.reading.ocr import stretch_contrast
 
 #: Sorties **réelles** du moteur de reconnaissance sur les captures du jeu,
 #: recopiées telles quelles, défauts compris. Ce ne sont pas des exemples

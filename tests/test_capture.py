@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from chrono.capture import REFERENCE_SIZE, Rect, ScreenCapture, banner_region, find_game_window
+from rubin.capture import REFERENCE_SIZE, Rect, ScreenCapture, banner_region, find_game_window
 
 
 class FakeGrabber:

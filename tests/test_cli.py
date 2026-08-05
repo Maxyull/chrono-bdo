@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from chrono.__main__ import _format_duration, build_parser, main
+from rubin.__main__ import _format_duration, build_parser, main
 
 
 class TestFormatDuration:
@@ -49,6 +49,6 @@ class TestMain:
     ) -> None:
         # Le cas le plus courant d'un premier lancement : le jeu n'est pas
         # ouvert. Il faut un message qui dise quoi faire, pas une trace.
-        monkeypatch.setattr("chrono.__main__.find_game_window", lambda: None)
+        monkeypatch.setattr("rubin.__main__.find_game_window", lambda: None)
         assert main(["suivre"]) == 1
         assert "Black Desert" in capsys.readouterr().err
