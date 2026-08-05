@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from rubin.capture import REFERENCE_SIZE, Rect, ScreenCapture, banner_region, find_game_window
+from rubin.capture.window import GAME_EXECUTABLES, Candidate, choose_window
 
 
 class FakeGrabber:
@@ -117,3 +118,89 @@ class TestFindGameWindow:
         # qu'une absence se traduise par None et non par une exception, sans
         # quoi le logiciel s'arrêterait dès que le jeu n'est pas lancé.
         assert find_game_window(("fenetre qui n'existe pas 4f3c9a",)) is None
+
+
+def _fenetre(executable: str | None, titre: str, largeur: int, hauteur: int) -> Candidate:
+    return Candidate(rect=Rect(0, 0, largeur, hauteur), title=titre, executable=executable)
+
+
+#: Les deux fenêtres relevées ensemble sur le poste de développement, telles
+#: quelles. Les tailles et les titres sont ceux qui ont été mesurés.
+CHROME = _fenetre(
+    "chrome.exe",
+    "(3) RETOUR SUR BLACK DESERT ! 10ANS DU JEU, SERAPH - YouTube - Google Chrome",
+    2560,
+    1392,
+)
+JEU = _fenetre("blackdesert64.exe", "BLACK DESERT - 526388", 2560, 1440)
+
+
+class TestChooseWindow:
+    def test_ecarte_le_navigateur_qui_affiche_une_video_du_jeu(self) -> None:
+        """Régression : la recherche rendait la fenêtre de Chrome.
+
+        Relevé sur le poste de développement, les deux fenêtres ouvertes en même
+        temps. Chrome jouait une vidéo intitulée « RETOUR SUR BLACK DESERT ! ...
+        - YouTube », donc son titre contenait le fragment cherché. La recherche
+        s'arrêtait à la première fenêtre trouvée, dans l'ordre d'affichage, et
+        rendait donc celle du navigateur.
+
+        La conséquence était la pire possible : `rubin verifier` répondait
+        « fenêtre du jeu... 2560x1392 » puis « tout est en ordre », et la
+        session qui suivait capturait un coin de navigateur sans jamais rien
+        mesurer ni dire pourquoi. Un joueur de Black Desert qui regarde une
+        vidéo de Black Desert n'est pas un cas tordu, c'est le cas courant.
+
+        C'est désormais le programme propriétaire qui tranche, jamais le titre.
+        """
+        assert choose_window([CHROME, JEU]) == JEU.rect
+        # Et dans l'autre sens : l'ordre d'énumération ne doit plus rien décider.
+        assert choose_window([JEU, CHROME]) == JEU.rect
+
+    def test_ne_rend_rien_quand_seul_un_autre_programme_correspond(self) -> None:
+        # Mieux vaut dire que le jeu est introuvable que désigner une fenêtre au
+        # hasard : une zone capturée au mauvais endroit ne lève aucune erreur,
+        # elle produit une session muette.
+        assert choose_window([CHROME]) is None
+
+    def test_garde_une_fenetre_dont_le_programme_est_illisible(self) -> None:
+        # Le client tourne parfois avec des privilèges plus élevés que Rubin, à
+        # cause de son anti-triche, et l'interrogation du processus échoue. Une
+        # fenêtre inconnue reste un candidat de dernier recours.
+        inconnue = _fenetre(None, "Black Desert", 2560, 1440)
+        assert choose_window([CHROME, inconnue]) == inconnue.rect
+
+    def test_le_jeu_l_emporte_sur_une_fenetre_inconnue(self) -> None:
+        inconnue = _fenetre(None, "Black Desert - guide", 3840, 2160)
+        # Plus grande, et pourtant écartée : la certitude prime sur la taille.
+        assert choose_window([inconnue, JEU]) == JEU.rect
+
+    def test_a_egalite_la_plus_grande_gagne(self) -> None:
+        # Le client ouvre parfois une fenêtre secondaire, écran de lancement ou
+        # boîte de dialogue. C'est la surface de jeu qui nous intéresse.
+        lanceur = _fenetre("blackdesert64.exe", "Black Desert", 800, 600)
+        assert choose_window([lanceur, JEU]) == JEU.rect
+
+    def test_ne_rend_rien_sans_candidat(self) -> None:
+        assert choose_window([]) is None
+
+
+class TestCandidate:
+    def test_reconnait_les_executables_du_jeu(self) -> None:
+        assert JEU.is_game
+        assert not JEU.is_other_program
+
+    def test_un_autre_programme_est_identifie_comme_tel(self) -> None:
+        assert not CHROME.is_game
+        assert CHROME.is_other_program
+
+    def test_un_programme_illisible_n_est_accuse_de_rien(self) -> None:
+        # Ni le jeu, ni « un autre programme » : on ne sait pas, et c'est
+        # cette nuance qui permet de le garder en dernier recours.
+        inconnue = _fenetre(None, "Black Desert", 2560, 1440)
+        assert not inconnue.is_game
+        assert not inconnue.is_other_program
+
+    @pytest.mark.parametrize("nom", GAME_EXECUTABLES)
+    def test_toutes_les_variantes_connues_sont_acceptees(self, nom: str) -> None:
+        assert _fenetre(nom, "Black Desert", 2560, 1440).is_game

@@ -42,12 +42,17 @@ dédiée, derrière Caddy. Redéploiement et mise à jour :
 
 ---
 
-## Les cinq pièges découverts en jouant
+## Les sept pièges découverts en jouant
 
 **Aucun n'était visible sur des captures d'écran fixes**, et chacun suffisait
 à lui seul pour qu'aucune quête ne soit jamais mesurée. C'est la leçon
 principale du projet : un jeu de test figé valide la lecture d'une image, pas
 le comportement d'une interface vivante.
+
+Les deux derniers, trouvés le 5 août, ne se voyaient même pas sur une capture
+du jeu : il fallait que **d'autres programmes tournent à côté**, et que le
+joueur ait épinglé ses propres quêtes de métier. Un poste de développement
+propre ne les aurait jamais montrés.
 
 ### 1. L'icône du bandeau se déplace
 
@@ -79,6 +84,54 @@ sont essayés du plus long au plus court.
 L'écran affiche « [Carrefour] Du côté de Valks » là où le catalogue porte
 « [Calpheon][Carrefour] Du côté de Valks ». 76 quêtes principales sont dans ce
 cas, retrouvées par la fin de leur nom.
+
+### 6. Le titre de la fenêtre ne désigne pas le jeu
+
+Trouvé le 5 août 2026, et c'est le plus coûteux de tous parce qu'il annulait
+tout le reste.
+
+`find_game_window` cherchait une fenêtre visible dont le **titre** contient
+« black desert », et prenait la première. Or Chrome jouait une vidéo intitulée
+« RETOUR SUR BLACK DESERT ! ... - YouTube ». La recherche rendait donc la
+fenêtre du navigateur, pendant que le jeu tournait à côté.
+
+Conséquence : `rubin verifier` répondait **« fenêtre du jeu... 2560x1392 »**
+puis **« tout est en ordre »**, en pointant Chrome. La session qui suivait
+capturait un coin de navigateur et ne mesurait jamais rien, sans dire pourquoi.
+
+Un joueur de Black Desert qui regarde une vidéo de Black Desert n'est pas un
+cas tordu, c'est le cas courant. C'est désormais le **programme propriétaire**
+de la fenêtre qui tranche, jamais le titre, et `verifier` liste ce qu'il a
+retenu et ce qu'il a écarté.
+
+### 7. Le panneau de suivi ne dit pas quelle quête est en cours
+
+L'intuition est pourtant juste : la quête active y porte un bandeau vert, sous
+la minimap, affiché en permanence. Deux mesures en jeu la démentent.
+
+**Le bandeau vert rend son propre texte illisible.** Sur un panneau où le
+joueur suivait « [Calpheon] En avançant » (21139/113), la reconnaissance n'a pas
+lu ce nom **du tout** : sur sept lignes rendues, la quête active était absente.
+La capture est en niveaux de gris, et le vert du bandeau y a exactement la même
+luminance que les lettres. C'est précisément la ligne qu'on veut lire qui
+disparaît.
+
+**Les quêtes de métier épinglées volent la chaîne.** Sur les lignes qui se
+lisent, ce sont les quêtes de récolte et d'artisanat que le joueur garde
+épinglées. Sur un panneau réel, « Tissu haut de gamme » (type 5) et « Vie
+citadine » (type 2) mettaient en minorité, à deux voix contre une, la seule
+quête principale présente. Le panneau annonçait la chaîne 3500 là où le joueur
+était dans la 21139.
+
+Le panneau est donc restreint aux **quêtes principales**, seul périmètre
+mesuré, et se tait quand il n'en reconnaît aucune. Le silence coûte une
+information manquante ; une chaîne inventée coûte une liste de quêtes entière
+qui pointe ailleurs, et que le joueur croira.
+
+Piste non explorée, notée pour ne pas la redécouvrir : **capturer cette zone en
+couleur** rendrait le bandeau vert trivial à isoler, et donnerait du même coup
+l'ancrage qui manque pour savoir laquelle des lignes est l'active. Le gris jette
+exactement le signal qui identifie la quête en cours.
 
 ### Ce que ces cinq pièges ont coûté, et ce qui a changé depuis
 

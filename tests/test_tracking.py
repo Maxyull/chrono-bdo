@@ -67,21 +67,66 @@ class TestReadTracker:
         """
         tracked = read_tracker(REAL_PANEL, catalog)
         assert QuestId(21139, 52) in tracked.quests
-        assert len(tracked) == 3
+        # Une seule : les deux autres lignes qui se résolvent sont des quêtes
+        # de métier, hors du périmètre mesuré. Voir le test de la chaîne.
+        assert len(tracked) == 1
 
     def test_ecarte_les_lignes_d_objectif(self, catalog: Catalog) -> None:
         tracked = read_tracker(REAL_PANEL, catalog)
-        # Huit lignes sur onze ne sont pas des quêtes : objectifs, suites
-        # d'objectifs, et un nom tronqué par le jeu.
-        assert tracked.unresolved == 8
+        # Dix lignes sur onze ne donnent rien d'utile : objectifs, suites
+        # d'objectifs, un nom tronqué par le jeu, et deux quêtes de métier.
+        assert tracked.unresolved == 10
 
     def test_donne_la_quete_mise_en_evidence(self, catalog: Catalog) -> None:
         assert read_tracker(REAL_PANEL, catalog).active == QuestId(21139, 52)
 
     def test_deduit_la_chaine_en_cours(self, catalog: Catalog) -> None:
-        # C'est l'apport du panneau : le contexte qui permet de trancher quand
-        # un nom lu sur le bandeau désigne plusieurs quêtes.
-        assert read_tracker(REAL_PANEL, catalog).chain == 3500
+        """Régression : deux quêtes de métier épinglées volaient la chaîne.
+
+        Ce panneau est une lecture réelle. Le joueur y fait « [Calpheon]
+        Livraison de rations », quête principale de la chaîne 21139. Mais il a
+        aussi épinglé « Tissu haut de gamme » (type 5) et « Vie citadine »
+        (type 2), toutes deux de la chaîne 3500.
+
+        La chaîne la plus représentée était donc la 3500, à deux voix contre
+        une, et le panneau annonçait une chaîne où le joueur n'était pas.
+        Prendre la plus fréquente ne protège de rien : ce sont les quêtes de
+        métier qu'on épingle, et le joueur en garde plusieurs à la fois.
+
+        Confirmé en jeu le 5 août 2026 : sur un panneau où le joueur suivait
+        « [Calpheon] En avançant » (21139/113), la reconnaissance n'a pas su
+        lire ce nom-là du tout, la quête active portant un bandeau vert qui
+        écrase le contraste en niveaux de gris. Sur sept lignes, une seule
+        s'est résolue, « Tissu haut de gamme », et le panneau annonçait la
+        chaîne 3500.
+
+        Le produit ne mesure que les quêtes principales. Une quête d'un autre
+        type n'a donc rien à dire sur l'endroit où l'on en est.
+        """
+        assert read_tracker(REAL_PANEL, catalog).chain == 21139
+
+    def test_se_tait_quand_seules_des_quetes_de_metier_se_lisent(
+        self, catalog: Catalog
+    ) -> None:
+        """Le silence vaut mieux qu'une chaîne inventée.
+
+        Cas relevé en jeu : la quête principale active est illisible à cause de
+        son bandeau vert, et seule une quête de récolte épinglée se résout. Ne
+        rien dire laisse le joueur sans information ; annoncer la chaîne de sa
+        quête de récolte lui en donne une fausse, qu'il croira.
+        """
+        metiers = [("Tissu haut de gamme", 0.96), ("Vie citadine", 0.94)]
+
+        tracked = read_tracker(metiers, catalog)
+
+        assert tracked.chain is None
+        assert tracked.active is None
+        assert tracked.unresolved == 2
+
+    def test_sans_le_filtre_la_chaine_fausse_revient(self, catalog: Catalog) -> None:
+        # Garde-fou : si quelqu'un remet `main_only=False` un jour, ce test dit
+        # exactement ce qu'il rétablit.
+        assert read_tracker(REAL_PANEL, catalog, main_only=False).chain == 3500
 
     def test_ne_compte_pas_deux_fois_la_meme_quete(self, catalog: Catalog) -> None:
         doublons = [("[Calpheon] Livraison de rations", 0.98)] * 3

@@ -74,6 +74,7 @@ def read_tracker(
     catalog: Catalog,
     language: str = "fr",
     min_line_score: float = MIN_LINE_SCORE,
+    main_only: bool = True,
 ) -> TrackedQuests:
     """Reconnaît les quêtes suivies parmi les lignes lues sur le panneau.
 
@@ -85,6 +86,22 @@ def read_tracker(
     Sur le panneau, un nom qui déborde n'est pas coupé en deux lignes, il est
     tronqué : recoller les lignes ne ferait que fabriquer des noms inexistants
     à partir des objectifs.
+
+    **Seules les quêtes principales sont retenues**, et cette restriction vient
+    d'une lecture réelle. Sur un panneau où le joueur suivait « [Calpheon] En
+    avançant » (21139/113), la reconnaissance n'a pas su lire ce nom-là du tout,
+    parce que la quête active porte un bandeau vert qui écrase le contraste des
+    lettres en niveaux de gris. Sur sept lignes lues, une seule s'est résolue :
+    « Tissu haut de gamme », une quête de récolte de type 5, épinglée par le
+    joueur et sans aucun rapport.
+
+    Le panneau aurait donc annoncé la chaîne 3500 là où le joueur était dans la
+    21139. Prendre la chaîne la plus fréquente ne protège de rien quand une
+    seule ligne sur sept se résout : la plus fréquente est alors la seule.
+
+    Le produit ne mesure que les quêtes principales. Une quête d'un autre type
+    n'a donc rien à dire sur l'endroit où l'on en est, et vaut moins que le
+    silence.
     """
     found: list[QuestId] = []
     unresolved = 0
@@ -95,6 +112,14 @@ def read_tracker(
         quest_id = catalog.resolve(cleaned, language)
         if quest_id is None:
             unresolved += 1
-        elif quest_id not in found:
+            continue
+        if main_only:
+            quest = catalog.get(quest_id, language)
+            if quest is None or not quest.is_main:
+                # Reconnue, mais hors du périmètre mesuré. Comptée comme non
+                # résolue : c'est bien une ligne dont on n'a rien tiré d'utile.
+                unresolved += 1
+                continue
+        if quest_id not in found:
             found.append(quest_id)
     return TrackedQuests(quests=tuple(found), unresolved=unresolved)
