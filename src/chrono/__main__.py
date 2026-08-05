@@ -23,6 +23,7 @@ from .reference import Catalog
 from .reference.source import catalog_date, load
 from .references import ReferenceClient
 from .timing import Measure, Quality, Timeline
+from .updates import check_for_update
 from .upload import save_session, send_session
 from .watching import BannerWatcher
 
@@ -310,6 +311,14 @@ def command_check(args: argparse.Namespace) -> int:
         print(f"ÉCHEC : {error}")
         ok = False
 
+    if args.server:
+        print("version... ", end="", flush=True)
+        status = check_for_update(args.server)
+        if status is None:
+            print("serveur muet (sans gravité)")
+        else:
+            print(status.message() or f"{status.current}, à jour")
+
     print("fenêtre du jeu... ", end="", flush=True)
     window = find_game_window()
     # L'absence du jeu n'est pas une panne : on doit pouvoir vérifier son
@@ -360,6 +369,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     check = subparsers.add_parser("verifier", help="vérifie que l'installation est complète")
     check.add_argument("--langue", dest="language", default="fr", choices=("fr", "en"))
+    check.add_argument(
+        "--serveur",
+        dest="server",
+        default=None,
+        metavar="URL",
+        help="vérifie aussi que cette version est encore acceptée",
+    )
     check.set_defaults(handler=command_check)
     return parser
 

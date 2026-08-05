@@ -48,6 +48,33 @@ app = FastAPI(
 storage = Storage(os.environ.get("CHRONO_DB", "sqlite+pysqlite:///:memory:"))
 
 
+#: Dernière version publiée du logiciel, et version minimale encore acceptée.
+#: Le serveur en est la source : lui seul sait quand une correction devient
+#: indispensable, et lui seul est mis à jour d'un coup.
+LATEST_CLIENT = os.environ.get("CHRONO_LATEST", "0.1.0")
+MIN_CLIENT = os.environ.get("CHRONO_MIN_CLIENT", "0.1.0")
+DOWNLOAD_URL = os.environ.get(
+    "CHRONO_DOWNLOAD", "https://github.com/Maxyull/chrono-bdo/releases/latest"
+)
+
+
+@app.get("/v1/version")
+def version() -> dict[str, Any]:
+    """Ce que le client doit savoir pour se tenir à jour.
+
+    Servie sans condition et sans compte : un logiciel devenu trop ancien pour
+    envoyer ses mesures doit tout de même pouvoir apprendre qu'il est trop
+    ancien, sans quoi il resterait bloqué sans le savoir.
+    """
+    return {
+        "derniere": LATEST_CLIENT,
+        "minimale": MIN_CLIENT,
+        "protocole": PROTOCOL_VERSION,
+        "protocole_minimal": MIN_PROTOCOL,
+        "telechargement": DOWNLOAD_URL,
+    }
+
+
 @app.get("/sante")
 def health() -> dict[str, Any]:
     return {"etat": "ok", "protocole": PROTOCOL_VERSION, **storage.counts()}
