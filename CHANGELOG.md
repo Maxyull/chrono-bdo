@@ -7,7 +7,38 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
-Rien pour l'instant.
+### Ajouté
+
+- **Les lectures ratées laissent une trace.** Une image jugée digne d'être lue
+  dont aucun bandeau ne sortait était jusqu'ici abandonnée sur place, sans rien
+  laisser derrière elle. Une session qui ne mesurait rien ne disait donc pas
+  pourquoi, et les cinq défauts connus du projet ont tous dû être trouvés à la
+  main, en jouant. L'image et les lignes lues sont désormais gardées dans
+  `echecs/`, avec leur score : les lignes disent si l'analyse a refusé un texte
+  pourtant bien lu, l'image dit si la lecture n'a rien vu de correct.
+- **Commande `rubin echecs`**, qui compte ce qui est retenu et en fabrique une
+  archive sur demande. Le bilan de fin de session annonce le nombre de bandeaux
+  vus mais illisibles, ce qui distingue enfin deux pannes opposées : le jeu qui
+  ne montre rien, et le logiciel qui ne sait pas lire.
+- **Trois destinations d'envoi**, avec leur plafond en kilo-octets : une issue
+  GitHub (25 600 Ko), catbox.moe (204 800 Ko) et pixeldrain (20 971 520 Ko).
+  L'archive est bornée par celle qu'on vise, et quand elle déborde, la
+  destination suivante est proposée. Fabriquer une archive que l'hébergeur
+  refusera au dépôt serait un piège.
+
+### Notes
+
+- **Rien de tout cela ne part sur le réseau.** L'archive est écrite sur le
+  disque et son chemin s'affiche ; c'est le joueur qui l'envoie, s'il le veut,
+  où il veut. Un envoi automatique déciderait à sa place de partager ses images.
+- Le WebP est **sans perte** malgré son coût, 20 Ko la vignette mesurés sur
+  trois captures réelles. Ces images servent à rejouer la reconnaissance quand
+  elle s'améliore, et une comparaison faite sur des pixels altérés par la
+  compression ne prouverait rien sur la vraie capture.
+- Quatre garde-fous bornent le dossier : seuls les échecs sont gardés, une image
+  déjà vue n'est pas réécrite, purge à quatre-vingt-dix jours, plafond de taille.
+  Le dernier échec n'est jamais effacé, même par le plafond : un dossier vide
+  serait indiscernable d'une session sans aucun échec.
 
 ## [0.3.0] - 2026-08-05
 

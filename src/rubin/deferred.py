@@ -32,6 +32,7 @@ from types import TracebackType
 from typing import Final
 
 from .capture import GrayFrame
+from .failures import FailureStore
 from .reading import BannerReading, TextReader, parse_banner
 from .watching import BannerWatcher
 
@@ -72,11 +73,13 @@ class DeferredWatcher:
         interval: float = POLL_INTERVAL,
         max_pending: int = MAX_PENDING,
         clock: Callable[[], float] = time.monotonic,
+        failures: FailureStore | None = None,
     ) -> None:
         self._watcher = watcher
         self._reader = reader
         self._interval = interval
         self._clock = clock
+        self._failures = failures
         self._pending: deque[CapturedFrame] = deque(maxlen=max_pending)
         self._lock = threading.Lock()
         self._wake = threading.Event()
@@ -85,6 +88,10 @@ class DeferredWatcher:
         #: Images perdues faute de place. Doit rester à zéro ; le contraire
         #: signale que la lecture ne suit plus, et le dit plutôt que de le taire.
         self.overflowed = 0
+        #: Images lues sans qu'aucun bandeau n'en sorte. Compté même sans
+        #: dossier de rétention : le nombre à lui seul répond à « pourquoi cette
+        #: session n'a-t-elle rien mesuré ».
+        self.failed = 0
 
     def _capture_loop(self) -> None:
         while not self._stop.is_set():
@@ -139,9 +146,24 @@ class DeferredWatcher:
                 self._wake.clear()
             frames = self.take_pending()
             for frame in frames:
-                reading = parse_banner(self._reader.read(frame.image))
+                lines = self._reader.read(frame.image)
+                reading = parse_banner(lines)
                 if reading is not None:
                     yield reading, frame.at
+                    continue
+                # Une image jugée digne d'être lue, dont pourtant rien n'est
+                # sorti. C'est précisément ce qu'il faut regarder quand une
+                # session ne mesure rien : jusqu'ici elle était jetée ici même,
+                # sans laisser de trace, et les défauts de lecture ont tous dû
+                # être trouvés à la main, écran sous les yeux.
+                self.failed += 1
+                if self._failures is not None:
+                    # Sans `at` : l'instant de la capture est un temps monotone,
+                    # qui ne veut rien dire une fois la session finie. Le dossier
+                    # se lit plus tard, donc il lui faut une date, et l'écart
+                    # entre la capture et l'écriture se compte en dixièmes de
+                    # seconde.
+                    self._failures.keep(frame.image, lines)
             if self._stop.is_set() and not self._pending:
                 return
             if not frames and timeout is not None:

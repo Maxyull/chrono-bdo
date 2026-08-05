@@ -123,6 +123,27 @@ Rubinmétrer une session :
 python -m rubin suivre
 ```
 
+Voir les bandeaux que le logiciel n'a pas su lire :
+
+```bash
+python -m rubin echecs
+```
+
+Un bandeau bien visible à l'écran dont rien ne sort est le défaut le plus coûteux
+du projet : la session ne mesure rien et n'explique pas pourquoi. Ces images sont
+donc gardées **sur votre disque**, avec les lignes que la reconnaissance en a
+tirées. Elles n'en sortent que si vous fabriquez une archive et l'envoyez
+vous-même :
+
+```bash
+python -m rubin echecs --archiver
+```
+
+L'archive ne contient que des vignettes de texte de quête en niveaux de gris,
+349 × 115 pixels pour le bandeau. Ni le nom du personnage, ni le chat, ni la
+carte. Vous pouvez l'ouvrir avant de décider quoi que ce soit. Sa taille est
+bornée par celle qu'accepte la destination visée, `--vers github` par défaut.
+
 ## Sources des données
 
 Le catalogue des quêtes provient de [BDO Codex](https://bdocodex.com/). Ces
@@ -150,6 +171,11 @@ Ce logiciel n'envoie rien sans qu'on le lui demande, et ne transmet jamais de
 pseudonyme, de position, de discussion, de capture d'écran ni d'horaire de jeu.
 Le détail de ce qui part et de ce qui ne part pas est publié dans la
 [politique de confidentialité](https://maxyull.fr/confidentialite.html).
+
+Cela vaut aussi pour les lectures ratées gardées par `rubin echecs`. Elles
+restent sur votre disque, s'effacent d'elles-mêmes au bout de quatre-vingt-dix
+jours, et **aucune requête réseau ne les concerne**. Les envoyer est un geste
+manuel, entièrement le vôtre, sur un fichier que vous pouvez ouvrir d'abord.
 
 ## Politique de signature
 

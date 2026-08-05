@@ -23,6 +23,7 @@ les temps de référence des autres. La chaîne complète tient debout.
 | Serveur, classement, envoi | ✅ **en ligne** |
 | Exécutable Windows | ✅ 59 Mo |
 | Vérification de version | ✅ |
+| Rétention des lectures ratées | ✅ local, envoi manuel |
 | Rattachement Discord | ⏸ écrit, en attente d'identifiants |
 
 ## En ligne
@@ -78,6 +79,20 @@ L'écran affiche « [Carrefour] Du côté de Valks » là où le catalogue porte
 « [Calpheon][Carrefour] Du côté de Valks ». 76 quêtes principales sont dans ce
 cas, retrouvées par la fin de leur nom.
 
+### Ce que ces cinq pièges ont coûté, et ce qui a changé depuis
+
+Les cinq ont dû être trouvés à la main, écran sous les yeux, parce que le
+logiciel ne gardait aucune trace de ce qu'il n'arrivait pas à lire. Une image
+jugée digne d'être lue dont aucun bandeau ne sortait était jetée sur place.
+Résultat : « aucune quête mesurée » disait la même chose que le jeu n'ait rien
+montré ou que la lecture ait échoué sur tous les bandeaux.
+
+Ce n'est plus le cas. Les images et les lignes lues sont gardées dans `echecs/`,
+et `rubin echecs` les compte. **Rien ne part sur le réseau** : le joueur qui veut
+aider fabrique une archive et l'envoie lui-même, ce qui rend la question du
+consentement sans objet. Les plafonds des trois destinations sont dans
+`failures.py`, en une seule table.
+
 ### En prime : le panneau de suivi est illisible de nuit
 
 Il n'a aucun fond opaque, contrairement au bandeau. La luminance de toute la
@@ -123,11 +138,6 @@ quel que soit son intérêt.
 
 ### Prêt à brancher
 
-- **La boucle d'apprentissage.** Les images des lectures ratées sont déjà en
-  file dans le fil différé ; il reste à les envoyer au serveur pour analyse.
-  Quatre leviers ont été dimensionnés pour que ça tienne dans quelques
-  centaines de méga-octets : n'envoyer que les échecs, dédoublonner par
-  empreinte, gris et WebP, purge à 90 jours.
 - **Le rattachement Discord.** Le code est écrit et testé. Il attend
   `RUBIN_DISCORD_ID` et `RUBIN_DISCORD_SECRET`, et l'URL de retour à déclarer
   est `https://rubin.maxyull.fr/v1/discord/retour`. ⚠️ Activer implique
