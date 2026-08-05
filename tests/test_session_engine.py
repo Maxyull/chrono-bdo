@@ -12,13 +12,16 @@ pour de bon.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
 
+from rubin.failures import FailureStore
 from rubin.interface import session as moteur
-from rubin.interface.session import MeasuringSession
+from rubin.interface.session import BLIND_AFTER, MeasuringSession
 from rubin.protocol import MeasurePayload, SessionPayload
 from rubin.reading import BannerKind, BannerReading
 from rubin.reference import Catalog
@@ -392,3 +395,84 @@ class TestEnvoiSansBlocage:
         assert session._sending is not None
         session._sending.join(timeout=5.0)
         assert len(appels) == 1
+
+
+class TestGardeAAveugle:
+    """Le câblage : quand la session garde une image, et surtout quand non."""
+
+    def _session(self, tmp_path: Path) -> tuple[MeasuringSession, list[tuple[str, object]]]:
+        messages: list[tuple[str, object]] = []
+        session = MeasuringSession(
+            home=tmp_path,
+            catalog=None,  # type: ignore[arg-type]
+            settings=Settings(),
+            publish=lambda genre, charge: messages.append((genre, charge)),
+        )
+        return session, messages
+
+    def _guetteur(self) -> object:
+        class Guetteur:
+            last_frame = np.full((115, 349), 83, dtype=np.uint8)
+
+        return Guetteur()
+
+    def test_rien_n_est_garde_pendant_le_silence_ordinaire(self, tmp_path: Path) -> None:
+        # Un trajet ou un combat, c'est du silence normal. Garder des images là
+        # remplirait le dossier de preuves de rien.
+        session, _messages = self._session(tmp_path)
+        magasin = FailureStore(tmp_path / "echecs")
+
+        garde = session._keep_if_blind(
+            self._guetteur(),  # type: ignore[arg-type]
+            magasin,
+            last_banner=time.monotonic() - 30.0,
+            started=time.monotonic() - 30.0,
+            last_kept=None,
+        )
+
+        assert garde is None
+        assert not list((tmp_path / "echecs").glob("*.webp"))
+
+    def test_une_image_est_gardee_apres_un_silence_long(self, tmp_path: Path) -> None:
+        session, messages = self._session(tmp_path)
+        magasin = FailureStore(tmp_path / "echecs")
+
+        garde = session._keep_if_blind(
+            self._guetteur(),  # type: ignore[arg-type]
+            magasin,
+            last_banner=None,
+            started=time.monotonic() - (BLIND_AFTER + 5.0),
+            last_kept=None,
+        )
+
+        assert garde is not None
+        assert len(list((tmp_path / "echecs").glob("*.webp"))) == 1
+        # Et le joueur l'apprend : une image gardée en douce ne sert que celui
+        # qui sait déjà qu'elle existe.
+        assert any("gardée dans echecs/" in str(charge) for _genre, charge in messages)
+
+    def test_regression_une_session_aveugle_n_ecrit_pas_huit_images_par_seconde(
+        self, tmp_path: Path
+    ) -> None:
+        """Régression attendue : l'espacement, sans lequel le remède est pire.
+
+        Le silence dure des minutes entières, et la boucle tourne huit fois par
+        seconde. Sans délai entre deux gardes, la session du 5 août 2026 aurait
+        écrit plus de vingt mille lignes de journal en une heure, pour la même
+        image. L'empreinte évite le doublon sur le DISQUE, pas la ligne de
+        journal ni le message à l'écran.
+        """
+        session, messages = self._session(tmp_path)
+        magasin = FailureStore(tmp_path / "echecs")
+        garde = time.monotonic()
+
+        for _ in range(50):
+            garde = session._keep_if_blind(  # type: ignore[assignment]
+                self._guetteur(),  # type: ignore[arg-type]
+                magasin,
+                last_banner=None,
+                started=time.monotonic() - (BLIND_AFTER + 5.0),
+                last_kept=garde,
+            )
+
+        assert messages == []

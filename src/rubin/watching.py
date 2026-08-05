@@ -197,6 +197,14 @@ class BannerWatcher:
         self._last_read: GrayFrame | None = None
         self._stable_run = 0
         self.stats = WatchStats()
+        #: La dernière image capturée, quelle qu'ait été la décision prise.
+        #:
+        #: Gardée pour un seul usage : quand une session ne voit **aucun**
+        #: bandeau pendant longtemps, c'est la seule façon de savoir ce que sa
+        #: capture contient vraiment. Toutes les autres images retenues par le
+        #: projet ont franchi le seuil de présence ; celle-ci est là justement
+        #: parce qu'elle ne l'a pas franchi.
+        self.last_frame: GrayFrame | None = None
 
     def _bump(self, **changes: int) -> None:
         current = {
@@ -218,6 +226,7 @@ class BannerWatcher:
         millisecondes pendant lesquelles l'écran ne serait pas surveillé.
         """
         frame = self._source.grab_gray()
+        self.last_frame = frame
         self._bump(frames=1)
 
         # L'icône est cherchée une fois et sa position resservie plus bas, pour

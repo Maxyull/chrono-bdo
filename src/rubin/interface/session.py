@@ -65,7 +65,7 @@ from typing import Any, Final
 
 from ..capture import ScreenCapture, banner_region, find_game_window
 from ..deferred import DeferredWatcher
-from ..failures import FailureStore
+from ..failures import BLIND, FailureStore
 from ..protocol import MeasurePayload, PlayerIdentity, SessionPayload, build_session
 from ..reading import BannerKind, RapidOcrReader
 from ..reference import Catalog
@@ -90,6 +90,20 @@ from .presentation import Watching
 #: d'un autre Rubin en train de mesurer, et le reprendre ferait partir deux fois
 #: les mêmes mesures.
 _ORPHAN_MIN_AGE: Final = 60.0
+
+#: Silence au-delà duquel on garde une image de ce que la capture contient.
+#:
+#: Deux minutes : au-delà, un joueur qui enchaîne des quêtes a forcément vu
+#: passer un bandeau, donc le silence cesse d'être ordinaire. En dessous, on
+#: garderait des images pendant un trajet ou un combat, qui ne prouvent rien.
+BLIND_AFTER: Final = 120.0
+
+#: Et pas plus d'une image par cette durée, tant que le silence dure.
+#:
+#: Sans ce délai, une session aveugle écrirait huit images par seconde. Cinq
+#: minutes suffisent : ce qu'on cherche est ce que la capture contient, pas son
+#: évolution image par image.
+BLIND_EVERY: Final = 300.0
 
 
 @dataclass(frozen=True)
@@ -198,6 +212,8 @@ class MeasuringSession:
         # n'a jamais été vu, ce qui ne veut pas dire « il y a zéro seconde ».
         derniers_bandeaux = 0
         dernier_bandeau: float | None = None
+        #: Instant de la dernière image gardée à l'aveugle. `None` : aucune.
+        garde_aveugle: float | None = None
 
         try:
             reader = RapidOcrReader()
@@ -295,6 +311,9 @@ class MeasuringSession:
                         if vus != derniers_bandeaux:
                             dernier_bandeau = time.monotonic()
                             derniers_bandeaux = vus
+                        garde_aveugle = self._keep_if_blind(
+                            watcher, failures, dernier_bandeau, début, garde_aveugle
+                        )
                         self._publish(
                             "surveillance",
                             Watching(
@@ -320,6 +339,55 @@ class MeasuringSession:
         finally:
             self._finish(timeline, time.monotonic() - début, journal, sender)
             self._publish("demarre", False)
+
+    def _keep_if_blind(
+        self,
+        watcher: BannerWatcher,
+        failures: FailureStore,
+        last_banner: float | None,
+        started: float,
+        last_kept: float | None,
+    ) -> float | None:
+        """Garde une image quand la surveillance ne voit RIEN depuis longtemps.
+
+        C'est la seule image que ce projet retient sans qu'elle ait franchi le
+        seuil de présence, et c'est exactement pour cela qu'elle sert : toutes
+        les autres disent pourquoi une lecture a échoué, celle-ci dit **ce que
+        la capture contient** quand il n'y a même pas de lecture à échouer.
+
+        Née de la séance du 5 août 2026. Une session a compté 4 832 images et
+        zéro bandeau pendant qu'un témoin extérieur en voyait huit sur le même
+        rectangle, à la même minute. Rien n'était gardé, donc rien ne permettait
+        de savoir si la capture montrait le jeu, un écran figé, une autre
+        fenêtre, ou le bon endroit sans bandeau. Cinq programmes de diagnostic
+        écrits hors du logiciel n'ont pas suffi à trancher, et une seule image
+        aurait suffi.
+
+        ⚠️ Espacé, et c'est indispensable : sans le délai, une session qui ne
+        voit rien écrirait huit images par seconde et remplirait le dossier de
+        la même image en quelques minutes. L'empreinte évite le doublon sur le
+        disque, pas la ligne de journal.
+
+        Rend l'instant de la dernière image gardée, à repasser au tour suivant.
+        """
+        now = time.monotonic()
+        silence = now - (last_banner if last_banner is not None else started)
+        if silence < BLIND_AFTER:
+            return last_kept
+        if last_kept is not None and now - last_kept < BLIND_EVERY:
+            return last_kept
+        image = watcher.last_frame
+        if image is None:  # pragma: pas de couverture
+            return last_kept
+        # Sans lignes : rien n'a été lu, et fabriquer une ligne vide ferait
+        # passer ce cas pour une reconnaissance qui n'a rien trouvé, alors
+        # qu'aucune reconnaissance n'a eu lieu.
+        failures.keep(image, (), reason=BLIND)
+        self._publish(
+            "etat",
+            f"aucun bandeau depuis {int(silence)} s : une image a été gardée dans echecs/",
+        )
+        return now
 
     # ------------------------------------------------------- le fil de l'eau
 
