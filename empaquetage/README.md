@@ -4,9 +4,25 @@
 python empaquetage/construire.py
 ```
 
-Produit `dist/rubin/` et `dist/rubin-windows-{version}.zip` (par exemple
-`rubin-windows-0.5.4.zip`, la version vient de `rubin.__version__`), prêt à
-distribuer. Personne n'a besoin d'installer Python pour s'en servir.
+Produit `dist/rubin/`, l'archive `dist/rubin-windows-{version}.zip`, et
+l'installateur `dist/rubin-installateur-{version}.exe` s'il trouve Inno Setup
+(sinon un message le dit, sans faire échouer la construction). La version
+vient de `rubin.__version__`, la même source pour les deux noms de fichier,
+`metadonnees.txt` (régénéré à chaque fois) et `RUBIN_LATEST` côté serveur.
+Personne n'a besoin d'installer Python pour se servir de l'un ou l'autre.
+
+## L'installateur
+
+`empaquetage/rubin.iss`, compilé par [Inno Setup](https://jrsoftware.org/isinfo.php)
+(`ISCC.exe`, cherché aux emplacements usuels par `construire.py`). Installe
+**par utilisateur**, jamais dans Program Files : c'est ce qui permet à Rubin
+de proposer sa propre mise à jour en un clic, depuis la fenêtre
+(`autoupdate.py`), sans jamais demander les droits administrateur.
+
+`CloseApplications=force` et `RestartApplications=yes`, dans le `.iss`,
+laissent l'installateur fermer et relancer Rubin lui-même via le Gestionnaire
+de redémarrage de Windows, silencieusement (`/VERYSILENT /SUPPRESSMSGBOXES
+/NORESTART /RESTARTAPPLICATIONS`).
 
 ## Poids
 
@@ -49,10 +65,12 @@ pas un diagnostic, il faut savoir quelle étape a échoué.
 
 ## Sur la compression
 
-L'archive est en LZMA et non dans le format par défaut du zip : sur des
-binaires de cette taille, elle rend une archive presque deux fois plus petite
-pour quelques dizaines de secondes de plus à la construction. C'est ce que les
-gens téléchargent, donc c'est là que le poids compte.
+⚠️ L'archive est en **Deflate** (`ZIP_DEFLATED`), pas en LZMA malgré une
+archive presque deux fois plus grosse : ni l'explorateur Windows ni
+`Expand-Archive` de PowerShell ne savent décompresser une méthode LZMA dans
+un zip, seulement Deflate, la seule que le format garantit vraiment. Trouvé
+le 5 août 2026 au soir, quand Maxime n'arrivait pas à extraire les trois
+premières releases (v0.5.0 à v0.5.2), publiées avant ce correctif.
 
 UPX n'est pas utilisé : le gain est faible et il déclenche des faux positifs
 d'antivirus, ce qui coûterait bien plus cher que les méga-octets économisés.

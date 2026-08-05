@@ -11,10 +11,13 @@ dit quelles chaînes de quêtes rapportent le plus de quêtes par heure.
 > n'était visible sur des captures d'écran fixes, et dont chacun suffisait à
 > lui seul pour qu'aucune quête ne soit jamais mesurée.
 
-> ⚠️ **Projet en construction.** Le référentiel des quêtes fonctionne et est
-> testé. La capture d'écran, le chronométrage et le classement ne sont pas
-> encore écrits. Voir [État d'avancement](#état-davancement). Il n'y a pas
-> encore de version téléchargeable.
+> ⚠️ **Projet en construction, mais utilisable.** Voir
+> [État d'avancement](#état-davancement). Deux façons de l'installer, sur la
+> [page des releases](https://github.com/Maxyull/rubin-bdo/releases/latest) :
+> l'**installateur** (`rubin-installateur-x.y.z.exe`), qui pose un raccourci
+> et propose ensuite la mise à jour en un clic depuis la fenêtre elle-même ;
+> ou l'**archive** (`rubin-windows-x.y.z.zip`), portable, à décompresser où
+> vous voulez.
 
 ---
 
@@ -290,8 +293,8 @@ est publié sur [github.com/Maxyull/rubin-bdo](https://github.com/Maxyull/rubin-
 sous licence MIT, sans composant propriétaire ni double licence commerciale.
 
 Les versions publiées sont construites par `empaquetage/construire.py` à partir
-de l'état du dépôt, et l'empreinte SHA-256 de chaque archive est publiée à côté
-d'elle.
+de l'état du dépôt, et l'empreinte SHA-256 de chaque fichier (archive comme
+installateur) est publiée à côté de lui.
 
 La signature de code est assurée par [SignPath.io](https://signpath.io/), au
 moyen d'un certificat fourni par la [SignPath Foundation](https://signpath.org/),
@@ -305,11 +308,13 @@ prises en attendant : le programme n'est pas compressé par UPX, et il est
 distribué en dossier plutôt qu'en fichier auto-extractible, deux traits que les
 antivirus associent aux logiciels malveillants.
 
-Vérifier une archive téléchargée (le nom porte la version, par exemple
-`rubin-windows-0.5.4.zip`) :
+Vérifier un fichier téléchargé (le nom porte la version, par exemple
+`rubin-installateur-0.5.5.exe` ou `rubin-windows-0.5.5.zip`) :
 
 ```powershell
-Get-FileHash rubin-windows-0.5.4.zip -Algorithm SHA256
+Get-FileHash rubin-installateur-0.5.5.exe -Algorithm SHA256
 ```
 
-et comparer au fichier `.sha256` publié à côté de l'archive.
+et comparer au fichier `.sha256` publié à côté. C'est la même vérification
+que fait `autoupdate.py` tout seul avant de lancer une mise à jour reçue
+depuis la fenêtre.

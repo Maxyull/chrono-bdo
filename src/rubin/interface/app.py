@@ -20,6 +20,7 @@ intervalle régulier depuis le bon fil.
 from __future__ import annotations
 
 import queue
+import tempfile
 import threading
 import time
 import tkinter as tk
@@ -32,6 +33,7 @@ from typing import Any, Final
 
 import requests
 
+from ..autoupdate import download_installer, launch_installer
 from ..capture import (
     Rect,
     ScreenCapture,
@@ -49,6 +51,7 @@ from ..references import RANKING_LIMIT, RankedQuest, ReferenceClient
 from ..settings import LANGUAGES, LIMITS, WindowSize, load, save
 from ..timing import Quality
 from ..upcoming import upcoming
+from ..updates import UpdateStatus, check_for_update
 from .autozone import search as search_banner_zone
 from .help import EXAMPLES, HelpWindow
 from .picker import ZonePicker, png_data
@@ -241,6 +244,12 @@ class RubinApp:
         #: « panne ».
         self._crash_message: str | None = None
 
+        #: La dernière réponse connue sur les versions, `None` tant que
+        #: `check_for_update` n'a rien dit ou que tout est à jour. Gardée pour
+        #: que `_install_update` sache quelle version télécharger sans la
+        #: redemander : voir `_show_update_status`.
+        self._update_status: UpdateStatus | None = None
+
         self.root = tk.Tk()
         self.root.title("Rubin, chronomètre de quêtes")
         self.root.minsize(*WINDOW_SIZE)
@@ -301,6 +310,14 @@ class RubinApp:
             wraplength=430, justify="left",
         )
         self._lien.pack(anchor="w", pady=(4, 0))
+
+        # Le bouton de mise à jour, invisible tant qu'aucune n'est connue.
+        # Demandé par Maxime le 06/08/2026 : un clic doit suffire, contre le
+        # lien qu'il fallait ouvrir à la main jusqu'ici. Voir `autoupdate.py`
+        # et `_check_for_update`.
+        self._maj_bouton = ttk.Button(
+            cadre, text="", command=self._install_update,
+        )
 
     def _build_tabs(self) -> None:
         carnet = ttk.Notebook(self.root)
@@ -1258,6 +1275,10 @@ class RubinApp:
         catalogue, langue = self._catalog, self._settings.language
 
         def demander() -> None:
+            # Indépendant de `_references` : `check_for_update` interroge le
+            # même serveur mais par une requête à part, et continue de
+            # répondre même si le reste (classement, couverture) est éteint.
+            self.publish("maj", check_for_update(self._server))
             self.publish("lien", self._references.health())
             if catalogue is not None:
                 # Ne dépend d'aucun serveur : c'est un fait du catalogue, et il
@@ -1678,6 +1699,12 @@ class RubinApp:
             self._autres.config(text=format_other_quests(int(charge)) or "")
         elif genre == "lien":
             self._show_link(charge)
+        elif genre == "maj":
+            self._show_update_status(charge)
+        elif genre == "maj_echouee":
+            self._show_update_failed()
+        elif genre == "maj_lancee":
+            self._show_update_launched()
         elif genre == "classement":
             self._ranking = charge
             self._refresh_ranking()
@@ -1705,6 +1732,9 @@ class RubinApp:
         if running:
             self._titre.config(text="Aucun bandeau lu pour l'instant")
             self._sous_titre.config(text="acceptez ou terminez une quête")
+            # Jamais de mise à jour pendant une session : voir l'en-tête de
+            # `_show_update_status`.
+            self._maj_bouton.pack_forget()
         else:
             self._titre.config(text="En attente du jeu")
             self._sous_titre.config(text="lancez Black Desert, puis jouez")
@@ -1716,6 +1746,9 @@ class RubinApp:
             self._note_etat.config(text=format_note_placeholder(has_note=False))
             self._note_champ.config(state="disabled")
             self._note_bouton.config(state="disabled")
+            # Réaffiche le bouton de mise à jour si une version en attendait
+            # une, cachée pendant la session qui vient de finir.
+            self._show_update_status(self._update_status)
         self._lock_zone_controls(running)
         if not running and self._crash_message is not None:
             message, self._crash_message = self._crash_message, None
@@ -1745,6 +1778,84 @@ class RubinApp:
         )
         if reprendre:
             self.toggle_session()
+
+    def _show_update_status(self, status: UpdateStatus | None) -> None:
+        """Affiche ou cache le bouton de mise à jour, selon ce que le serveur a dit.
+
+        Demandé par Maxime le 06/08/2026 : un clic doit suffire, contre le
+        lien à ouvrir soi-même dans `updates.py`. Le bouton reste caché tant
+        qu'aucune mise à jour n'est connue : un bouton présent en permanence,
+        même grisé, inviterait à cliquer pour voir ce qu'il fait.
+
+        ⚠️ **Jamais pendant une session.** Remplacer les fichiers de Rubin
+        pendant qu'un fil mesure serait risquer de perdre la fin d'une quête
+        en cours pour un confort de mise à jour : voir `_set_running`, qui
+        cache ce même bouton au démarrage et le laisse réapparaître à l'arrêt
+        via ce message, republié par `_ask_server` après chaque quête finie.
+        """
+        self._update_status = status
+        en_session = self._engine is not None and self._engine.running
+        if status is None or not status.outdated or en_session:
+            self._maj_bouton.pack_forget()
+            return
+        self._maj_bouton.config(text=f"Mettre à jour ({status.latest})", state="normal")
+        self._maj_bouton.pack(anchor="w", pady=(4, 0))
+
+    def _install_update(self) -> None:
+        """Télécharge l'installateur et le lance, dans un fil.
+
+        La vérification d'empreinte est dans `autoupdate.download_installer`,
+        jamais ici : ce bouton ne fait qu'orchestrer, il ne décide rien seul
+        de ce qui est sûr à exécuter.
+        """
+        status = self._update_status
+        if status is None:
+            return
+        self._maj_bouton.config(text="téléchargement…", state="disabled")
+
+        def télécharger() -> None:
+            # ⚠️ Jamais `tempfile.TemporaryDirectory()` : son nettoyage
+            # automatique tenterait de supprimer l'installateur dès que ce
+            # fil rend la main, alors que `launch_installer` vient tout juste
+            # de le lancer en arrière-plan. Windows verrouille un exécutable
+            # tant qu'un processus tourne dessus, donc la suppression
+            # échouerait, mais ce n'est pas une raison de compter sur l'échec
+            # plutôt que de ne pas la tenter. Le fichier reste dans le dossier
+            # temporaire du système, comme n'importe quel téléchargement.
+            installateur = (
+                Path(tempfile.gettempdir()) / f"rubin-installateur-{status.latest}.exe"
+            )
+            if not download_installer(status.latest, installateur):
+                self.publish("maj_echouee", None)
+                return
+            launch_installer(installateur)
+            self.publish("maj_lancee", None)
+
+        threading.Thread(target=télécharger, daemon=True).start()
+
+    def _show_update_failed(self) -> None:
+        """Le téléchargement ou la vérification de l'installateur a échoué.
+
+        Cause la plus probable, jamais nommée à tort : le réseau, ou une
+        empreinte qui ne correspond pas (voir `download_installer`). Le
+        bouton redevient cliquable, pour réessayer sans redémarrer Rubin.
+        """
+        status = self._update_status
+        texte = f"Mettre à jour ({status.latest}) : échec, réessayer" if status else "échec"
+        self._maj_bouton.config(text=texte, state="normal")
+
+    def _show_update_launched(self) -> None:
+        """L'installateur est lancé : Rubin se ferme pour le laisser travailler.
+
+        `rubin.iss` (`CloseApplications=force`, `RestartApplications=yes`)
+        fermerait Rubin de force via le Gestionnaire de redémarrage de
+        Windows si on ne faisait rien, puis le relancerait. Se fermer
+        soi-même, un court instant après, donne le temps à l'installateur de
+        démarrer sans dépendre de cette fermeture forcée, et laisse `close()`
+        finir proprement ce qu'il y a à finir plutôt que d'être coupé net.
+        """
+        self._maj_bouton.config(text="installation en cours…", state="disabled")
+        self.root.after(1500, self.close)
 
     def _over_zones_tab(self, x: int, y: int) -> bool:
         """La souris est-elle sur l'étiquette de l'onglet Zones ?
