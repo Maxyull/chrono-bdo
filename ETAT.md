@@ -42,17 +42,17 @@ dédiée, derrière Caddy. Redéploiement et mise à jour :
 
 ---
 
-## Les sept pièges découverts en jouant
+## Les huit pièges découverts en jouant
 
 **Aucun n'était visible sur des captures d'écran fixes**, et chacun suffisait
 à lui seul pour qu'aucune quête ne soit jamais mesurée. C'est la leçon
 principale du projet : un jeu de test figé valide la lecture d'une image, pas
 le comportement d'une interface vivante.
 
-Les deux derniers, trouvés le 5 août, ne se voyaient même pas sur une capture
-du jeu : il fallait que **d'autres programmes tournent à côté**, et que le
-joueur ait épinglé ses propres quêtes de métier. Un poste de développement
-propre ne les aurait jamais montrés.
+Les trois derniers, trouvés le 5 août, ne se voyaient même pas sur une capture
+du jeu : il fallait que **d'autres programmes tournent à côté**, l'un d'eux
+posé **par-dessus** la fenêtre, et que le joueur ait épinglé ses propres quêtes
+de métier. Un poste de développement propre ne les aurait jamais montrés.
 
 ### 1. L'icône du bandeau se déplace
 
@@ -133,7 +133,25 @@ couleur** rendrait le bandeau vert trivial à isoler, et donnerait du même coup
 l'ancrage qui manque pour savoir laquelle des lignes est l'active. Le gris jette
 exactement le signal qui identifie la quête en cours.
 
-### Ce que ces cinq pièges ont coûté, et ce qui a changé depuis
+### 8. Une fenêtre posée sur le jeu est capturée à sa place
+
+`mss` capture **l'écran**, pas le tampon de rendu de la fenêtre. Tout ce qui est
+affiché au-dessus du jeu est donc capturé à sa place, et le logiciel lit un
+navigateur en croyant lire une quête.
+
+Mesuré : la fenêtre du jeu était bien trouvée, 2560x1440 en (−1280,−17), mais
+Chrome en occupait la moitié gauche. La zone du panneau de suivi tombait dessus,
+et l'excès de vert du bandeau y valait 0,6 au lieu de plusieurs dizaines.
+
+Ce n'est pas un défaut à corriger, c'est une **limite de la méthode**, et elle a
+une conséquence directe sur l'usage : on ne bascule pas sur un navigateur
+pendant que Rubin mesure. Elle est écrite dans le README, au même endroit que la
+commande qui lance une session.
+
+Une session ainsi occultée ne mesure rien, mais depuis la rétention des lectures
+ratées, elle laisse au moins les images qui permettent de comprendre pourquoi.
+
+### Ce que ces pièges ont coûté, et ce qui a changé depuis
 
 Les cinq ont dû être trouvés à la main, écran sous les yeux, parce que le
 logiciel ne gardait aucune trace de ce qu'il n'arrivait pas à lire. Une image

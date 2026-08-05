@@ -158,6 +158,11 @@ Rubinmétrer une session :
 python -m rubin suivre
 ```
 
+⚠️ **Laissez le jeu au premier plan.** Rubin lit l'écran, pas la mémoire du jeu,
+donc toute fenêtre posée par-dessus est lue à sa place. Basculer sur un
+navigateur pendant une session ne produit aucune mesure. C'est une limite de la
+méthode, pas un réglage : voir la section « Ce qui rend la mesure difficile ».
+
 Après chaque quête mesurée, les suivantes de la chaîne s'affichent avec leur
 temps de référence :
 
