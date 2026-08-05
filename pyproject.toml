@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chrono-bdo"
-version = "0.1.0"
+version = "0.2.0"
 description = "Chronomètre de quêtes pour Black Desert Online, pensé pour le client français"
 readme = "README.md"
 requires-python = ">=3.10"

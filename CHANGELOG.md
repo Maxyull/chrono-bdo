@@ -7,6 +7,12 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+Rien pour l'instant.
+
+## [0.2.0] - 2026-08-05
+
+Le chronomètre fonctionne, mesure de vraies quêtes et publie ses résultats.
+
 ### Ajouté
 
 - **Capture de la zone du bandeau** : la fenêtre du jeu est trouvée toute seule,
@@ -80,5 +86,6 @@ sens.
 - Le jeu annonce 19 235 quêtes, le référentiel en connaît 18 999. L'écart de 236
   n'est pas expliqué.
 
-[Non publié]: https://github.com/Maxyull/chrono-bdo/compare/v0.1.0...HEAD
+[Non publié]: https://github.com/Maxyull/chrono-bdo/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Maxyull/chrono-bdo/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Maxyull/chrono-bdo/releases/tag/v0.1.0
