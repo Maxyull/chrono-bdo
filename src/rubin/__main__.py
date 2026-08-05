@@ -776,9 +776,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     handler = getattr(args, "handler", None)
     if handler is None:
-        # Sans sous-commande, l'état du référentiel est la réponse la plus
-        # utile : elle dit si l'installation est en état de marche.
-        args = parser.parse_args(["referentiel"])
+        # Sans sous-commande, ouvrir la fenêtre : c'est ce qui se passe quand
+        # un joueur double-clique sur l'exécutable, sans avoir rien tapé.
+        #
+        # ⚠️ Ce n'était pas le cas jusqu'ici : le défaut était `referentiel`,
+        # un reste de l'époque où seule la ligne de commande existait. Un
+        # joueur qui double-cliquait sur la 0.4.0 ou avant ne voyait donc
+        # jamais la fenêtre, même une fois publiée avec elle, et rien ne le
+        # dirigeait vers la bonne commande à taper. Corrigé le 5 août 2026 au
+        # soir, sur demande explicite de Maxime : « il faut pas que le joueur
+        # ait à envoyer des commandes ».
+        args = parser.parse_args(["fenetre"])
         handler = args.handler
     result: int = handler(args)
     return result
