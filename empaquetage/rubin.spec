@@ -40,12 +40,34 @@ a = Analysis(
     pathex=[str(RACINE / "src")],
     binaries=binaires,
     datas=donnees,
-    hiddenimports=["rubin", "rubin.capture", "rubin.reading", "rubin.reference"],
+    hiddenimports=[
+        "rubin",
+        "rubin.capture",
+        "rubin.reading",
+        "rubin.reference",
+        # La fenêtre, importée à l'intérieur de `command_interface` et non en
+        # tête de module. PyInstaller la suit très bien à travers le
+        # `try/except ImportError`, mais un import différé reste moins visible
+        # qu'un import de tête, et l'oubli aurait le même symptôme que
+        # `tkinter` retiré d'`excludes` ci-dessous : silencieux jusqu'au
+        # lancement.
+        "rubin.interface",
+        "rubin.interface.app",
+    ],
     hookspath=[],
     runtime_hooks=[],
     # Rien de tout cela ne sert au chronomètre, et chacun pèse lourd. Les
     # écarter divise la taille finale par plus de deux.
-    excludes=["tkinter", "matplotlib", "scipy", "pandas", "IPython", "pytest", "setuptools"],
+    #
+    # ⚠️ `tkinter` a longtemps été dans cette liste, et c'est pourquoi la
+    # 0.4.0 publiée le 5 août 2026 ne contient pas la fenêtre : `excludes`
+    # retire un module même quand du code le réclame, contrairement à un
+    # import simplement jamais atteint par l'analyse statique. L'exécutable se
+    # construisait sans erreur, et `rubin fenetre` échouait au premier
+    # lancement avec « interface graphique indisponible ». Retiré ici sur
+    # demande explicite de Maxime le 5 août au soir : la fenêtre doit
+    # accompagner la prochaine version publiée.
+    excludes=["matplotlib", "scipy", "pandas", "IPython", "pytest", "setuptools"],
     noarchive=False,
 )
 
