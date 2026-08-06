@@ -545,3 +545,48 @@ class TestJournalDesPannes:
 
         assert ("demarre", False) in publie.messages
         assert (tmp_path / "echecs" / "erreurs.log").exists()
+
+
+class TestPaquetsEnvoyes:
+    """`_send_and_report` : ce qui part vers le serveur s'affiche à la fenêtre.
+
+    Demandé par Maxime le 06/08/2026, à la place d'un lien vers la
+    politique de confidentialité : l'onglet Envois montre le paquet réel,
+    poids et contenu, pas une description de ce qu'il contient.
+    """
+
+    def test_publie_le_paquet_avant_l_envoi(
+        self, tmp_path: Path, catalog: Catalog, publie: Journal, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        serveur = Serveur()
+        monkeypatch.setattr(moteur, "send_session", serveur)
+        chemin = journal_orphelin(tmp_path, mesures=1, envoyées=0)
+        session = moteur_pour(tmp_path, catalog, publie, "https://exemple.invalide")
+
+        session._replay_now([chemin])
+
+        paquets = [charge for genre, charge in publie.messages if genre == "paquet"]
+        assert len(paquets) == 1
+        _heure, taille, cible, contenu = paquets[0]
+        assert taille > 0
+        assert cible == "https://exemple.invalide/v1/sessions"
+        assert "21136/1" in contenu
+
+    def test_regression_le_paquet_part_meme_si_l_envoi_echoue(
+        self, tmp_path: Path, catalog: Catalog, publie: Journal, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Régression attendue : savoir ce qui a été TENTÉ compte autant qu'un
+        envoi réussi, en particulier quand ça ne marche pas. Publier après
+        l'envoi aurait laissé un échec réseau sans aucune trace du contenu.
+        """
+
+        def échoue(_payload: Any, _url: str) -> UploadResult:
+            return UploadResult(ok=False, detail="serveur injoignable", answered=False)
+
+        monkeypatch.setattr(moteur, "send_session", échoue)
+        chemin = journal_orphelin(tmp_path, mesures=1, envoyées=0)
+        session = moteur_pour(tmp_path, catalog, publie, "https://exemple.invalide")
+
+        session._replay_now([chemin])
+
+        assert any(genre == "paquet" for genre, _charge in publie.messages)

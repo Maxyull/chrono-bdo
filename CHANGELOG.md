@@ -7,6 +7,17 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+### Ajouté
+
+- **Un onglet Envois, qui montre les paquets réellement postés au serveur.**
+  Demandé par Maxime le 06/08/2026, à la place du lien vers la politique de
+  confidentialité posé la veille : montrer les paquets eux-mêmes, poids et
+  contenu, plutôt qu'en décrire la teneur. Le contenu est publié **avant**
+  chaque tentative d'envoi, réussie ou non : un envoi qui échoue a quand même
+  tenté de partir avec ce contenu-là, c'est justement le cas où savoir ce qui
+  a été tenté compte le plus. Le lien « voir ce qui est envoyé », sous le
+  témoin de connexion, ouvre maintenant cet onglet au lieu d'un navigateur.
+
 ## [0.5.7] - 2026-08-06
 
 ### Ajouté
