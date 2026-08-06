@@ -7,6 +7,8 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+## [0.5.7] - 2026-08-06
+
 ### Ajouté
 
 - **La vérification de mise à jour se répète toutes les cinq minutes**, tant
