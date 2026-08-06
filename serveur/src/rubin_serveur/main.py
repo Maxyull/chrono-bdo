@@ -343,6 +343,33 @@ def discord_callback(code: str = "", state: str = "") -> dict[str, Any]:
     return {"rattache": True, "nom": name}
 
 
+@app.get("/v1/discord/compte")
+def discord_account(player: str) -> dict[str, Any]:
+    """Dit si ce contributeur est rattaché à un compte Discord, et sous quel nom.
+
+    Sans cette route, le rattachement réussissait sans que le logiciel puisse
+    jamais l'apprendre : il ouvre le navigateur, Discord renvoie le joueur au
+    serveur, le serveur enregistre, et la fenêtre reste sur « autorisez Rubin
+    dans votre navigateur, puis revenez ici », indéfiniment. Constaté par
+    Maxime le 06/08/2026, sur un compte pourtant bel et bien rattaché
+    (`/v1/discord/retour` avait rendu `{"rattache":true,"nom":"maxyull"}`).
+
+    Elle ne rend **que** ce que le joueur a déjà envoyé lui-même : son propre
+    pseudonyme, celui qui s'affiche déjà à côté de ses temps au classement.
+    Rien de plus n'est lisible ici, en particulier pas l'identifiant Discord,
+    qui ne sert qu'à reconnaître un même compte d'un rattachement à l'autre.
+
+    Même portée que `/v1/discord/connexion` : connaître l'identifiant anonyme
+    d'un contributeur suffit à poser la question. C'est la même limite,
+    assumée au même endroit, et elle protège la même chose, un nom affiché à
+    côté d'un temps de quête.
+    """
+    if not PLAYER_PATTERN.fullmatch(player):
+        raise HTTPException(422, "identifiant de contributeur invalide")
+    nom = storage.display_name(player)
+    return {"rattache": nom is not None, "nom": nom}
+
+
 @app.post("/v1/rapport", status_code=202)
 def rapport(payload: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
     """Reçoit un rapport de bogue et le relaie dans un salon Discord.
@@ -380,7 +407,14 @@ def rapport(payload: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
     horodatage = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     message = f"**{horodatage} — {nom}**\n{contenu}"
 
-    if not send_report(webhook_url, message):
+    # Le salon est un forum : chaque rapport y ouvre son propre fil, voir la
+    # docstring de `send_report`. `application` figure dans le titre parce
+    # qu'un rapport de Butin retombe dans le salon de Rubin tant que
+    # `BUTIN_RAPPORT_WEBHOOK` n'est pas posé, et qu'il faut alors pouvoir le
+    # reconnaître au premier coup d'œil.
+    fil = f"🐛 {application} — {nom}"
+
+    if not send_report(webhook_url, message, thread_name=fil):
         raise HTTPException(502, "Discord n'a pas confirmé l'envoi, réessayez")
 
     return {"envoye": True}

@@ -1,9 +1,37 @@
-# État du projet, au 5-6 août 2026 (v0.5.4 publiée)
+# État du projet, au 06/08/2026 (v0.5.9 en ligne, v0.6.0 prête)
 
 **À lire en entier avant de coder.** Ce fichier dit où en est Rubin, ce qui a
 été appris en conditions réelles, et ce qui reste. Les pièges consignés plus
 bas ont chacun coûté une session à découvrir : aucun n'était visible autrement
 qu'en jouant.
+
+## ⭐ À faire en tout premier, avant toute nouvelle fonctionnalité
+
+1. **Finir de publier la v0.6.0.** Tout est prêt et vérifié : 719 tests
+   racine + 60 serveur + 62 bot, ruff/mypy strict verts sur les 3, archive
+   ET installateur construits (`empaquetage/construire.py`), **archive
+   extraite pour de vrai** (`Expand-Archive`, `rubin.exe` confirmé présent,
+   SHA-256 vérifié). PR **#114** ouverte sur la branche `release-0.6.0`,
+   bloquée uniquement par une panne GitHub majeure (`githubstatus.com`
+   annonçait « Partial System Outage », plus aucun run CI ne se déclenchait
+   du tout). Reste, une fois GitHub revenu :
+   - fusionner la PR #114 ;
+   - `git tag -a v0.6.0 -m "..."` puis `git push origin v0.6.0` ;
+   - `gh release create v0.6.0` avec `dist/rubin-windows-0.6.0.zip`,
+     `dist/rubin-installateur-0.6.0.exe` et leurs `.sha256` en pièces jointes
+     (déjà construits dans `dist/`, pas besoin de reconstruire sauf si le
+     dossier a été nettoyé entre-temps) ;
+   - `bash serveur/deploiement/deployer.sh` pour redéployer (dérive
+     `RUBIN_LATEST` automatiquement de `__version__`) ;
+   - vérifier `curl https://rubin.maxyull.fr/v1/version` répond `"derniere":
+     "0.6.0"`.
+2. **Ensuite seulement : le visuel du logiciel.** Demandé par Maxime le
+   06/08/2026, juste après avoir demandé la release : « on va faire une
+   update release puis attaquer un peu plus le visuel du logiciel ». Rien
+   de plus précis n'a encore été dit sur ce que « le visuel » recouvre :
+   demander avant de se lancer (thème déjà sombre avec accents rouges dans
+   `interface/theme.py`, donc probablement pas une refonte de zéro, plutôt
+   des raffinements — mais ne pas deviner, demander).
 
 ---
 
@@ -22,8 +50,8 @@ les temps de référence des autres. La chaîne complète tient debout.
 | Panneau de suivi de quête | ✅ |
 | Liste des quêtes suivantes | ✅ trous et branches signalés |
 | Serveur, classement, envoi | ✅ **en ligne** |
-| Exécutable Windows | ✅ **v0.5.4 publiée**, la fenêtre est dedans, double-clic suffit |
-| Vérification de version | ✅ le serveur annonce **0.5.4** (corrigé le 05/08/2026 au soir, voir plus bas) |
+| Exécutable Windows | ✅ **v0.5.9 en ligne**, **v0.6.0 construite et vérifiée localement**, PR #114 bloquée par une panne GitHub (voir tout en bas) |
+| Vérification de version | ✅ le serveur annonce **0.5.9** (0.6.0 pas encore déployée, voir tout en bas) |
 | Rétention des lectures ratées | ✅ local, envoi manuel, **et image gardée à l'aveugle après deux minutes de silence** |
 | Interface graphique | ✅ 3 onglets, zones réglables, meilleur temps personnel, liste alphabétique, note de quête |
 | Rattachement Discord | ✅ en ligne, identifiants posés le 06/08/2026 |
@@ -35,7 +63,7 @@ les temps de référence des autres. La chaîne complète tient debout.
 |---|---|
 | Serveur | **https://rubin.maxyull.fr** |
 | Dépôt | https://github.com/Maxyull/rubin-bdo |
-| Release | **v0.5.4**, https://github.com/Maxyull/rubin-bdo/releases |
+| Release | **v0.5.9**, https://github.com/Maxyull/rubin-bdo/releases (v0.6.0 prête, pas encore publiée) |
 | Confidentialité | https://maxyull.fr/confidentialite.html |
 
 Le serveur tourne en systemd sur le VPS OVH, dans `/opt/rubin`, base Postgres

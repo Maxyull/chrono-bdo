@@ -56,6 +56,17 @@ set -a; source "$CONF_RUBIN"; set +a
 RUBIN_DISCORD_ID="${RUBIN_DISCORD_ID:-}"
 RUBIN_DISCORD_SECRET="${RUBIN_DISCORD_SECRET:-}"
 RUBIN_DISCORD_RETOUR="${RUBIN_DISCORD_RETOUR:-https://${RUBIN_DOMAINE}/v1/discord/retour}"
+
+# Les deux webhooks du bouton « Envoyer le rapport », un par application. Ils
+# sont posés dans le fichier de secrets par la session `discord-bdo` depuis le
+# 06/08/2026, et ce script ne les transportait pas : mesuré en production le
+# 07/08 après le déploiement de la v0.6.0, `POST /v1/rapport` rendait encore
+# 503 pour les deux, c'est-à-dire « envoi de rapport non configuré ».
+#
+# Le défaut se voyait d'autant moins que la fonctionnalité entière était neuve
+# et que rien ne distinguait « pas encore branché » de « branché mais muet ».
+RUBIN_RAPPORT_WEBHOOK="${RUBIN_RAPPORT_WEBHOOK:-}"
+BUTIN_RAPPORT_WEBHOOK="${BUTIN_RAPPORT_WEBHOOK:-}"
 if [[ -n "$RUBIN_DISCORD_ID" && -z "${RUBIN_DISCORD_ETAT:-}" ]]; then
   # La clé qui signe l'état est tirée au sort par le serveur quand elle manque,
   # mais elle change alors à chaque redémarrage : toute connexion en cours à ce
@@ -81,6 +92,8 @@ ssh -i "$VPS_SSH_KEY" -o StrictHostKeyChecking=no "${VPS_USER}@${VPS_HOST}" \
   RUBIN_DISCORD_SECRET="$RUBIN_DISCORD_SECRET" \
   RUBIN_DISCORD_RETOUR="$RUBIN_DISCORD_RETOUR" \
   RUBIN_DISCORD_ETAT="${RUBIN_DISCORD_ETAT:-}" \
+  RUBIN_RAPPORT_WEBHOOK="$RUBIN_RAPPORT_WEBHOOK" \
+  BUTIN_RAPPORT_WEBHOOK="$BUTIN_RAPPORT_WEBHOOK" \
   DEPOT="$DEPOT" CIBLE="$CIBLE" 'bash -s' <<'DISTANT'
 set -euo pipefail
 
@@ -137,6 +150,27 @@ else
   echo "--- rattachement Discord : éteint (aucun identifiant fourni)"
 fi
 
+# Même règle que le bloc Discord : une variable posée à vide se lirait dans
+# l'unité comme un envoi gréé, alors que le serveur la traite comme absente et
+# rend 503. Chacune est donc écrite seulement si elle existe, et l'état de
+# chacune est dit à voix haute, parce que le silence est précisément ce qui a
+# laissé passer le défaut : un rapport qui ne part pas ne se voit ni côté
+# joueur, où il n'y a rien à voir, ni côté salon Discord, où il n'arrive rien.
+RAPPORT_ENV=""
+if [[ -n "${RUBIN_RAPPORT_WEBHOOK}" ]]; then
+  RAPPORT_ENV="Environment=RUBIN_RAPPORT_WEBHOOK=${RUBIN_RAPPORT_WEBHOOK}"
+  echo "--- rapports Rubin : activés"
+else
+  echo "--- rapports Rubin : ÉTEINTS (aucun webhook), le bouton rendra 503"
+fi
+if [[ -n "${BUTIN_RAPPORT_WEBHOOK}" ]]; then
+  RAPPORT_ENV="${RAPPORT_ENV}
+Environment=BUTIN_RAPPORT_WEBHOOK=${BUTIN_RAPPORT_WEBHOOK}"
+  echo "--- rapports Butin : activés"
+else
+  echo "--- rapports Butin : éteints, ils retomberont dans le salon de Rubin"
+fi
+
 echo "--- service (version annoncée : ${VERSION})"
 sudo tee /etc/systemd/system/rubin.service >/dev/null <<UNIT
 [Unit]
@@ -155,6 +189,7 @@ Environment=RUBIN_LATEST=${VERSION}
 # n'ont pas encore retéléchargé.
 Environment=RUBIN_MIN_CLIENT=0.1.0
 ${DISCORD_ENV}
+${RAPPORT_ENV}
 ExecStart=${CIBLE}/.venv/bin/uvicorn rubin_serveur.main:app --host 127.0.0.1 --port ${RUBIN_PORT}
 WorkingDirectory=${CIBLE}/serveur
 Restart=always

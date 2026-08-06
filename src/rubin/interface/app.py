@@ -44,6 +44,7 @@ from ..capture import (
     find_game_window,
     tracker_region,
 )
+from ..discord import DiscordAccount, fetch_account
 from ..history import personal_best
 from ..notes import load_notes, save_note
 from ..placement import choose, conflicts
@@ -62,6 +63,7 @@ from .presentation import (
     CLASS_CHAIN_CATEGORY,
     COVERAGE_TAGS,
     DEMO_BANNER,
+    DISCORD_WAITING,
     LOCKED_WHILE_MEASURING,
     QUEST_LIST_LIMIT,
     REPORT_LOG_CHARS,
@@ -79,6 +81,7 @@ from .presentation import (
     format_chain_header,
     format_coverage,
     format_current_reference,
+    format_discord_account,
     format_duration,
     format_gap,
     format_link,
@@ -157,6 +160,19 @@ DATA: Final = Path(__file__).parent / "data"
 #: bouton doit se repérer sans être lu.
 DISCORD_BLURPLE: Final = "#5865F2"
 DISCORD_BLURPLE_SURVOL: Final = "#4752C4"
+#: Cadence à laquelle on redemande au serveur si le rattachement Discord a
+#: abouti, après un clic sur « Se connecter avec Discord ». Le joueur est
+#: parti dans son navigateur ; rien ne nous prévient de son retour, et une
+#: fenêtre qui n'apprend jamais la réussite est exactement le défaut que
+#: Maxime a rencontré le 06/08/2026.
+DISCORD_POLL_MS: Final = 3 * 1000
+
+#: Au-delà, on cesse de demander. Autoriser une application Discord prend une
+#: poignée de secondes ; passé trois minutes, le joueur a fermé l'onglet, ou
+#: renoncé, et continuer à interroger le serveur indéfiniment pour un geste
+#: abandonné ne rendrait service à personne. Le bouton reste là, un second
+#: clic relance une fenêtre d'attente neuve.
+DISCORD_POLL_LIMIT_MS: Final = 3 * 60 * 1000
 
 #: L'iid Tk de la catégorie « Renaissance et Éveil », fixe et distinct de
 #: tout `str(chain.number)` : un numéro de chaîne est toujours numérique,
@@ -304,6 +320,14 @@ class RubinApp:
         #: redemander : voir `_show_update_status`.
         self._update_status: UpdateStatus | None = None
 
+        #: Vrai entre le clic sur « Se connecter avec Discord » et la fin de
+        #: la fenêtre d'attente : le joueur est parti autoriser dans son
+        #: navigateur. Sert à ne pas écraser la consigne `DISCORD_WAITING`
+        #: par un « pas encore connecté » à la première réponse négative,
+        #: qui arrive une seconde après le clic. Voir
+        #: `format_discord_account`.
+        self._discord_attente = False
+
         self.root = tk.Tk()
         self.root.title("Rubin, chronomètre de quêtes")
         self.root.minsize(*WINDOW_SIZE)
@@ -320,6 +344,7 @@ class RubinApp:
         self._place_beside_the_game()
         self._ask_server()
         self._poll_for_update()
+        self._ask_discord_account()
         self.root.after(REFRESH_MS, self._drain)
 
     # ------------------------------------------------------------------ mise en place
@@ -1538,6 +1563,75 @@ class RubinApp:
         threading.Thread(target=demander, daemon=True).start()
         self.root.after(UPDATE_POLL_MS, self._poll_for_update)
 
+    def _ask_discord_account(self) -> None:
+        """Demande au serveur si ce joueur est rattaché, sur un fil séparé.
+
+        Appelée au lancement, puis en boucle après un clic sur le bouton :
+        voir `_poll_discord_account`. Au lancement parce qu'un joueur qui
+        s'est rattaché lors d'une session précédente doit voir son état, pas
+        un bouton qui laisse croire qu'il n'a jamais rien fait.
+
+        Sur un fil, comme `check_for_update` : l'identité se lit sur le
+        disque et la requête peut prendre cinq secondes, deux choses qu'on ne
+        fait pas dans le fil de Tk sous peine de figer la fenêtre.
+        """
+        server = self._server
+        if not server:
+            return
+        home = self._home
+
+        def demander() -> None:
+            try:
+                identity = PlayerIdentity.load_or_create(home / "identite")
+            except OSError:  # pragma: pas de couverture
+                # Sans identifiant, il n'y a pas de question à poser. Se taire
+                # plutôt que d'annoncer un état qu'on n'a pas pu vérifier.
+                return
+            self.publish("discord", fetch_account(server, identity.value))
+
+        threading.Thread(target=demander, daemon=True).start()
+
+    def _poll_discord_account(self, remaining_ms: int = DISCORD_POLL_LIMIT_MS) -> None:
+        """Redemande l'état du rattachement jusqu'à ce qu'il aboutisse.
+
+        Le rattachement se termine **hors du logiciel**, dans le navigateur :
+        Discord renvoie le joueur vers le serveur, pas vers nous, et rien ne
+        nous prévient. Sans ce sondage, la fenêtre reste indéfiniment sur
+        « autorisez Rubin dans votre navigateur », y compris quand tout a
+        parfaitement marché. C'est ce qui est arrivé à Maxime le 06/08/2026,
+        sur un compte pourtant rattaché pour de vrai.
+
+        S'arrête dès que le compte est rattaché (`_discord_attente` retombe
+        dans `_show_discord_account`), et de toute façon au bout de
+        `DISCORD_POLL_LIMIT_MS`.
+        """
+        if not self._discord_attente or self._stop.is_set():
+            return
+        self._ask_discord_account()
+        if remaining_ms <= 0:
+            self._discord_attente = False
+            return
+        self.root.after(
+            DISCORD_POLL_MS,
+            lambda: self._poll_discord_account(remaining_ms - DISCORD_POLL_MS),
+        )
+
+    def _show_discord_account(self, account: DiscordAccount | None) -> None:
+        """Écrit l'état du compte Discord, ou laisse l'étiquette tranquille.
+
+        `format_discord_account` rend `None` dans les deux cas où écrire
+        serait mentir, voir sa docstring. Ici, `None` veut donc dire « ne
+        touche à rien », jamais « efface ».
+        """
+        if account is not None and account.linked:
+            # Abouti : plus rien à attendre, le sondage peut cesser.
+            self._discord_attente = False
+        rendu = format_discord_account(account, waiting=self._discord_attente)
+        if rendu is None:
+            return
+        texte, balise = rendu
+        self._discord_etat.config(text=texte, foreground=COLORS[balise])
+
     def _search_changed(self, *_arguments: object) -> None:
         """Refiltre le catalogue à chaque frappe, sans aucun réseau.
 
@@ -1992,6 +2086,8 @@ class RubinApp:
             self._autres.config(text=format_other_quests(int(charge)) or "")
         elif genre == "lien":
             self._show_link(charge)
+        elif genre == "discord":
+            self._show_discord_account(charge)
         elif genre == "maj":
             self._show_update_status(charge)
         elif genre == "maj_echouee":
@@ -2599,9 +2695,12 @@ class RubinApp:
             return
 
         webbrowser.open(adresse)
-        self._discord_etat.config(
-            text="autorisez Rubin dans votre navigateur, puis revenez ici"
-        )
+        self._discord_etat.config(text=DISCORD_WAITING, foreground=COLORS["faible"])
+        # Le rattachement se termine dans le navigateur, pas ici : sans ce
+        # sondage, cette consigne resterait affichée pour toujours, y compris
+        # une fois le compte rattaché. Voir `_poll_discord_account`.
+        self._discord_attente = True
+        self._poll_discord_account()
 
     def _read_crash_log(self, max_chars: int) -> str:
         """Les derniers caractères de `echecs/erreurs.log`, ou une chaîne vide.
