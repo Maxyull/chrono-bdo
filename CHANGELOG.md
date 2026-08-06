@@ -7,6 +7,8 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+## [0.5.9] - 2026-08-06
+
 ### Corrigé
 
 - **La mise à jour en un clic ne relançait pas Rubin.** Trouvé par Maxime en
