@@ -23,7 +23,8 @@ pendant ce temps.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 from typing import Any, Final
 
 import requests
@@ -128,6 +129,15 @@ class ServerHealth:
     sessions: int
     measures: int
     players: int
+    #: Le temps qu'a mis `/sante` à répondre, en millisecondes. Purement
+    #: indicatif : rien dans ce projet ne prend de décision dessus, il ne sert
+    #: qu'à afficher au joueur si le serveur répond vite ou traîne.
+    #:
+    #: `compare=False` et une valeur par défaut : deux `ServerHealth` qui ne
+    #: diffèrent que par leur latence désignent le même état du serveur, et un
+    #: test qui compare une instance construite à la main n'a pas à connaître
+    #: une mesure de temps qu'il n'a jamais faite.
+    latency_ms: float = field(default=0.0, compare=False)
 
 
 @dataclass(frozen=True)
@@ -317,7 +327,9 @@ class ReferenceClient:
         """
         if self._health_asked:
             return self._health
+        début = time.monotonic()
         body = self._get("/sante")
+        latence_ms = (time.monotonic() - début) * 1000
         self._health_asked = True
         self._health = (
             ServerHealth(
@@ -325,6 +337,7 @@ class ReferenceClient:
                 sessions=_as_int(body.get("sessions")),
                 measures=_as_int(body.get("measures")),
                 players=_as_int(body.get("players")),
+                latency_ms=latence_ms,
             )
             if body
             else None

@@ -333,3 +333,14 @@ class TestEtatDuServeur:
     ) -> None:
         client = client_with(monkeypatch, [FakeResponse(200, {"etat": "ok"})])
         assert client.health() == ServerHealth(0, 0, 0, 0)
+
+    def test_mesure_la_latence_de_sante(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Demandé par Maxime le 06/08/2026, pour l'afficher à côté de
+        « connecté » dans la fenêtre, sans le lien du serveur.
+        """
+        client = client_with(monkeypatch, [FakeResponse(200, SANTE)])
+
+        santé = client.health()
+
+        assert santé is not None
+        assert santé.latency_ms >= 0.0

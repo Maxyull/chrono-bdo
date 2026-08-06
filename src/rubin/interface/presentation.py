@@ -473,7 +473,7 @@ def format_link(base_url: str | None, health: ServerHealth | None) -> tuple[str,
       un problème qui n'existe pas ;
     - **configuré mais injoignable** : réseau coupé, machine éteinte, adresse
       fausse. Là, il y a quelque chose à réparer ;
-    - **connecté**, avec l'adresse et ce que le serveur a déjà reçu.
+    - **connecté**, avec sa latence et ce que le serveur a déjà reçu.
 
     ⚠️ **Un point d'entrée manquant n'est pas une panne de connexion.** Cas réel
     du 05/08/2026 : `rubin.maxyull.fr` répondait parfaitement, mais rendait 404
@@ -482,6 +482,13 @@ def format_link(base_url: str | None, health: ServerHealth | None) -> tuple[str,
     côté. Ce témoin ne regarde donc que `/sante`, qui existe depuis le premier
     jour ; c'est à chaque compteur de dire séparément que **lui** n'a pas eu sa
     réponse.
+
+    ⚠️ **L'adresse elle-même n'est plus dans le texte**, sur demande de Maxime
+    le 06/08/2026 : `base_url` reste le paramètre qui distingue « rien de
+    configuré » de « configuré mais muet », mais un joueur n'a pas besoin de la
+    lire pour savoir s'il est connecté. Elle reste accessible d'un clic, voir
+    `_build_header` dans `app.py`, qui ouvre la politique de confidentialité
+    plutôt que de l'écrire en toutes lettres.
     """
     if base_url is None:
         return (
@@ -489,10 +496,10 @@ def format_link(base_url: str | None, health: ServerHealth | None) -> tuple[str,
             LINK_TAGS["absent"],
         )
     if health is None:
-        return (f"serveur injoignable : {base_url}", LINK_TAGS["injoignable"])
+        return ("serveur injoignable", LINK_TAGS["injoignable"])
     mesures = "mesure" if health.measures == 1 else "mesures"
     return (
-        f"connecté à {base_url}   ({health.measures} {mesures} reçues)",
+        f"connecté ({health.latency_ms:.0f} ms)   —   {health.measures} {mesures} reçues",
         LINK_TAGS["connecte"],
     )
 

@@ -751,14 +751,28 @@ class TestTemoinDeConnexion:
         assert "injoignable" not in texte
         assert balise == LINK_TAGS["absent"]
 
-    def test_annonce_l_adresse_et_ce_que_le_serveur_a_recu(self) -> None:
+    def test_annonce_la_latence_et_ce_que_le_serveur_a_recu(self) -> None:
         texte, balise = format_link(
+            "https://rubin.maxyull.fr",
+            ServerHealth(protocol=1, sessions=4, measures=21, players=2, latency_ms=42.0),
+        )
+        assert "42 ms" in texte
+        assert "21 mesures" in texte
+        assert balise == LINK_TAGS["connecte"]
+
+    def test_regression_l_adresse_n_apparait_plus_dans_le_texte(self) -> None:
+        """Régression : demandé par Maxime le 06/08/2026. L'adresse restait
+        lisible dans la fenêtre, ce qu'il ne voulait plus voir en toutes
+        lettres ; elle reste accessible d'un clic, voir `_build_header`.
+        """
+        connecté, _balise = format_link(
             "https://rubin.maxyull.fr",
             ServerHealth(protocol=1, sessions=4, measures=21, players=2),
         )
-        assert "https://rubin.maxyull.fr" in texte
-        assert "21 mesures" in texte
-        assert balise == LINK_TAGS["connecte"]
+        injoignable, _balise = format_link("https://rubin.maxyull.fr", None)
+
+        assert "https://" not in connecté
+        assert "https://" not in injoignable
 
     def test_un_serveur_perime_reste_connecte(self) -> None:
         """Régression : un point d'entrée manquant n'est pas une panne.

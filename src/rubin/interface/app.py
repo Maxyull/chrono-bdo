@@ -118,6 +118,10 @@ WINDOW_SIZE: Final = (470, 820)
 #: pas plus sur du texte.
 REFRESH_MS: Final = 125
 
+#: Ce que le lien « voir ce qui est envoyé » ouvre, sous le témoin de
+#: connexion. La même adresse que celle citée dans le README et `ETAT.md`.
+CONFIDENTIALITY_URL: Final = "https://maxyull.fr/confidentialite.html"
+
 #: Ce qu'on écrit sous le nom de la quête, selon le bandeau vu.
 #:
 #: Les deux derniers ne produisent aucune mesure, et le disent. Sans cela, un
@@ -310,6 +314,19 @@ class RubinApp:
             wraplength=430, justify="left",
         )
         self._lien.pack(anchor="w", pady=(4, 0))
+
+        # L'adresse elle-même n'est plus écrite en toutes lettres dans
+        # `_lien` (demandé par Maxime le 06/08/2026), mais reste accessible
+        # d'un clic : la politique de confidentialité dit ce qui part vraiment
+        # vers le serveur, sans obliger à la relire depuis le README.
+        self._confidentialite = ttk.Label(
+            cadre, text="voir ce qui est envoyé", foreground=COLORS["accent"],
+            background=COLORS["fond"], font=(FAMILY, 9), cursor="hand2",
+        )
+        self._confidentialite.pack(anchor="w")
+        self._confidentialite.bind(
+            "<Button-1>", lambda _e: webbrowser.open(CONFIDENTIALITY_URL)
+        )
 
         # Le bouton de mise à jour, invisible tant qu'aucune n'est connue.
         # Demandé par Maxime le 06/08/2026 : un clic doit suffire, contre le
