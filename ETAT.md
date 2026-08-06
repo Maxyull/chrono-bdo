@@ -220,11 +220,15 @@ Rien de tout cela n'est codé. Le principe du projet s'applique comme
 ailleurs : une mesure faite à partir de ce panneau devra être vérifiée en
 jeu avant d'entrer dans quoi que ce soit qui compte.
 
-### En prime : le panneau de suivi est illisible de nuit
+### ✅ Corrigé : le panneau de suivi était illisible de nuit
 
 Il n'a aucun fond opaque, contrairement au bandeau. La luminance de toute la
 zone plafonnait à **19 sur 255** et la reconnaissance n'y trouvait rien.
-Étirement du contraste obligatoire avant toute lecture.
+Corrigé par `stretch_contrast` (`reading/ocr.py`), appliqué sans condition à
+toute lecture avant l'agrandissement : neuf lignes trouvées après étirement
+contre zéro avant, mesuré en jeu de nuit. Sans effet mesurable sur une image
+déjà contrastée, donc appliqué à toutes les lectures sans distinction plutôt
+que seulement à celle-ci.
 
 ### Piste ouverte, pas prouvée : une session ne mesure presque rien, alors qu'un témoin externe voit tout
 
