@@ -7,6 +7,21 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+### Corrigé
+
+- **Les noms de chaîne longs étaient coupés en silence dans la liste par
+  chaîne.** Mesuré le 07/08/2026 sur les 349 vraies chaînes : 12 en-têtes sur
+  180 dépassent les 394 pixels de l'arbre, la pire à 517, et
+  « [Carrefour] Les lamentations du président de la ligue des marchands » se
+  lisait « ...ligue des marc ». Un nom coupé au milieu d'un mot ne se
+  distingue pas d'un nom qui finit là, et c'est le nom qui sert à retrouver
+  la quête dans le jeu. Les quêtes dépliées sont pires encore, étant
+  indentées d'un niveau de plus.
+
+  L'arbre a désormais une barre de défilement horizontale, et sa colonne se
+  réajuste à chaque remplissage, ouverture de chaîne comprise. Rien n'est
+  raccourci ni abrégé : tout reste lisible, il faut seulement faire défiler.
+
 ### Modifié
 
 - **« Toutes les quêtes par chaîne » passe avant « les plus rapides ».**
