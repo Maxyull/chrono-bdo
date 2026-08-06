@@ -109,20 +109,24 @@ premier démarrage, le temps que Discord les publie.
 **Un robot n'est pas un serveur web.** Le serveur Rubin répond à des requêtes
 qui arrivent par Caddy ; le robot, lui, maintient une connexion sortante
 permanente vers la passerelle Discord. Il ne se déclenche pas, il *tourne*. Il
-lui faut donc son propre service systemd, distinct de `rubin` qui existe déjà,
-et **aucun bloc Caddy**, puisque rien n'entre.
+a donc son propre service systemd, distinct de `rubin`, et **aucun bloc
+Caddy**, puisque rien n'entre.
 
-Ce qu'il faudrait, décrit et non déployé :
+```bash
+bash bot/deploiement/deployer.sh
+```
 
-- un dossier `/opt/rubin-bot`, un venv, `pip install -e .` ;
-- un fichier d'environnement lisible du seul compte de service, `chmod 600`,
-  portant `RUBIN_BOT_JETON` ;
-- une unité `rubin-bot.service` avec `Restart=always` et `RestartSec=10`, la
-  passerelle Discord coupant régulièrement les connexions longues ;
-- ⚠️ **ne pas activer l'unité avant que le jeton ne soit posé.** Sans jeton, le
-  robot rend 1, et `Restart=always` le relancerait en boucle.
+Rejouable, comme `serveur/deploiement/deployer.sh` dont il reprend les
+conventions. Lit `RUBIN_BOT_JETON` dans `D:\DEV\secrets\rubin-bot.env` (un
+fichier à part de `rubin-bdo.env`, jamais commis) et **refuse de s'exécuter
+si le jeton est absent ou vide** : voir l'en-tête ⚠️ du script. Sans jeton, le
+robot rend 1, et `Restart=always` le relancerait en boucle indéfiniment ;
+mieux vaut que le déploiement s'arrête avant que l'unité n'existe.
 
-Le VPS n'a que deux giga-octets : comme pour le serveur, pas de conteneur.
+Sur le VPS : `/opt/rubin-bot`, un venv, le jeton dans `/etc/rubin-bot/env`
+(`chmod 600`, lu par l'unité via `EnvironmentFile=`, jamais posé dans
+l'unité elle-même où `systemctl cat` l'afficherait en clair). Le VPS n'a que
+deux giga-octets : comme pour le serveur, pas de conteneur.
 
 ### 4. Avant d'afficher le moindre pseudonyme
 
