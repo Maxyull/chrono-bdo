@@ -78,6 +78,7 @@ from ..upload import (
     JOURNAL_SUFFIX,
     IncrementalSender,
     SessionJournal,
+    UploadResult,
     orphan_journals,
     read_journal,
     save_session,
@@ -459,7 +460,26 @@ class MeasuringSession:
             # Rien n'est envoyé sans que le joueur l'ait demandé. Le journal,
             # lui, est purement local et n'a rien à demander à personne.
             return journal, None
-        return journal, IncrementalSender(self._server, base, journal=journal)
+        return journal, IncrementalSender(
+            self._server, base, send=self._send_and_report, journal=journal
+        )
+
+    def _send_and_report(self, payload: SessionPayload, url: str) -> UploadResult:
+        """Envoie un lot, et montre à la fenêtre ce qui vient de partir.
+
+        Demandé par Maxime le 06/08/2026, à la place d'un lien vers la
+        politique de confidentialité : l'onglet Envois montre le paquet
+        réel, poids et contenu, pas une description de ce qu'il contient.
+
+        Le contenu est publié **avant** l'envoi, pas après : un envoi qui
+        échoue a quand même tenté de partir avec ce contenu-là, et c'est
+        justement le cas où savoir ce qui a été TENTÉ compte le plus.
+        """
+        contenu = payload.to_json()
+        endpoint = url.rstrip("/") + "/v1/sessions"
+        horodatage = time.strftime("%H:%M:%S")
+        self._publish("paquet", (horodatage, len(contenu.encode("utf-8")), endpoint, contenu))
+        return send_session(payload, url)
 
     def _send_apart(
         self, sender: IncrementalSender, measures: Sequence[MeasurePayload], dropped: int
@@ -546,7 +566,7 @@ class MeasuringSession:
                 )
                 continue
 
-            résultat = send_session(reste, self._server)
+            résultat = self._send_and_report(reste, self._server)
             if not résultat.ok and résultat.answered:
                 # Le serveur a répondu et n'a rien enregistré : réessayer plus
                 # tard ne peut fabriquer aucun doublon, donc le journal reste.
@@ -621,7 +641,7 @@ class MeasuringSession:
         elif self._server:
             # Pas de journal, donc rien n'est parti pendant la session : le lot
             # entier peut partir sans risque de doublon.
-            résultat = send_session(lot, self._server)
+            résultat = self._send_and_report(lot, self._server)
             message += (
                 f" — envoyé, {résultat.stored} enregistrées"
                 if résultat.ok

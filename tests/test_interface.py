@@ -39,6 +39,8 @@ from rubin.interface import (
     format_measure_line,
     format_note_placeholder,
     format_other_quests,
+    format_packet_header,
+    format_packet_size,
     format_personal_best,
     format_quest_times,
     format_ranking,
@@ -801,6 +803,28 @@ class TestTemoinDeConnexion:
         # quatrième vert voisin du premier ne se distinguerait de rien.
         for balise in LINK_TAGS.values():
             assert balise in COLORS
+
+
+class TestOngletEnvois:
+    """Les paquets réellement envoyés, poids et contenu, dans l'onglet Envois.
+
+    Demandé par Maxime le 06/08/2026, à la place du lien vers la politique de
+    confidentialité : montrer les paquets eux-mêmes plutôt qu'en décrire la
+    teneur.
+    """
+
+    def test_format_packet_size_en_octets_sous_le_kilo(self) -> None:
+        assert format_packet_size(842) == "842 octets"
+
+    def test_format_packet_size_en_kilo_au_dela(self) -> None:
+        assert format_packet_size(4200) == "4.2 Ko"
+
+    def test_format_packet_header_porte_le_moment_le_poids_et_la_cible(self) -> None:
+        en_tête = format_packet_header("14:32:07", 842, "/v1/sessions")
+
+        assert "14:32:07" in en_tête
+        assert "842 octets" in en_tête
+        assert "/v1/sessions" in en_tête
 
 
 def _classee(chain: int, position: int, seconds: float, samples: int = 3) -> RankedQuest:

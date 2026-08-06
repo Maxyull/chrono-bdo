@@ -55,6 +55,23 @@ def format_duration(seconds: float) -> str:
     return f"{minutes} min {reste:02d} s" if minutes else f"{reste} s"
 
 
+def format_packet_size(size_bytes: int) -> str:
+    """La taille d'un paquet envoyé au serveur, lisible.
+
+    Un lot de session tient dans quelques centaines d'octets la plupart du
+    temps : le seuil au kilo-octet sert surtout à ce qu'une session très
+    longue, aux dizaines de mesures d'un coup, reste lisible elle aussi.
+    """
+    if size_bytes < 1000:
+        return f"{size_bytes} octets"
+    return f"{size_bytes / 1000:.1f} Ko"
+
+
+def format_packet_header(at: str, size_bytes: int, endpoint: str) -> str:
+    """L'en-tête d'un paquet dans l'onglet Envois : quand, combien, où."""
+    return f"--- {at}, {format_packet_size(size_bytes)}, vers {endpoint} ---"
+
+
 def running_seconds(started_at: float | None, now: float) -> float | None:
     """Le temps écoulé sur la quête en cours, ou `None` si aucune n'est ouverte.
 

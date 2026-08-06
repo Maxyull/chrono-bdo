@@ -79,6 +79,7 @@ from .presentation import (
     format_measure_line,
     format_note_placeholder,
     format_other_quests,
+    format_packet_header,
     format_personal_best,
     format_quest_times,
     format_ranking,
@@ -117,10 +118,6 @@ WINDOW_SIZE: Final = (470, 820)
 #: seconde suffisent : c'est déjà la cadence de capture, et l'œil n'en demande
 #: pas plus sur du texte.
 REFRESH_MS: Final = 125
-
-#: Ce que le lien « voir ce qui est envoyé » ouvre, sous le témoin de
-#: connexion. La même adresse que celle citée dans le README et `ETAT.md`.
-CONFIDENTIALITY_URL: Final = "https://maxyull.fr/confidentialite.html"
 
 #: Intervalle entre deux vérifications de version, en millisecondes.
 #:
@@ -330,17 +327,16 @@ class RubinApp:
         self._lien.pack(anchor="w", pady=(4, 0))
 
         # L'adresse elle-même n'est plus écrite en toutes lettres dans
-        # `_lien` (demandé par Maxime le 06/08/2026), mais reste accessible
-        # d'un clic : la politique de confidentialité dit ce qui part vraiment
-        # vers le serveur, sans obliger à la relire depuis le README.
-        self._confidentialite = ttk.Label(
+        # `_lien` (demandé par Maxime le 06/08/2026). Ce lien-ci n'ouvre plus
+        # une page à lire, mais l'onglet Envois : montrer les paquets réels,
+        # poids et contenu, plutôt qu'une description de ce qu'ils
+        # contiennent. Revu le 06/08/2026, voir `_build_envois`.
+        self._voir_envois = ttk.Label(
             cadre, text="voir ce qui est envoyé", foreground=COLORS["accent"],
             background=COLORS["fond"], font=(FAMILY, 9), cursor="hand2",
         )
-        self._confidentialite.pack(anchor="w")
-        self._confidentialite.bind(
-            "<Button-1>", lambda _e: webbrowser.open(CONFIDENTIALITY_URL)
-        )
+        self._voir_envois.pack(anchor="w")
+        self._voir_envois.bind("<Button-1>", self._show_envois_tab)
 
         # Le bouton de mise à jour, invisible tant qu'aucune n'est connue.
         # Demandé par Maxime le 06/08/2026 : un clic doit suffire, contre le
@@ -360,10 +356,12 @@ class RubinApp:
         self._session = ttk.Frame(carnet)
         self._classement = ttk.Frame(carnet)
         self._zones = ttk.Frame(carnet)
+        self._envois = ttk.Frame(carnet)
         self._reglages = ttk.Frame(carnet)
         carnet.add(self._session, text="Session")
         carnet.add(self._classement, text="Classement")
         carnet.add(self._zones, text="Zones")
+        carnet.add(self._envois, text="Envois")
         carnet.add(self._reglages, text="Réglages")
 
         # L'infobulle du carnet ne parle QUE de l'onglet Zones : c'est un seul
@@ -374,6 +372,7 @@ class RubinApp:
         self._build_session()
         self._build_ranking()
         self._build_zones()
+        self._build_envois()
         self._build_settings()
 
         # Entrer dans l'onglet des zones déclenche la lecture. Voir
@@ -881,6 +880,42 @@ class RubinApp:
             self._zone_readings[clé] = lecture
 
         self.refresh_zones()
+
+    def _show_envois_tab(self, _event: object = None) -> None:
+        self._carnet.select(self._envois)  # type: ignore[no-untyped-call]
+
+    def _build_envois(self) -> None:
+        """L'onglet Envois : les paquets réellement envoyés au serveur, en clair.
+
+        Demandé par Maxime le 06/08/2026, à la place d'un lien vers la
+        politique de confidentialité : montrer les paquets eux-mêmes, poids
+        et contenu, plutôt qu'en décrire la teneur. Un texte peut mentir sans
+        que personne ne le remarque ; le contenu réellement posté sur le fil
+        ne peut pas.
+
+        Ne montre que les envois **de cette session**, jamais reconstruits ni
+        relus depuis le disque : la fenêtre affiche ce qu'elle fait, pas un
+        historique. Vide tant qu'aucune mesure n'est encore partie.
+        """
+        dedans = self._scrollable(self._envois)
+        ttk.Label(
+            dedans, text="CE QUI EST ENVOYÉ", style="Section.TLabel", anchor="w"
+        ).pack(fill="x", padx=12, pady=(12, 2))
+        ttk.Label(
+            dedans,
+            text=(
+                "Chaque paquet réellement posté au serveur pendant cette\n"
+                "session, poids et contenu. Rien d'autre ne part jamais."
+            ),
+            style="Faible.TLabel", anchor="w", justify="left",
+        ).pack(fill="x", padx=12)
+        self._envois_etat = ttk.Label(
+            dedans, text="rien envoyé pour l'instant",
+            style="Faible.TLabel", anchor="w",
+        )
+        self._envois_etat.pack(fill="x", padx=12, pady=(4, 0))
+        self._envois_texte = self._text_box(dedans, height=16, mono=True)
+        self._envois_texte.pack(fill="both", expand=True, padx=12, pady=(4, 12))
 
     def _build_settings(self) -> None:
         self._vars: dict[str, tk.DoubleVar] = {}
@@ -1748,6 +1783,8 @@ class RubinApp:
             self._show_update_failed()
         elif genre == "maj_lancee":
             self._show_update_launched()
+        elif genre == "paquet":
+            self._show_packet(*charge)
         elif genre == "classement":
             self._ranking = charge
             self._refresh_ranking()
@@ -1899,6 +1936,21 @@ class RubinApp:
         """
         self._maj_bouton.config(text="installation en cours…", state="disabled")
         self.root.after(1500, self.close)
+
+    def _show_packet(self, at: str, size: int, endpoint: str, content: str) -> None:
+        """Ajoute un paquet réellement envoyé à l'onglet Envois, en clair.
+
+        Demandé par Maxime le 06/08/2026, à la place d'un lien vers la
+        politique de confidentialité. Publié par
+        `MeasuringSession._send_and_report`, juste avant chaque tentative
+        d'envoi, réussie ou non.
+        """
+        self._envois_etat.config(text="")
+        self._envois_texte.config(state="normal")
+        self._envois_texte.insert("end", format_packet_header(at, size, endpoint) + "\n")
+        self._envois_texte.insert("end", content + "\n\n")
+        self._envois_texte.config(state="disabled")
+        self._envois_texte.see("end")
 
     def _over_zones_tab(self, x: int, y: int) -> bool:
         """La souris est-elle sur l'étiquette de l'onglet Zones ?
