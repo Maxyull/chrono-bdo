@@ -7,6 +7,27 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+### Corrigé
+
+- **Le bouton « Envoyer le rapport » ne pouvait rien envoyer en production**,
+  alors qu'il était la fonctionnalité phare de la v0.6.0. Mesuré le
+  07/08/2026, quelques minutes après avoir déployé cette version :
+  `POST /v1/rapport` rendait 503 pour les deux applications. Les deux
+  webhooks étaient bien posés dans le fichier de secrets depuis la veille, et
+  `serveur/deploiement/deployer.sh` n'avait **aucune ligne** pour les porter
+  jusqu'à l'unité systemd.
+
+  Rien ne le disait, et c'est le pire de l'affaire : un rapport qui ne part
+  pas ne se voit ni côté joueur, où il n'y a rien à voir, ni côté salon
+  Discord, où il n'arrive simplement rien.
+
+  Le script les transporte désormais, et **annonce leur état à voix haute**
+  pendant le déploiement, comme il le faisait déjà pour le rattachement
+  Discord. `serveur/tests/test_deploiement.py` vérifie que toute variable lue
+  par le serveur est soit transportée, soit explicitement reconnue comme
+  ayant un bon défaut : ajouter une variable oblige maintenant à trancher
+  tout de suite.
+
 ## [0.6.0] - 2026-08-06
 
 ### Ajouté
