@@ -371,9 +371,18 @@ quel que soit son intérêt.
 
 ### À écrire
 
-- **Le noyau partagé `bdo-ocr-core`**, jamais extrait. Butin et Rubin ont
-  chacun leur normalisation, et une correction faite ici ne profite pas à
-  l'autre. Voir `../COORDINATION.md`, l'autre session a répondu.
+- ✅ **Le noyau partagé `bdo-ocr-core`, extrait le 06/08/2026.** Nouveau dépôt
+  public [Maxyull/bdo-ocr-core](https://github.com/Maxyull/bdo-ocr-core)
+  (MIT, sa propre CI), avec `normalize`, `scroll` et `stability`. Branché
+  côté butin (PR #58/#59, 696 tests toujours verts, aucun test modifié).
+  ⚠️ **Pas branché côté rubin** : mesuré sur les 18 999 quêtes réelles avant
+  de décider (pas de suppositions), remplacer `fold` de rubin par celui du
+  socle casserait 27 quêtes du référentiel FR jamais traduites du coréen
+  (elles s'effondrent toutes sur la même clé vide, le fold partagé ne
+  gardant que `[a-z0-9 ]`). `fold` de rubin reste donc inchangé, et `scroll`
+  /`stability` n'ont aujourd'hui aucun usage ici (rien n'y suit un
+  défilement de texte à l'écran) : la dépendance n'a pas été ajoutée pour
+  ne pas être un import mort. Détail complet dans `../COORDINATION.md`.
 - **Un site de consultation.** Le classement n'existe qu'en JSON. C'est ce qui
   fera venir les joueurs, mais il n'aura d'intérêt qu'avec de la matière à
   montrer.
