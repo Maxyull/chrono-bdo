@@ -406,11 +406,13 @@ quel que soit son intérêt.
 - ✅ **Bouton « Envoyer le rapport », fait le 06/08/2026.** Dans Réglages,
   sous COMPTE DISCORD. Empaquette la fin de `echecs/erreurs.log`, envoie au
   serveur (`POST /v1/rapport`), qui relaie sur Discord via un webhook qu'il
-  est seul à connaître (`RUBIN_RAPPORT_WEBHOOK`, `rubin_serveur/rapport.py`)
-  — jamais exposé dans l'exécutable distribué. 503 tant que le webhook
-  n'est pas posé : c'est l'état réel en production aujourd'hui, le salon
-  Discord et le webhook restent à créer côté `discord-bdo` (demande laissée
-  dans `../COORDINATION.md`).
+  est seul à connaître — jamais exposé dans l'exécutable distribué. Butin
+  appelle le même endpoint avec son propre bouton (coordination via
+  `../COORDINATION.md`) : `REPORT_WEBHOOKS` porte un webhook par
+  application (`RUBIN_RAPPORT_WEBHOOK`, `BUTIN_RAPPORT_WEBHOOK`), `app`
+  absent ou inconnu retombe sur celui de rubin. 503 tant qu'aucun des deux
+  n'est posé : c'est l'état réel en production aujourd'hui, les salons
+  Discord et les webhooks restent à créer côté `discord-bdo`.
 - **Un site de consultation.** Le classement n'existe qu'en JSON. C'est ce qui
   fera venir les joueurs, mais il n'aura d'intérêt qu'avec de la matière à
   montrer.
