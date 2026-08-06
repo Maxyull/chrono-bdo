@@ -905,6 +905,38 @@ def format_category_header(
     return f"{name}   —   {total} {chaîne}"
 
 
+#: Marge ajoutée à la largeur mesurée d'une ligne : la flèche de dépliage,
+#: l'indentation du niveau, et de quoi ne pas coller le dernier caractère au
+#: bord. Mesurée à l'œil sur la vraie fenêtre, pas calculée.
+COLUMN_PADDING: Final = 28
+
+
+def column_width(
+    widths: Sequence[int], available: int, padding: int = COLUMN_PADDING
+) -> int:
+    """La largeur à donner à la colonne de l'arbre, en pixels.
+
+    ⚠️ **Sans elle, les noms longs sont coupés en silence.** Mesuré le
+    07/08/2026 sur les 349 vraies chaînes : 12 en-têtes sur 180 dépassent les
+    394 pixels de l'arbre, la pire à 517, et
+    « [Carrefour] Les lamentations du président de la ligue des marchands »
+    se lisait « ...ligue des marc ». Un nom tronqué au milieu d'un mot ne se
+    distingue pas d'un nom qui finit là, et c'est le nom qui sert à retrouver
+    la quête dans le jeu.
+
+    Rend au minimum la place disponible, jamais moins : une colonne plus
+    étroite que l'arbre laisserait une bande vide à droite, et ferait
+    apparaître une barre de défilement horizontale qui ne sert à rien.
+
+    `widths` est en pixels, mesurés par l'appelant avec la police réelle du
+    composant. Les passer déjà mesurés est ce qui garde cette fonction pure,
+    donc vérifiable sans écran : la mesure d'une police, elle, exige Tk.
+    """
+    if not widths:
+        return available
+    return max(available, max(widths) + padding)
+
+
 def format_listed_quest(entry: ListedQuest) -> str:
     """Une ligne de quête dans la liste par chaîne : son nom, son assise."""
     if entry.samples <= 0:

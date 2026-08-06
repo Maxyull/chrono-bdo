@@ -29,6 +29,7 @@ import webbrowser
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
+from tkinter import font as tkfont
 from tkinter import messagebox, ttk
 from typing import Any, Final
 
@@ -72,6 +73,7 @@ from .presentation import (
     ZoneState,
     build_report,
     chain_sections,
+    column_width,
     demo_active,
     demo_ranking,
     describe_conflict,
@@ -147,6 +149,11 @@ UPDATE_POLL_MS: Final = 5 * 60 * 1000
 #: Le Discord du projet, demandé par Maxime le 06/08/2026.
 DISCORD_URL: Final = "https://discord.gg/qCuvN2Zna7"
 
+#: L'indentation d'un niveau de l'arbre, en pixels. C'est le défaut de
+#: `ttk.Treeview` : il n'est pas lisible depuis le composant, donc recopié
+#: ici plutôt que deviné à chaque usage. Sert à `_fit_chain_column`, qui
+#: doit compter l'indentation dans la largeur d'une ligne dépliée.
+TREE_INDENT: Final = 20
 #: Le dossier des images de la fenêtre.
 #:
 #: ⚠️ Tout fichier posé ici doit être déclaré dans `donnees`, au début de
@@ -320,6 +327,9 @@ class RubinApp:
         #: redemander : voir `_show_update_status`.
         self._update_status: UpdateStatus | None = None
 
+        #: La police de l'arbre des chaînes, construite au premier besoin.
+        #: Voir `_tree_font`.
+        self._police_arbre: tkfont.Font | None = None
         #: Vrai entre le clic sur « Se connecter avec Discord » et la fin de
         #: la fenêtre d'attente : le joueur est parti autoriser dans son
         #: navigateur. Sert à ne pas écraser la consigne `DISCORD_WAITING`
@@ -835,9 +845,26 @@ class RubinApp:
         # seule colonne d'arbre comme le veut cette liste.
         self._chains = ttk.Treeview(cadre, show="tree", height=14, selectmode="none")
         barre = ttk.Scrollbar(cadre, orient="vertical", command=self._chains.yview)
-        self._chains.configure(yscrollcommand=barre.set)
-        self._chains.pack(side="left", fill="both", expand=True)
-        barre.pack(side="right", fill="y")
+        # ⚠️ Une barre HORIZONTALE aussi, depuis le 07/08/2026. Mesuré sur les
+        # 349 vraies chaînes : 12 en-têtes sur 180 sont plus larges que
+        # l'arbre, et « [Carrefour] Les lamentations du président de la ligue
+        # des marchands » se lisait « ...ligue des marc ». Un nom coupé au
+        # milieu d'un mot ne se distingue pas d'un nom qui finit là, et c'est
+        # ce nom qui sert à retrouver la quête dans le jeu.
+        barre_h = ttk.Scrollbar(cadre, orient="horizontal", command=self._chains.xview)
+        self._chains.configure(yscrollcommand=barre.set, xscrollcommand=barre_h.set)
+        # `stretch=False` est ce qui rend le défilement horizontal possible :
+        # une colonne étirée épouse la largeur du composant, donc ne dépasse
+        # jamais, donc `xview` n'a rien à faire défiler. La largeur elle-même
+        # est recalculée à chaque remplissage, voir `_fit_chain_column`.
+        self._chains.column("#0", stretch=False)
+        # `grid` et non `pack` : trois composants sur deux axes, ce que `pack`
+        # ne sait pas placer sans cadres imbriqués supplémentaires.
+        self._chains.grid(row=0, column=0, sticky="nsew")
+        barre.grid(row=0, column=1, sticky="ns")
+        barre_h.grid(row=1, column=0, sticky="ew")
+        cadre.rowconfigure(0, weight=1)
+        cadre.columnconfigure(0, weight=1)
         # Les mêmes trois balises que partout ailleurs dans ce projet : voir
         # `_tag_for` et la légende de l'onglet Session. Aucune couleur neuve.
         for balise in COVERAGE_TAGS:
@@ -1827,6 +1854,60 @@ class RubinApp:
                 str(chain.number) for chain, _entrées in autres
             )
 
+        self._fit_chain_column()
+
+    def _tree_font(self) -> tkfont.Font:
+        """La police réelle de l'arbre, pour mesurer la largeur d'une ligne.
+
+        ⚠️ **`Style.lookup` rend une DESCRIPTION, pas un nom de police.** Ici,
+        `{Segoe UI} 10`, que `tkfont.nametofont` refuse : « named font
+        {Segoe UI} 10 does not already exist ». `tkfont.Font(font=...)`, lui,
+        accepte les deux formes.
+
+        L'erreur n'est apparue qu'en lançant la vraie fenêtre le 07/08/2026 :
+        les tests, `ruff` et `mypy` passaient tous, et la colonne restait à sa
+        largeur par défaut de 200 pixels. `_show_chains` tourne dans un rappel
+        Tk, qui imprime la trace et poursuit : rien ne s'arrêtait, rien ne
+        remontait, la fonctionnalité était simplement absente.
+
+        Gardée sur l'instance : un objet de police par remplissage, et
+        l'arbre se remplit à chaque ouverture de chaîne.
+        """
+        if self._police_arbre is None:
+            description = ttk.Style().lookup("Treeview", "font") or "TkDefaultFont"
+            self._police_arbre = tkfont.Font(font=description)
+        return self._police_arbre
+
+    def _fit_chain_column(self) -> None:
+        """Élargit la colonne de l'arbre à ce qu'elle doit vraiment montrer.
+
+        Appelée après chaque remplissage, y compris à l'ouverture d'une
+        chaîne : ses quêtes sont plus longues que son en-tête, et elles
+        arrivent après coup (voir `_chains_open`). Une largeur calculée une
+        seule fois, au départ, recouperait donc tout ce qui se déplie ensuite.
+
+        Ne mesure que les nœuds **posés**, jamais les 3 924 quêtes du
+        catalogue : l'arbre est justement construit pour ne pas les porter
+        toutes, et les mesurer ici annulerait ce gain.
+
+        Le calcul lui-même est dans `column_width`, donc vérifiable sans
+        écran. Ici, seule la mesure de la police exige Tk.
+        """
+        police = self._tree_font()
+        largeurs: list[int] = []
+
+        def parcourir(parent: str, profondeur: int) -> None:
+            for iid in self._chains.get_children(parent):
+                texte = str(self._chains.item(iid, "text"))
+                if texte:
+                    largeurs.append(police.measure(texte) + profondeur * TREE_INDENT)
+                parcourir(iid, profondeur + 1)
+
+        parcourir("", 0)
+        self._chains.column(
+            "#0", width=column_width(largeurs, self._chains.winfo_width())
+        )
+
     def _insert_chain_node(
         self, parent: str, chain: Chain, entrées: tuple[ListedQuest, ...]
     ) -> None:
@@ -1861,6 +1942,7 @@ class RubinApp:
                 chain, entrées = self._chain_sections[membre]
                 self._insert_chain_node(iid, chain, entrées)
             self._chains_loaded.add(iid)
+            self._fit_chain_column()
             return
         if iid not in self._chain_sections:
             return
@@ -1879,7 +1961,9 @@ class RubinApp:
             # la fiche de recherche individuelle. Voir `_go_to_ranking`.
             self._chains.tag_bind(tag_lien, "<Button-1>", self._go_to_ranking(entrée.quest))
         self._chains_loaded.add(iid)
-        self._chains_loaded.add(iid)
+        # Les quêtes qui viennent d'arriver sont plus longues que l'en-tête de
+        # leur chaîne : la colonne se réajuste sur ce qui est réellement posé.
+        self._fit_chain_column()
 
     def _help(self, which: str) -> Callable[[], None]:
         """Ouvre l'exemple de ce que cette zone doit contenir."""

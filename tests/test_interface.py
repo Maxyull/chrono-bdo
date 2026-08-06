@@ -28,6 +28,7 @@ from rubin.interface import (
     ZoneState,
     build_report,
     chain_sections,
+    column_width,
     demo_active,
     demo_ranking,
     describe_conflict,
@@ -742,6 +743,27 @@ class TestQuetesHorsPerimetre:
         assert format_other_quests(0) is None
 
 
+class TestLargeurDeColonne:
+    """La colonne de l'arbre des chaînes, qui coupait les noms longs."""
+
+    def test_selargit_au_dela_de_la_place_disponible(self) -> None:
+        """Régression, mesuré le 07/08/2026 sur les 349 vraies chaînes : 12
+        en-têtes sur 180 dépassaient les 394 pixels de l'arbre, la pire à 517.
+        « [Carrefour] Les lamentations du président de la ligue des marchands »
+        se lisait « ...ligue des marc ». Un nom coupé au milieu d'un mot ne se
+        distingue pas d'un nom qui finit là, et c'est le nom qui sert à
+        retrouver la quête dans le jeu."""
+        assert column_width([200, 517, 300], available=394, padding=28) == 545
+
+    def test_ne_retrecit_jamais_en_deca_de_la_place_disponible(self) -> None:
+        """Une colonne plus étroite que l'arbre laisserait une bande vide à
+        droite, et ferait apparaître une barre de défilement horizontale qui
+        n'aurait rien à faire défiler."""
+        assert column_width([100, 120], available=394) == 394
+
+    def test_un_arbre_vide_prend_la_place_disponible(self) -> None:
+        # Avant la première réponse du serveur, il n'y a rien à mesurer.
+        assert column_width([], available=394) == 394
 class TestEtatDuCompteDiscord:
     """Ce que la fenêtre écrit sous le bouton « Se connecter avec Discord »."""
 
