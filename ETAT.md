@@ -403,6 +403,14 @@ quel que soit son intérêt.
   /`stability` n'ont aujourd'hui aucun usage ici (rien n'y suit un
   défilement de texte à l'écran) : la dépendance n'a pas été ajoutée pour
   ne pas être un import mort. Détail complet dans `../COORDINATION.md`.
+- ✅ **Bouton « Envoyer le rapport », fait le 06/08/2026.** Dans Réglages,
+  sous COMPTE DISCORD. Empaquette la fin de `echecs/erreurs.log`, envoie au
+  serveur (`POST /v1/rapport`), qui relaie sur Discord via un webhook qu'il
+  est seul à connaître (`RUBIN_RAPPORT_WEBHOOK`, `rubin_serveur/rapport.py`)
+  — jamais exposé dans l'exécutable distribué. 503 tant que le webhook
+  n'est pas posé : c'est l'état réel en production aujourd'hui, le salon
+  Discord et le webhook restent à créer côté `discord-bdo` (demande laissée
+  dans `../COORDINATION.md`).
 - **Un site de consultation.** Le classement n'existe qu'en JSON. C'est ce qui
   fera venir les joueurs, mais il n'aura d'intérêt qu'avec de la matière à
   montrer.
