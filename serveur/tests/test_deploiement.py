@@ -51,6 +51,22 @@ OBLIGATOIRES = {
     "mais qui n'est pas l'état visé",
 }
 
+#: Parmi les obligatoires, celles qui viennent du **fichier de secrets local**
+#: et doivent donc traverser l'appel `ssh` pour exister sur le VPS.
+#:
+#: Les autres n'en ont pas besoin, et il faut savoir pourquoi plutôt que de
+#: l'exiger de tout le monde : `RUBIN_DB` est reconstruite à distance depuis
+#: les identifiants Postgres, qui traversent ; `RUBIN_LATEST` est dérivée des
+#: sources déjà déployées sur le VPS ; `RUBIN_MIN_CLIENT` est écrite en dur
+#: dans l'unité.
+VENANT_DES_SECRETS = {
+    "RUBIN_DISCORD_ID",
+    "RUBIN_DISCORD_SECRET",
+    "RUBIN_DISCORD_ETAT",
+    "RUBIN_RAPPORT_WEBHOOK",
+    "BUTIN_RAPPORT_WEBHOOK",
+}
+
 #: Les variables qu'on choisit **délibérément** de ne pas transporter, parce
 #: que leur valeur par défaut dans le code est la bonne en production. Toute
 #: variable doit être dans cette liste ou dans `OBLIGATOIRES` : c'est ce qui
@@ -92,6 +108,46 @@ class TestVariablesTransportees:
             f"{nom} n'est pas posée dans l'unité systemd par deployer.sh. "
             f"{OBLIGATOIRES[nom]}."
         )
+
+    @pytest.mark.parametrize("nom", sorted(VENANT_DES_SECRETS))
+    def test_chaque_secret_local_traverse_le_ssh(self, nom: str) -> None:
+        """⚠️ **Le chemin a DEUX moitiés, et la première version de ce fichier
+        n'en vérifiait qu'une.**
+
+        `deployer.sh` s'exécute sur deux machines : un préambule local qui lit
+        le fichier de secrets, puis un `bash -s` distant qui écrit l'unité
+        systemd. Une variable posée dans l'unité mais non passée à `ssh`
+        n'existe pas sur le VPS.
+
+        Constaté le 07/08/2026, sur ce correctif lui-même : les onze tests
+        passaient, et le déploiement s'est arrêté net sur
+        `RUBIN_RAPPORT_WEBHOOK: unbound variable`. Un test vert pendant que la
+        chose ne marche pas, pour la deuxième fois dans la même heure.
+
+        ⚠️ **Et la première version de CE test-ci mentait aussi.** Elle
+        cherchait le nom dans tout le préambule local, où il figure déjà, à la
+        ligne qui lui donne sa valeur par défaut :
+        `RUBIN_RAPPORT_WEBHOOK="${RUBIN_RAPPORT_WEBHOOK:-}"`. Piégé en
+        retirant la ligne de l'appel `ssh`, il restait vert. Trois bancs
+        menteurs dans la même journée, tous démasqués par le même geste :
+        casser exprès ce qu'ils sont censés garder.
+
+        La fenêtre regardée est donc **l'appel `ssh` seul**, de la commande
+        jusqu'au `'bash -s'` qui ouvre le script distant.
+        """
+        script = DEPLOYEUR.read_text(encoding="utf-8")
+        debut = script.index("ssh -i")
+        appel_ssh = script[debut : script.index("'bash -s'", debut)]
+        assert f'{nom}="$' in appel_ssh, (
+            f"{nom} n'est pas passée au shell distant par l'appel ssh : elle "
+            f"sera vide sur le VPS, ou fera échouer le déploiement sous "
+            f"`set -u`. {OBLIGATOIRES[nom]}."
+        )
+
+    def test_les_secrets_locaux_sont_tous_obligatoires(self) -> None:
+        """Garde-fou du test précédent : une variable citée là et oubliée
+        dans `OBLIGATOIRES` ne serait vérifiée qu'à moitié."""
+        assert set(OBLIGATOIRES) >= VENANT_DES_SECRETS
 
     def test_aucune_variable_nest_laissee_sans_decision(self) -> None:
         """Toute variable lue par le serveur doit être soit transportée, soit
