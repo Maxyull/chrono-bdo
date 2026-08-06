@@ -296,10 +296,10 @@ Les versions publiées sont construites par `empaquetage/construire.py` à parti
 de l'état du dépôt, et l'empreinte SHA-256 de chaque fichier (archive comme
 installateur) est publiée à côté de lui.
 
-La signature de code est assurée par [SignPath.io](https://signpath.io/), au
-moyen d'un certificat fourni par la [SignPath Foundation](https://signpath.org/),
-qui l'offre gratuitement aux projets libres. **La demande est en cours** : tant
-qu'elle n'a pas abouti, ce qui suit s'applique.
+La signature de code est demandée à la [SignPath Foundation](https://signpath.org/),
+qui l'offre gratuitement aux projets libres. **La demande a été envoyée le
+05/08/2026, son issue est encore inconnue.** Tant qu'elle n'a pas abouti, ce
+qui suit s'applique.
 
 ⚠️ **L'exécutable n'est pas encore signé.** Windows et certains antivirus
 peuvent donc l'annoncer comme provenant d'un éditeur inconnu, ce qui est un
