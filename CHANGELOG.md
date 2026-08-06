@@ -7,7 +7,35 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+### Ajouté
+
+- **Rubin porte enfin son icône**, dans l'explorateur, la barre des tâches, la
+  barre de titre et sur l'installateur. Jusqu'ici, l'exécutable gardait
+  l'icône par défaut de PyInstaller et l'installateur celle d'Inno Setup :
+  Rubin ressemblait à n'importe quel programme, ce qu'un testeur voit avant
+  même de l'avoir lancé. Le dessin vient du kit visuel commun
+  (`D:\DEV\bdo\logos\kit\final`). Sept tailles dessinées dans le `.ico`, de 16
+  à 256, et c'est lui qui sert plutôt que le PNG : Tk réduisant lui-même un
+  PNG de 256 rendait le diamant illisible à 16 px, vérifié en photographiant
+  la barre de titre.
+- **Un vrai bouton « Rejoindre le Discord »**, avec le **vrai logo Discord**
+  et son bleu officiel, à la place de la ligne de texte rouge qui se perdait
+  parmi les deux autres. Demandé par Maxime le 06/08/2026 : « bien visible
+  avec l'icône Discord, pas un truc dessiné ». Une marque approximative se
+  lit comme une imitation, ce qui donne l'impression contraire de celle
+  qu'on cherche.
+
 ### Corrigé
+
+- **`src/rubin/interface/data` n'était déclaré nulle part dans `rubin.spec`**,
+  donc aucun fichier de ce dossier n'entrait dans l'exécutable. Trouvé le
+  06/08/2026 en fouillant l'archive construite, pas en s'en servant. Même
+  motif que `tkinter` retiré des `excludes` (#77) : un exécutable qui se
+  construit sans erreur et ne contient pas ce qu'on croit.
+
+  `tests/test_empaquetage.py` vérifie désormais que **chaque** dossier de
+  données du paquet est déclaré, donc l'oubli suivant tombera avant la
+  release et non des mois après en ouvrant un zip.
 
 - **Le bouton « Envoyer le rapport » ne pouvait rien envoyer en production**,
   alors qu'il était la fonctionnalité phare de la v0.6.0. Mesuré le
@@ -27,6 +55,20 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
   par le serveur est soit transportée, soit explicitement reconnue comme
   ayant un bon défaut : ajouter une variable oblige maintenant à trancher
   tout de suite.
+
+### Su, et laissé tel quel
+
+- **Les deux illustrations du guide n'arrivent chez aucun joueur**, et le
+  correctif ci-dessus n'y change rien : `exemple-bandeau.png` et
+  `exemple-suivi.png` ne sont pas suivies par git du tout. `.gitignore`
+  ignore `*.png` dans tout le dépôt, exprès, parce que les captures de jeu
+  portent des pseudonymes de joueurs tiers ; seules des exceptions vérifiées
+  une par une y échappent. Le guide affiche donc son texte sans ses images,
+  sans le dire, `help.py` gardant le coup par un `chemin.is_file()`.
+
+  Les ajouter demande de vérifier d'abord qu'aucun joueur tiers n'y figure.
+  C'est une décision qui appartient à Maxime, pas au code : voir
+  `src/rubin/interface/data/LISEZ-MOI.md`.
 
 ## [0.6.0] - 2026-08-06
 

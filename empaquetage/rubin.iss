@@ -42,6 +42,10 @@ WizardStyle=modern
 CloseApplications=force
 RestartApplications=yes
 UninstallDisplayIcon={app}\rubin.exe
+; L'icône de l'installateur lui-même, celle que le testeur voit dans ses
+; téléchargements avant d'avoir rien installé. Sans elle, Inno Setup pose la
+; sienne, la même pour tous les programmes du monde compilés avec lui.
+SetupIconFile=..\src\rubin\interface\data\rubin.ico
 
 [Languages]
 Name: "french"; MessagesFile: "compiler:Languages\French.isl"
