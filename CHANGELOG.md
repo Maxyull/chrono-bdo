@@ -46,6 +46,19 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
   principales (`Catalog.chains` filtre sur `KIND_MAIN` depuis le début) :
   pas de séparation « Principales »/« Autres » à faire.
 
+### Corrigé
+
+- **Le bouton « Envoyer le rapport » n'aurait rien envoyé du tout.** Les deux
+  salons de rapports (`#rubin-bugs` et `#butin-bugs`) sont des **forums**, et
+  un webhook de forum refuse un message qui n'ouvre pas de fil : `POST
+  {"content": ...}` seul rend 400, code 220001. Mesuré contre l'API réelle
+  par la session `discord-bdo` le 06/08/2026, sur les deux webhooks, avant
+  que le premier rapport n'ait été envoyé. Chaque rapport ouvre désormais son
+  propre fil, nommé `🐛 {application} — {joueur}`. Le nom de fil est un
+  argument **obligatoire** de `send_report`, sans valeur par défaut : comme
+  cette fonction ne lève jamais, un oubli serait ressorti dans le seul
+  journal du serveur, et le joueur aurait vu son rapport partir dans le vide.
+
 ## [0.5.9] - 2026-08-06
 
 ### Corrigé

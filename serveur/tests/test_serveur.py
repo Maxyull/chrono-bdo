@@ -4,10 +4,11 @@ import time
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+import requests
 from fastapi.testclient import TestClient
 from rubin.protocol import PROTOCOL_VERSION, MeasurePayload, SessionPayload
 
-from rubin_serveur import main
+from rubin_serveur import main, rapport
 from rubin_serveur.storage import MIN_SAMPLES_PER_QUEST, WELL_MEASURED_AT, Storage
 
 
@@ -698,9 +699,11 @@ class TestRapportAvecWebhook:
         )
 
     def test_relaie_le_rapport(self, client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-        envoyes: list[tuple[str, str]] = []
+        envoyes: list[tuple[str, str, str]] = []
         monkeypatch.setattr(
-            main, "send_report", lambda url, message: envoyes.append((url, message)) or True
+            main,
+            "send_report",
+            lambda url, message, thread_name: envoyes.append((url, message, thread_name)) or True,
         )
 
         reponse = client.post(
@@ -710,10 +713,13 @@ class TestRapportAvecWebhook:
         assert reponse.status_code == 202
         assert reponse.json() == {"envoye": True}
         assert len(envoyes) == 1
-        url, message = envoyes[0]
+        url, message, fil = envoyes[0]
         assert url == "https://discord.com/api/webhooks/x"
         assert "le compteur a l'air faux" in message
         assert "joueur anonyme a" in message
+        # Le salon est un forum : sans nom de fil, Discord rend 400.
+        assert fil
+        assert "rubin" in fil
 
     def test_utilise_le_pseudonyme_rattache_sil_existe(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
@@ -723,7 +729,7 @@ class TestRapportAvecWebhook:
         même règle que pour le classement."""
         envoyes: list[str] = []
         monkeypatch.setattr(
-            main, "send_report", lambda url, message: envoyes.append(message) or True
+            main, "send_report", lambda url, message, thread_name: envoyes.append(message) or True
         )
         main.storage.link_discord("b" * 32, "9876", "Maxyull")
 
@@ -752,7 +758,7 @@ class TestRapportAvecWebhook:
     ) -> None:
         # Un échec côté Discord ne doit ni faire tomber le serveur ni rendre
         # une trace au visiteur, même principe que le rattachement de compte.
-        monkeypatch.setattr(main, "send_report", lambda url, message: False)
+        monkeypatch.setattr(main, "send_report", lambda url, message, thread_name: False)
         reponse = client.post("/v1/rapport", json={"joueur": "a" * 32, "contenu": "un souci"})
         assert reponse.status_code == 502
 
@@ -761,7 +767,9 @@ class TestRapportAvecWebhook:
     ) -> None:
         """Compatibilité : un appelant plus ancien qui n'envoie pas `app`."""
         urls: list[str] = []
-        monkeypatch.setattr(main, "send_report", lambda url, message: urls.append(url) or True)
+        monkeypatch.setattr(
+            main, "send_report", lambda url, message, thread_name: urls.append(url) or True
+        )
         reponse = client.post("/v1/rapport", json={"joueur": "a" * 32, "contenu": "x"})
         assert reponse.status_code == 202
         assert urls == ["https://discord.com/api/webhooks/x"]
@@ -772,7 +780,9 @@ class TestRapportAvecWebhook:
         """Un rapport égaré vaut mieux qu'un rapport perdu : voir la docstring
         de la route. Une valeur imprévue ne doit jamais rendre un 503."""
         urls: list[str] = []
-        monkeypatch.setattr(main, "send_report", lambda url, message: urls.append(url) or True)
+        monkeypatch.setattr(
+            main, "send_report", lambda url, message, thread_name: urls.append(url) or True
+        )
         reponse = client.post(
             "/v1/rapport", json={"joueur": "a" * 32, "contenu": "x", "app": "autre-chose"}
         )
@@ -797,7 +807,9 @@ class TestRapportChoixDuSalon:
             },
         )
         urls: list[str] = []
-        monkeypatch.setattr(main, "send_report", lambda url, message: urls.append(url) or True)
+        monkeypatch.setattr(
+            main, "send_report", lambda url, message, thread_name: urls.append(url) or True
+        )
 
         reponse = client.post(
             "/v1/rapport", json={"joueur": "a" * 32, "contenu": "x", "app": "butin"}
@@ -818,7 +830,9 @@ class TestRapportChoixDuSalon:
             {"rubin": "https://discord.com/api/webhooks/rubin", "butin": None},
         )
         urls: list[str] = []
-        monkeypatch.setattr(main, "send_report", lambda url, message: urls.append(url) or True)
+        monkeypatch.setattr(
+            main, "send_report", lambda url, message, thread_name: urls.append(url) or True
+        )
 
         reponse = client.post(
             "/v1/rapport", json={"joueur": "a" * 32, "contenu": "x", "app": "butin"}
@@ -835,3 +849,80 @@ class TestRapportChoixDuSalon:
             "/v1/rapport", json={"joueur": "a" * 32, "contenu": "x", "app": "butin"}
         )
         assert reponse.status_code == 503
+
+
+class TestWebhookDeForum:
+    """`send_report` lui-même, sans passer par la route.
+
+    Les tests de `TestRapportAvecWebhook` remplacent `send_report` par un
+    guetteur : ils prouvent que la route l'appelle bien, jamais ce qu'elle
+    envoie réellement à Discord. C'est exactement l'écart par lequel le
+    défaut ci-dessous est passé.
+    """
+
+    def test_le_paquet_porte_un_nom_de_fil(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        envoyes: list[dict[str, object]] = []
+
+        def faux_post(url: str, **kwargs: object) -> object:
+            envoyes.append(dict(kwargs.get("json") or {}))  # type: ignore[arg-type]
+            return _ReponseFactice(204)
+
+        monkeypatch.setattr(rapport.requests, "post", faux_post)
+
+        assert rapport.send_report(
+            "https://discord.com/api/webhooks/x", "coucou", thread_name="🐛 rubin — Maxyull"
+        )
+
+        assert envoyes == [{"content": "coucou", "thread_name": "🐛 rubin — Maxyull"}]
+
+    def test_un_nom_de_fil_trop_long_est_coupe_a_cent(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Régression : Discord rend 400 sur le message **entier** si le nom de
+        fil dépasse 100 caractères. Le pseudonyme Discord d'un joueur n'est
+        borné qu'à 64 caractères côté base (`players.discord_name`), et rien
+        d'autre ne coupe ce titre : un pseudonyme long suffisait à faire
+        perdre le rapport."""
+        envoyes: list[dict[str, object]] = []
+
+        def faux_post(url: str, **kwargs: object) -> object:
+            envoyes.append(dict(kwargs.get("json") or {}))  # type: ignore[arg-type]
+            return _ReponseFactice(204)
+
+        monkeypatch.setattr(rapport.requests, "post", faux_post)
+
+        rapport.send_report("https://x", "coucou", thread_name="n" * 250)
+
+        assert len(str(envoyes[0]["thread_name"])) == 100
+
+    def test_un_quatre_cent_de_discord_rend_faux_sans_lever(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Régression, cas réel du 06/08/2026 : `#rubin-bugs` et `#butin-bugs`
+        sont des **forums**, et la session `discord-bdo` a mesuré contre
+        l'API que `POST {"content": ...}` seul y rend 400, code 220001,
+        « Webhooks posted to forum channels must have a thread_name or
+        thread_id ». Le bouton « Envoyer le rapport » aurait donc été
+        distribué cassé, et silencieusement : `send_report` ne lève jamais,
+        l'échec ne serait ressorti que dans le journal du serveur.
+
+        Ce test garde l'autre moitié du contrat : quoi qu'il arrive, aucune
+        exception ne remonte au joueur."""
+
+        def faux_post(url: str, **kwargs: object) -> object:
+            return _ReponseFactice(400)
+
+        monkeypatch.setattr(rapport.requests, "post", faux_post)
+
+        assert rapport.send_report("https://x", "coucou", thread_name="🐛 rubin — a") is False
+
+
+class _ReponseFactice:
+    """Le minimum de `requests.Response` qu'emploie `send_report`."""
+
+    def __init__(self, code: int) -> None:
+        self.status_code = code
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise requests.HTTPError(f"{self.status_code}")
