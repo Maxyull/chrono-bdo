@@ -93,11 +93,20 @@ MAX_DISCORD_CODE = 512
 #: que la personne a pourtant donné son accord.
 MAX_DISCORD_NAME = 64
 
-#: URL du webhook Discord qui reçoit les rapports de bogue, lue une seule
-#: fois au démarrage. `None` est l'état normal tant qu'elle n'est pas posée :
-#: le serveur tourne sans, et le dit à qui essaie de s'en servir plutôt que
-#: de refuser de démarrer — même principe que `discord_config`.
-REPORT_WEBHOOK_URL = os.environ.get("RUBIN_RAPPORT_WEBHOOK")
+#: Un webhook Discord par application qui peut envoyer un rapport, chacun lu
+#: une seule fois au démarrage. `None` est l'état normal tant qu'il n'est pas
+#: posé : le serveur tourne sans, et le dit à qui essaie de s'en servir
+#: plutôt que de refuser de démarrer — même principe que `discord_config`.
+#:
+#: Deux applications, deux salons : demandé par la session butin-bdo le
+#: 06/08/2026 (voir COORDINATION.md), pour que les rapports de Butin
+#: n'atterrissent pas dans le salon de Rubin. `REPORT_WEBHOOKS["rubin"]` est
+#: le défaut de la route `rapport`, pour rester compatible avec un appelant
+#: qui n'envoie pas encore de champ `app`.
+REPORT_WEBHOOKS: dict[str, str | None] = {
+    "rubin": os.environ.get("RUBIN_RAPPORT_WEBHOOK"),
+    "butin": os.environ.get("BUTIN_RAPPORT_WEBHOOK"),
+}
 
 #: Un message Discord plafonne à 2000 caractères. Borné plus bas ici pour
 #: laisser de la place à l'horodatage et au nom que la route ajoute avant
@@ -343,8 +352,16 @@ def rapport(payload: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
     du joueur s'il en a un (voir `storage.display_name`), sinon les huit
     premiers caractères de son identifiant anonyme — assez pour distinguer
     deux rapports du même joueur, pas assez pour l'identifier.
+
+    `app` choisit le salon : `"rubin"` par défaut, pour rester compatible
+    avec un appelant qui n'envoie pas encore ce champ. `"butin"` a demandé
+    ce champ le 06/08/2026 (voir COORDINATION.md) pour ne pas atterrir dans
+    le salon de Rubin ; toute autre valeur retombe sur `"rubin"` plutôt que
+    de rendre une erreur, un rapport égaré valant mieux qu'un rapport perdu.
     """
-    if not REPORT_WEBHOOK_URL:
+    application = str(payload.get("app") or "rubin")
+    webhook_url = REPORT_WEBHOOKS.get(application) or REPORT_WEBHOOKS.get("rubin")
+    if not webhook_url:
         raise HTTPException(503, "envoi de rapport non configuré")
 
     player = str(payload.get("joueur", ""))
@@ -363,7 +380,7 @@ def rapport(payload: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
     horodatage = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     message = f"**{horodatage} — {nom}**\n{contenu}"
 
-    if not send_report(REPORT_WEBHOOK_URL, message):
+    if not send_report(webhook_url, message):
         raise HTTPException(502, "Discord n'a pas confirmé l'envoi, réessayez")
 
     return {"envoye": True}

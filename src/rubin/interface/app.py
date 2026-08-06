@@ -2562,7 +2562,9 @@ class RubinApp:
         adresse = f"{self._server.rstrip('/')}/v1/rapport"
         try:
             réponse = requests.post(
-                adresse, json={"joueur": identity.value, "contenu": contenu}, timeout=10
+                adresse,
+                json={"joueur": identity.value, "contenu": contenu, "app": "rubin"},
+                timeout=10,
             )
         except requests.RequestException as erreur:
             self._rapport_etat.config(text=f"serveur injoignable : {erreur}")
