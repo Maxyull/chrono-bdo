@@ -734,6 +734,84 @@ def group_chains_by_category(
     return classes, scénario
 
 
+#: Ordre réel des régions dans l'onglet « Principales » du journal, relevé en
+#: observant l'écran de Maxime le 06/08/2026 : Balenos, Serendia, Calpheon,
+#: Mediah, Valencia, Kamasylvia, Drieghan, O'dyllita, Abyss One (Magnus),
+#: Terre du matin radieux, Ulukita, Edania, dans cet ordre et pas un autre.
+#: Capture complète dans `D:\DEV\bdo\echantillons\observations\
+#: _lecture_ocr.txt`, référencée depuis `COORDINATION.md`.
+#:
+#: Chaque entrée est une vraie valeur de `Chain.region`, jamais un texte
+#: reconstruit à la main : matcher sur autre chose serait fragile face à une
+#: variante de nom. Calpheon a trois valeurs de région dans le référentiel
+#: (Nord, Ville, Keplan) pour une seule catégorie affichée par le jeu ; les
+#: trois sont donc présentes, à des rangs voisins.
+#:
+#: Volontairement incomplet. 168 chaînes sur 349 n'ont aucune région connue
+#: (`Chain.region` vaut `None`), et des régions pourtant vues dans le jeu
+#: (Astralle, Montagne de l'hiver éternel, Seoul, Guerre des Roses,
+#: Eilton...) n'apparaissent tout simplement pas comme valeur de région dans
+#: le référentiel. Ce sont de vraies quêtes du jeu, on ne sait juste pas où
+#: elles se rangent : `group_chains_by_game_order` les rassemble à part
+#: plutôt que de deviner, même principe qu'ailleurs dans ce module — rater un
+#: rangement donne une liste incomplète, en inventer un donne une liste
+#: fausse.
+GAME_REGION_ORDER: Final[tuple[str, ...]] = (
+    "Balenos Est",
+    "Serendia",
+    "Nord de Calpheon",
+    "Ville de Calpheon",
+    "Keplan (Calpheon Sud-Est)",
+    "Mediah",
+    "Valencia",
+    "Kamasylvia",
+    "Drieghan",
+    "O'dyllita",
+    "Abyss One",
+    "Terre du matin radieux",
+    "Ulukita",
+    "Edania",
+)
+
+#: Le nom de la catégorie qui regroupe les chaînes sans position confirmée.
+AUTRES_CHAIN_CATEGORY: Final = "Autres chaînes (position non confirmée)"
+
+
+def _region_rank(chain: Chain) -> int | None:
+    """Rang de la région d'une chaîne dans `GAME_REGION_ORDER`, ou `None`."""
+    if chain.region is None:
+        return None
+    try:
+        return GAME_REGION_ORDER.index(chain.region)
+    except ValueError:
+        return None
+
+
+def group_chains_by_game_order(
+    sections: Sequence[tuple[Chain, tuple[ListedQuest, ...]]],
+) -> tuple[
+    tuple[tuple[Chain, tuple[ListedQuest, ...]], ...],
+    tuple[tuple[Chain, tuple[ListedQuest, ...]], ...],
+]:
+    """Sépare les chaînes dont la région est confirmée du reste.
+
+    Rend `(ordre_du_jeu, autres)`. Le premier groupe est trié sur
+    `GAME_REGION_ORDER`, dans l'ordre où le jeu les affiche ; à région égale,
+    l'ordre alphabétique d'entrée (celui de `chain_sections`) est conservé,
+    le tri de Python étant stable. Le second groupe garde cet ordre
+    alphabétique tel quel : sans région confirmée, un tri par nom reste le
+    seul ordre qui ne prétend pas en savoir plus qu'on en sait.
+    """
+    rangs = [(paire, _region_rank(paire[0])) for paire in sections]
+    connues = sorted(
+        ((rang, paire) for paire, rang in rangs if rang is not None),
+        key=lambda item: item[0],
+    )
+    ordonnées = tuple(paire for _rang, paire in connues)
+    autres = tuple(paire for paire, rang in rangs if rang is None)
+    return ordonnées, autres
+
+
 def format_chain_header(chain: Chain, entries: Sequence[ListedQuest]) -> str:
     """L'en-tête d'une chaîne repliée : son nom, et ce qui en est mesuré.
 

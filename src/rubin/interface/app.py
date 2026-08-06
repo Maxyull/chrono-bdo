@@ -57,6 +57,7 @@ from .autozone import search as search_banner_zone
 from .help import EXAMPLES, HelpWindow
 from .picker import ZonePicker, png_data
 from .presentation import (
+    AUTRES_CHAIN_CATEGORY,
     CLASS_CHAIN_CATEGORY,
     COVERAGE_TAGS,
     DEMO_BANNER,
@@ -92,6 +93,7 @@ from .presentation import (
     format_upcoming_line,
     format_watching,
     group_chains_by_category,
+    group_chains_by_game_order,
     lock_label,
     main_quest_total,
     other_quest_total,
@@ -143,6 +145,10 @@ DISCORD_URL: Final = "https://discord.gg/qCuvN2Zna7"
 #: tout `str(chain.number)` : un numéro de chaîne est toujours numérique,
 #: cet iid ne l'est jamais, les deux espaces ne se recouvrent donc jamais.
 _CLASS_CATEGORY_IID: Final = "categorie:classes"
+
+#: Même principe que `_CLASS_CATEGORY_IID`, pour la catégorie des chaînes
+#: sans région confirmée. Voir `group_chains_by_game_order`.
+_AUTRES_CATEGORY_IID: Final = "categorie:autres"
 
 #: Ce qu'on écrit sous le nom de la quête, selon le bandeau vu.
 #:
@@ -1577,6 +1583,7 @@ class RubinApp:
             self._catalog, self._settings.language, samples_by_quest(ranked)
         )
         classes, scénario = group_chains_by_category(sections)
+        ordonnées, autres = group_chains_by_game_order(scénario)
         self._chain_sections = {
             str(chain.number): (chain, entrées) for chain, entrées in sections
         }
@@ -1600,8 +1607,27 @@ class RubinApp:
                 str(chain.number) for chain, _entrées in classes
             )
 
-        for chain, entrées in scénario:
+        # Puis les chaînes de scénario dans l'ordre réel du jeu, relevé en
+        # observant l'écran de Maxime le 06/08/2026. Voir
+        # `group_chains_by_game_order` : ce n'est ni un tri alphabétique ni
+        # un ordre inventé, c'est ce que montre l'onglet « Principales ».
+        for chain, entrées in ordonnées:
             self._insert_chain_node("", chain, entrées)
+
+        # Et enfin les chaînes dont on n'a pas pu confirmer la place dans cet
+        # ordre (aucune région connue, ou une région jamais vue en jeu). Ce
+        # sont de vraies quêtes, pas des chaînes écartées : les rassembler à
+        # part plutôt que de deviner leur position, sur demande explicite de
+        # Maxime le 06/08/2026.
+        if autres:
+            nœud = self._chains.insert(
+                "", "end", iid=_AUTRES_CATEGORY_IID,
+                text=format_category_header(AUTRES_CHAIN_CATEGORY, autres), open=False,
+            )
+            self._chains.insert(nœud, "end", text="")
+            self._category_members[_AUTRES_CATEGORY_IID] = tuple(
+                str(chain.number) for chain, _entrées in autres
+            )
 
     def _insert_chain_node(
         self, parent: str, chain: Chain, entrées: tuple[ListedQuest, ...]

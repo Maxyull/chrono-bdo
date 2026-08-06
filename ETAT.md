@@ -220,6 +220,26 @@ Rien de tout cela n'est codé. Le principe du projet s'applique comme
 ailleurs : une mesure faite à partir de ce panneau devra être vérifiée en
 jeu avant d'entrer dans quoi que ce soit qui compte.
 
+### ✅ Fait le 06/08/2026 : la liste par chaîne suit le vrai ordre du jeu
+
+Maxime a montré son propre écran (panneau « Principales » du journal,
+défilé en entier, 178 captures) le temps d'observer l'ordre réel :
+Balenos → Serendia → Calpheon → Mediah → Valencia → Kamasylvia → Drieghan →
+O'dyllita → Abyss One → Terre du matin radieux → Ulukita → Edania. Capture
+OCR complète dans `D:\DEV\bdo\echantillons\observations\_lecture_ocr.txt`.
+
+`GAME_REGION_ORDER` (`interface/presentation.py`) code cet ordre à partir de
+`Chain.region`, une vraie valeur du référentiel, jamais un texte reconstruit
+à la main. `group_chains_by_game_order` trie dessus, testé sur les 349
+vraies chaînes : 178 tombent dans l'ordre confirmé, 61 sont les chaînes de
+classe (inchangé), et **110 restent sans région connue ou avec une région
+jamais vue en jeu** (Eilton, entre autres). Sur demande explicite de
+Maxime : ces 110 vont dans un nouvel onglet replié « Autres chaînes
+(position non confirmée) » plutôt que d'être placées au hasard dans l'ordre
+confirmé — ce sont de vraies quêtes, on ne sait juste pas où elles se
+rangent. Vérifié en vrai fenêtre Tk (technique de capture, section 2ter de
+CLAUDE.md), pas seulement par les tests.
+
 ### ✅ Corrigé : le panneau de suivi était illisible de nuit
 
 Il n'a aucun fond opaque, contrairement au bandeau. La luminance de toute la
