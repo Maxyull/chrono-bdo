@@ -380,7 +380,14 @@ def rapport(payload: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
     horodatage = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     message = f"**{horodatage} — {nom}**\n{contenu}"
 
-    if not send_report(webhook_url, message):
+    # Le salon est un forum : chaque rapport y ouvre son propre fil, voir la
+    # docstring de `send_report`. `application` figure dans le titre parce
+    # qu'un rapport de Butin retombe dans le salon de Rubin tant que
+    # `BUTIN_RAPPORT_WEBHOOK` n'est pas posé, et qu'il faut alors pouvoir le
+    # reconnaître au premier coup d'œil.
+    fil = f"🐛 {application} — {nom}"
+
+    if not send_report(webhook_url, message, thread_name=fil):
         raise HTTPException(502, "Discord n'a pas confirmé l'envoi, réessayez")
 
     return {"envoye": True}
