@@ -27,7 +27,6 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ### Corrigé
 
-
 - **Les noms de chaîne longs étaient coupés en silence dans la liste par
   chaîne.** Mesuré le 07/08/2026 sur les 349 vraies chaînes : 12 en-têtes sur
   180 dépassent les 394 pixels de l'arbre, la pire à 517, et
