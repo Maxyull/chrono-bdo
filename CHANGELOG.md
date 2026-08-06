@@ -7,6 +7,16 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+### Ajouté
+
+- **La vérification de mise à jour se répète toutes les cinq minutes**, tant
+  que Rubin est ouvert, plus seulement au lancement et après chaque quête
+  mesurée. Discuté avec Maxime le 06/08/2026 : un vrai push (connexion
+  permanente au serveur) réglerait le même problème, mais ferait porter au
+  serveur une connexion ouverte par joueur pour un événement aussi rare
+  qu'une nouvelle version. Un sondage périodique donne le même résultat
+  pratique, sans rien ajouter côté serveur.
+
 ### Modifié
 
 - **L'adresse du serveur n'est plus écrite dans la fenêtre.** Demandé par
