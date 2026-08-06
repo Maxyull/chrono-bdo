@@ -7,6 +7,25 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+### Modifié
+
+- **« Toutes les quêtes par chaîne » passe avant « les plus rapides ».**
+  Demandé par Maxime le 06/08/2026 : la liste par chaîne est déjà utile avec
+  une seule mesure, le classement exige trois mesures par quête et reste
+  souvent vide tant que la base est jeune. Un avertissement « en
+  construction » l'accompagne maintenant, pour ne pas laisser croire à une
+  fonctionnalité cassée.
+- **Les chaînes de Renaissance et d'Éveil (quêtes de classe) se replient à
+  part, en tête de la liste par chaîne.** Sur 349 chaînes, 61 appartiennent
+  au parcours d'une classe jouable (une paire Renaissance/Éveil chacune) et
+  noyaient les chaînes de scénario sous « [R » et « [É » une fois triées par
+  nom. Elles restent toutes présentes, seulement regroupées sous une
+  catégorie qui se déplie comme une chaîne ordinaire. Demandé par Maxime le
+  06/08/2026.
+- Vérifié à cette occasion que la liste ne contient déjà **que** des quêtes
+  principales (`Catalog.chains` filtre sur `KIND_MAIN` depuis le début) :
+  pas de séparation « Principales »/« Autres » à faire.
+
 ## [0.5.9] - 2026-08-06
 
 ### Corrigé

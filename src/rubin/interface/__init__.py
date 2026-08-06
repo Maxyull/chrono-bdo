@@ -42,6 +42,7 @@ porte les erreurs qu'on ne voit pas.
 """
 
 from .presentation import (
+    CLASS_CHAIN_CATEGORY,
     COVERAGE_TAGS,
     DEMO_BANNER,
     DEMO_MARK,
@@ -62,6 +63,7 @@ from .presentation import (
     describe_conflict,
     describe_reading,
     describe_zone,
+    format_category_header,
     format_chain_header,
     format_coverage,
     format_current_reference,
@@ -83,6 +85,8 @@ from .presentation import (
     format_search_result,
     format_upcoming_line,
     format_watching,
+    group_chains_by_category,
+    is_class_chain,
     lock_label,
     main_quest_total,
     other_quest_total,
@@ -96,6 +100,7 @@ from .presentation import (
 )
 
 __all__ = [
+    "CLASS_CHAIN_CATEGORY",
     "COVERAGE_TAGS",
     "DEMO_BANNER",
     "DEMO_MARK",
@@ -116,6 +121,7 @@ __all__ = [
     "describe_conflict",
     "describe_reading",
     "describe_zone",
+    "format_category_header",
     "format_chain_header",
     "format_coverage",
     "format_current_reference",
@@ -137,6 +143,8 @@ __all__ = [
     "format_search_result",
     "format_upcoming_line",
     "format_watching",
+    "group_chains_by_category",
+    "is_class_chain",
     "lock_label",
     "main_quest_total",
     "other_quest_total",
