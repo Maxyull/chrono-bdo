@@ -7,6 +7,24 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+### Corrigé
+
+- **La mise à jour en un clic ne relançait pas Rubin.** Trouvé par Maxime en
+  cliquant pour de vrai le 06/08/2026 : Rubin fermait Rubin lui-même 1,5 s
+  après avoir lancé l'installateur, avant que le Gestionnaire de redémarrage
+  de Windows ait pu l'enregistrer pour le relancer. Un programme fermé de son
+  propre chef n'est plus rien à relancer pour lui : l'installateur travaillait
+  bien, mais rien ne rouvrait Rubin ensuite. Rubin reste maintenant ouvert
+  après avoir lancé l'installateur, et le laisse fermer et rouvrir Rubin
+  lui-même (`CloseApplications=force`, `RestartApplications=yes`).
+
+### Ajouté
+
+- **Le numéro de version dans l'en-tête**, à côté de « RUBIN », avec la
+  mise à jour disponible juste à côté quand il y en a une : « RUBIN v0.5.8 —
+  mise à jour disponible : v0.5.9 ». Demandé par Maxime le 06/08/2026, pour
+  le voir d'un coup d'œil sans chercher.
+
 ## [0.5.8] - 2026-08-06
 
 ### Ajouté
