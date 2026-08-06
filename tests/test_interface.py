@@ -11,6 +11,7 @@ import pytest
 
 from rubin.capture import Rect, banner_region, tracker_region
 from rubin.interface import (
+    AUTRES_CHAIN_CATEGORY,
     CLASS_CHAIN_CATEGORY,
     COVERAGE_TAGS,
     DEMO_BANNER,
@@ -52,6 +53,7 @@ from rubin.interface import (
     format_upcoming_line,
     format_watching,
     group_chains_by_category,
+    group_chains_by_game_order,
     is_class_chain,
     lock_label,
     main_quest_total,
@@ -1340,17 +1342,27 @@ class TestLigneDeQueteFaite:
         assert ligne.count("/100") == 1
 
 
-def _lq(position: int, title: str, chain: int = 21136, prefix: str | None = "Calpheon") -> Quest:
+def _lq(
+    position: int,
+    title: str,
+    chain: int = 21136,
+    prefix: str | None = "Calpheon",
+    region: str | None = None,
+) -> Quest:
     """Une quête pour l'arbre alphabétique, `name` et `title` distincts.
 
     À la différence de `_quete`, qui pose `title == name` par simplicité, ce
     module-ci teste justement la différence entre les deux : `name` porte le
     préfixe de région entre crochets, `title` ne le porte pas.
+
+    `region` est `None` par défaut : la plupart des tests de ce module ne
+    portent pas sur `Chain.region`, et une valeur inventée par défaut serait
+    trompeuse pour `TestOrdreDuJeu`, qui teste justement son absence.
     """
     nom = f"[{prefix}] {title}" if prefix else title
     return Quest(
         id=QuestId(chain, position), name=nom, prefix=prefix, title=title,
-        region=None, kind=1, level=0,
+        region=region, kind=1, level=0,
     )
 
 
@@ -1552,4 +1564,126 @@ class TestCategorieDeClasse:
 
         assert format_category_header(CLASS_CHAIN_CATEGORY, une) == (
             f"{CLASS_CHAIN_CATEGORY}   —   1 chaîne"
+        )
+
+
+class TestOrdreDuJeu:
+    """Les chaînes de scénario, dans l'ordre réel du journal du jeu.
+
+    Relevé le 06/08/2026 en observant l'écran de Maxime (voir
+    `_lecture_ocr.txt` dans `D:\\DEV\\bdo\\echantillons\\observations`,
+    référencé depuis COORDINATION.md) : l'onglet « Principales » ne trie ni
+    alphabétiquement ni par numéro de chaîne, il suit Balenos, Serendia,
+    Calpheon, Mediah, Valencia, Kamasylvia, Drieghan, O'dyllita, Abyss One,
+    Terre du matin radieux, Ulukita, Edania, dans cet ordre.
+    """
+
+    def test_trie_par_region_dans_lordre_du_jeu(self) -> None:
+        """Régression : le premier jet triait les chaînes par nom, ce qui
+        mélangeait Valencia avant Mediah (ordre alphabétique) alors que le
+        jeu montre Mediah avant Valencia (ordre du scénario)."""
+        catalogue = Catalog(
+            {
+                "fr": [
+                    _lq(1, "Histoire du royaume", chain=1, prefix="Valencia", region="Valencia"),
+                    _lq(1, "Une aura noire", chain=2, prefix="Mediah", region="Mediah"),
+                    _lq(1, "Lion doré", chain=3, prefix="Serendia", region="Serendia"),
+                ]
+            }
+        )
+        sections = chain_sections(catalogue, "fr", {})
+        _classes, scénario = group_chains_by_category(sections)
+
+        ordonnées, autres = group_chains_by_game_order(scénario)
+
+        assert [chain.region for chain, _entrées in ordonnées] == [
+            "Serendia", "Mediah", "Valencia",
+        ]
+        assert autres == ()
+
+    def test_calpheon_a_trois_regions_toutes_regroupees_avant_mediah(self) -> None:
+        """Le référentiel porte trois valeurs de région pour Calpheon (Nord,
+        Ville, Keplan), le jeu n'en montre qu'une seule catégorie. Les trois
+        doivent tomber entre Serendia et Mediah, pas ailleurs."""
+        catalogue = Catalog(
+            {
+                "fr": [
+                    _lq(1, "Une aura noire", chain=1, prefix="Mediah", region="Mediah"),
+                    _lq(
+                        1, "Keplan", chain=2, prefix="Calpheon",
+                        region="Keplan (Calpheon Sud-Est)",
+                    ),
+                    _lq(1, "Nord", chain=3, prefix="Calpheon", region="Nord de Calpheon"),
+                    _lq(1, "Ville", chain=4, prefix="Calpheon", region="Ville de Calpheon"),
+                    _lq(1, "Lion doré", chain=5, prefix="Serendia", region="Serendia"),
+                ]
+            }
+        )
+        sections = chain_sections(catalogue, "fr", {})
+        _classes, scénario = group_chains_by_category(sections)
+
+        ordonnées, _autres = group_chains_by_game_order(scénario)
+
+        régions = [chain.region for chain, _entrées in ordonnées]
+        assert régions[0] == "Serendia"
+        assert régions[-1] == "Mediah"
+        assert set(régions[1:-1]) == {
+            "Keplan (Calpheon Sud-Est)", "Nord de Calpheon", "Ville de Calpheon",
+        }
+
+    def test_region_absente_va_dans_autres(self) -> None:
+        """Une chaîne sans région connue (`Chain.region is None`) est une
+        vraie quête du jeu, pas une chaîne écartée : elle va dans « autres »,
+        jamais perdue, jamais placée au hasard dans l'ordre confirmé."""
+        catalogue = Catalog({"fr": [_lq(1, "Un mystère", chain=1, prefix=None, region=None)]})
+        sections = chain_sections(catalogue, "fr", {})
+        _classes, scénario = group_chains_by_category(sections)
+
+        ordonnées, autres = group_chains_by_game_order(scénario)
+
+        assert ordonnées == ()
+        assert len(autres) == 1
+
+    def test_regression_region_reelle_mais_jamais_vue_en_jeu_va_dans_autres(self) -> None:
+        """Régression : « Eilton » est une vraie valeur de région du
+        référentiel (3 chaînes mesurées le 06/08/2026), mais elle n'a jamais
+        été vue dans la capture qui a servi à établir `GAME_REGION_ORDER`.
+        L'inventer une place serait exactement l'erreur que ce projet
+        refuse : mieux vaut la ranger à part que de deviner."""
+        catalogue = Catalog(
+            {"fr": [_lq(1, "Une quête d'Eilton", chain=1, prefix="Eilton", region="Eilton")]}
+        )
+        sections = chain_sections(catalogue, "fr", {})
+        _classes, scénario = group_chains_by_category(sections)
+
+        ordonnées, autres = group_chains_by_game_order(scénario)
+
+        assert ordonnées == ()
+        assert len(autres) == 1
+
+    def test_rien_ne_disparait(self) -> None:
+        catalogue = Catalog(
+            {
+                "fr": [
+                    _lq(1, "Une aura noire", chain=1, prefix="Mediah", region="Mediah"),
+                    _lq(1, "Un mystère", chain=2, prefix=None, region=None),
+                    _lq(1, "Une quête d'Eilton", chain=3, prefix="Eilton", region="Eilton"),
+                ]
+            }
+        )
+        sections = chain_sections(catalogue, "fr", {})
+        _classes, scénario = group_chains_by_category(sections)
+
+        ordonnées, autres = group_chains_by_game_order(scénario)
+
+        assert len(ordonnées) + len(autres) == len(scénario)
+
+    def test_format_category_header_pour_autres(self) -> None:
+        deux = (
+            (Chain(1, (_lq(1, "Un mystère", chain=1, prefix=None, region=None),)), ()),
+            (Chain(2, (_lq(1, "Un autre", chain=2, prefix="Eilton", region="Eilton"),)), ()),
+        )
+
+        assert format_category_header(AUTRES_CHAIN_CATEGORY, deux) == (
+            f"{AUTRES_CHAIN_CATEGORY}   —   2 chaînes"
         )
