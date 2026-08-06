@@ -926,3 +926,52 @@ class _ReponseFactice:
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
             raise requests.HTTPError(f"{self.status_code}")
+
+
+class TestEtatDuCompteDiscord:
+    """`GET /v1/discord/compte`, ce qui manquait pour que la fenêtre apprenne
+    qu'un rattachement a abouti.
+
+    Cas réel du 06/08/2026 : le rattachement de Maxime avait parfaitement
+    marché, `/v1/discord/retour` avait rendu `{"rattache":true,
+    "nom":"maxyull"}`, et la fenêtre affichait toujours « autorisez Rubin dans
+    votre navigateur, puis revenez ici ». Le rattachement se termine dans le
+    navigateur : sans question posée au serveur, le logiciel ne peut jamais
+    l'apprendre.
+    """
+
+    def test_annonce_le_pseudonyme_dun_compte_rattache(self, client: TestClient) -> None:
+        main.storage.link_discord("c" * 32, "1234", "maxyull")
+
+        reponse = client.get("/v1/discord/compte", params={"player": "c" * 32})
+
+        assert reponse.status_code == 200
+        assert reponse.json() == {"rattache": True, "nom": "maxyull"}
+
+    def test_repond_sans_rattachement_pour_un_joueur_inconnu(self, client: TestClient) -> None:
+        """Un contributeur qui n'a jamais rattaché de compte n'est pas une
+        erreur : c'est le cas de la grande majorité d'entre eux, le
+        rattachement étant facultatif et sans effet sur la mesure. Un 404 se
+        lirait comme une panne."""
+        reponse = client.get("/v1/discord/compte", params={"player": "d" * 32})
+
+        assert reponse.status_code == 200
+        assert reponse.json() == {"rattache": False, "nom": None}
+
+    def test_ne_rend_jamais_lidentifiant_discord(self, client: TestClient) -> None:
+        """Régression : seul le pseudonyme sort d'ici, jamais le numéro de
+        compte Discord. Le pseudonyme s'affiche déjà à côté des temps au
+        classement, donc il ne révèle rien de neuf ; l'identifiant, lui, ne
+        sert qu'à reconnaître un même compte d'un rattachement à l'autre et
+        n'a aucune raison de circuler."""
+        main.storage.link_discord("e" * 32, "987654321098765432", "maxyull")
+
+        corps = client.get("/v1/discord/compte", params={"player": "e" * 32}).json()
+
+        assert set(corps) == {"rattache", "nom"}
+        assert "987654321098765432" not in str(corps)
+
+    def test_refuse_un_identifiant_de_contributeur_malforme(self, client: TestClient) -> None:
+        # Même garde que partout ailleurs : rien de ce qui vient du dehors
+        # n'atteint la base sans avoir la bonne forme.
+        assert client.get("/v1/discord/compte", params={"player": "court"}).status_code == 422

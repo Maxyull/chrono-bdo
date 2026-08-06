@@ -17,6 +17,23 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
   n'est jamais connu du logiciel distribué : c'est le serveur qui le détient
   et relaie, pour qu'il ne puisse jamais être extrait de l'exécutable et
   détourné pour spammer le salon. Demandé par Maxime le 06/08/2026.
+- **La fenêtre apprend enfin que le rattachement Discord a abouti.** Trouvé
+  par Maxime le 06/08/2026 en se connectant pour de vrai : son compte était
+  rattaché, le serveur avait rendu `{"rattache":true,"nom":"maxyull"}`, et la
+  fenêtre affichait toujours « autorisez Rubin dans votre navigateur, puis
+  revenez ici ». Le rattachement se termine **hors du logiciel**, dans le
+  navigateur : Discord renvoie le joueur vers le serveur, pas vers nous, et
+  rien ne prévenait la fenêtre. Elle affiche maintenant « connecté comme
+  maxyull », au lancement comme après un clic, en interrogeant la nouvelle
+  route `GET /v1/discord/compte` (pseudonyme seul, jamais l'identifiant
+  Discord).
+
+  ⚠️ **Un serveur muet ne se lit pas « pas connecté ».** Trois états, jamais
+  deux : rattaché, pas rattaché, et **on ne sait pas**. Une panne de réseau,
+  ou un serveur d'une version antérieure à cette route, laissent l'étiquette
+  intacte plutôt que d'envoyer un joueur déjà rattaché refaire un
+  rattachement qui a marché. Même principe que partout ici : rater une
+  information donne un écran incomplet, en inventer une donne un écran faux.
 
 ### Modifié
 
