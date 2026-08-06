@@ -29,6 +29,15 @@ donnees = [
     (str(SITE / "rapidocr_onnxruntime" / "models"), "rapidocr_onnxruntime/models"),
     (str(SITE / "rapidocr_onnxruntime" / "config.yaml"), "rapidocr_onnxruntime"),
     (str(RACINE / "src" / "rubin" / "capture" / "data"), "rubin/capture/data"),
+    # ⚠️ Oublié jusqu'au 06/08/2026, et parfaitement silencieux : les images du
+    # guide (`exemple-bandeau.png`, `exemple-suivi.png`) n'ont jamais été dans
+    # aucun exécutable publié. `help.py` les cherche par chemin, garde le coup
+    # par un `chemin.is_file()`, et affiche simplement le texte sans son
+    # illustration. Aucune erreur, aucune trace, une aide amputée chez tous les
+    # joueurs pendant que le développement, lui, les voyait très bien. C'est
+    # exactement le motif de `tkinter` retiré d'`excludes` : un exécutable qui
+    # se construit sans erreur et ne contient pas ce qu'on croit.
+    (str(RACINE / "src" / "rubin" / "interface" / "data"), "rubin/interface/data"),
 ]
 
 # onnxruntime apporte des bibliothèques natives que l'analyse statique ne suit
@@ -119,6 +128,18 @@ exe = EXE(
     # Un binaire anonyme est doublement pénalisé : les antivirus s'en méfient
     # davantage, et la signature de code exige un nom de produit et une version.
     version=str(RACINE / "empaquetage" / "metadonnees.txt"),
+    # L'icône du fichier lui-même, celle que Windows montre dans l'explorateur,
+    # la barre des tâches et le menu Démarrer. Sans elle, PyInstaller pose la
+    # sienne, et Rubin ressemblait à n'importe quel programme Python : c'est la
+    # première chose qu'un testeur voit, avant même d'avoir lancé quoi que ce
+    # soit. Sept tailles dans le `.ico`, de 16 à 256, parce que Windows en
+    # choisit une différente selon l'endroit et qu'un seul grand format
+    # redimensionné à la volée donne un résultat baveux à 16 px.
+    #
+    # Le fichier vit dans `src/rubin/interface/data`, avec les autres images,
+    # et non ici : la fenêtre s'en sert aussi (`_load_icons`), et deux copies
+    # du même dessin finiraient par diverger le jour où l'une est refaite.
+    icon=str(RACINE / "src" / "rubin" / "interface" / "data" / "rubin.ico"),
 )
 
 coll = COLLECT(

@@ -19,6 +19,7 @@ intervalle régulier depuis le bon fil.
 
 from __future__ import annotations
 
+import contextlib
 import queue
 import tempfile
 import threading
@@ -44,6 +45,7 @@ from ..capture import (
     find_game_window,
     tracker_region,
 )
+from ..discord import DiscordAccount, fetch_account
 from ..history import personal_best
 from ..notes import load_notes, save_note
 from ..placement import choose, conflicts
@@ -62,6 +64,7 @@ from .presentation import (
     CLASS_CHAIN_CATEGORY,
     COVERAGE_TAGS,
     DEMO_BANNER,
+    DISCORD_WAITING,
     LOCKED_WHILE_MEASURING,
     QUEST_LIST_LIMIT,
     REPORT_LOG_CHARS,
@@ -80,6 +83,7 @@ from .presentation import (
     format_chain_header,
     format_coverage,
     format_current_reference,
+    format_discord_account,
     format_duration,
     format_gap,
     format_link,
@@ -150,6 +154,32 @@ DISCORD_URL: Final = "https://discord.gg/qCuvN2Zna7"
 #: ici plutôt que deviné à chaque usage. Sert à `_fit_chain_column`, qui
 #: doit compter l'indentation dans la largeur d'une ligne dépliée.
 TREE_INDENT: Final = 20
+#: Le dossier des images de la fenêtre.
+#:
+#: ⚠️ Tout fichier posé ici doit être déclaré dans `donnees`, au début de
+#: `empaquetage/rubin.spec`, sans quoi il ne sera **pas** dans l'exécutable.
+#: Le dossier entier y a manqué jusqu'au 06/08/2026 : voir le commentaire à cet
+#: endroit, et `tests/test_empaquetage.py` qui le vérifie désormais.
+DATA: Final = Path(__file__).parent / "data"
+
+#: Le blurple officiel de Discord, et sa variante au survol. Ce sont les
+#: couleurs de Discord, pas celles du thème de Rubin, et c'est voulu : ce
+#: bouton doit se repérer sans être lu.
+DISCORD_BLURPLE: Final = "#5865F2"
+DISCORD_BLURPLE_SURVOL: Final = "#4752C4"
+#: Cadence à laquelle on redemande au serveur si le rattachement Discord a
+#: abouti, après un clic sur « Se connecter avec Discord ». Le joueur est
+#: parti dans son navigateur ; rien ne nous prévient de son retour, et une
+#: fenêtre qui n'apprend jamais la réussite est exactement le défaut que
+#: Maxime a rencontré le 06/08/2026.
+DISCORD_POLL_MS: Final = 3 * 1000
+
+#: Au-delà, on cesse de demander. Autoriser une application Discord prend une
+#: poignée de secondes ; passé trois minutes, le joueur a fermé l'onglet, ou
+#: renoncé, et continuer à interroger le serveur indéfiniment pour un geste
+#: abandonné ne rendrait service à personne. Le bouton reste là, un second
+#: clic relance une fenêtre d'attente neuve.
+DISCORD_POLL_LIMIT_MS: Final = 3 * 60 * 1000
 
 #: L'iid Tk de la catégorie « Renaissance et Éveil », fixe et distinct de
 #: tout `str(chain.number)` : un numéro de chaîne est toujours numérique,
@@ -300,6 +330,13 @@ class RubinApp:
         #: La police de l'arbre des chaînes, construite au premier besoin.
         #: Voir `_tree_font`.
         self._police_arbre: tkfont.Font | None = None
+        #: Vrai entre le clic sur « Se connecter avec Discord » et la fin de
+        #: la fenêtre d'attente : le joueur est parti autoriser dans son
+        #: navigateur. Sert à ne pas écraser la consigne `DISCORD_WAITING`
+        #: par un « pas encore connecté » à la première réponse négative,
+        #: qui arrive une seconde après le clic. Voir
+        #: `format_discord_account`.
+        self._discord_attente = False
 
         self.root = tk.Tk()
         self.root.title("Rubin, chronomètre de quêtes")
@@ -310,15 +347,68 @@ class RubinApp:
         # L'habillage d'abord : les composants créés ensuite en héritent, alors
         # qu'appliquer un style après coup en laisse toujours un au gris natif.
         apply_theme(self.root)
+        self._load_icons()
         self._build_header()
         self._build_tabs()
         self._apply_window_style()
         self._place_beside_the_game()
         self._ask_server()
         self._poll_for_update()
+        self._ask_discord_account()
         self.root.after(REFRESH_MS, self._drain)
 
     # ------------------------------------------------------------------ mise en place
+
+    def _load_icons(self) -> None:
+        """Charge les images de la fenêtre, et pose celle de l'application.
+
+        Appelée après `tk.Tk()` et avant `_build_header` : une `PhotoImage`
+        exige qu'un interpréteur Tk existe déjà, et l'en-tête a besoin du logo
+        Discord au moment où il construit son bouton.
+
+        ⚠️ **Les images sont gardées sur l'instance**, comme partout ailleurs
+        ici : Tk ne retient pas les siennes, et une image ramassée par le
+        collecteur laisse un bouton vide sans lever la moindre erreur.
+
+        ⚠️ **Une image manquante ne fait rien tomber.** Un exécutable
+        antérieur au 06/08/2026 ne contient pas ce dossier du tout (voir
+        `DATA`), et une fenêtre qui refuserait de s'ouvrir faute d'icône
+        échangerait un défaut cosmétique contre une panne. `iconphoto` sur
+        `True` vaut pour cette fenêtre et toutes celles qu'elle ouvrira
+        ensuite, guide compris.
+        """
+        self._discord_logo = self._image("discord-logo.png")
+
+        # ⚠️ Le `.ico` et non un PNG, alors que `iconphoto` accepterait le
+        # second : le `.ico` porte sept tailles **dessinées** (16 à 256) et
+        # Windows prend celle qui convient à chaque endroit, tandis
+        # qu'`iconphoto` laisse Tk réduire lui-même une image de 256.
+        # Photographié le 06/08/2026 : le diamant était illisible dans la
+        # barre de titre tant que Tk s'en chargeait.
+        #
+        # Pas de repli en PNG pour les autres systèmes : Rubin lit l'écran
+        # d'un jeu Windows, il n'y a pas d'autre système. Un chemin de repli
+        # que rien n'emprunte est du code mort, et ce projet en a déjà payé
+        # un (la table de zones de #58, construite et jamais appelée).
+        icone = DATA / "rubin.ico"
+        if not icone.is_file():
+            return
+        # Une icône est un confort : elle ne doit jamais empêcher la fenêtre
+        # de s'ouvrir.
+        with contextlib.suppress(tk.TclError):
+            self.root.iconbitmap(default=str(icone))  # type: ignore[no-untyped-call]
+
+    def _image(self, nom: str) -> tk.PhotoImage | None:
+        """Une image du dossier `data`, ou `None` si elle n'est pas là."""
+        chemin = DATA / nom
+        if not chemin.is_file():
+            return None
+        try:
+            return tk.PhotoImage(file=str(chemin))
+        except tk.TclError:  # pragma: pas de couverture
+            # Fichier présent mais illisible : même arbitrage que ci-dessus,
+            # on se passe de l'image plutôt que d'empêcher la fenêtre.
+            return None
 
     def _build_header(self) -> None:
         """Le bandeau du haut : ce qu'on lit sans quitter le jeu des yeux.
@@ -382,16 +472,32 @@ class RubinApp:
         self._voir_envois.pack(anchor="w")
         self._voir_envois.bind("<Button-1>", self._show_envois_tab)
 
-        # Le Discord du projet. Demandé par Maxime le 06/08/2026 : un lien
-        # depuis la fenêtre elle-même, pas seulement depuis le dépôt.
-        self._discord_lien = ttk.Label(
-            cadre, text="rejoindre le Discord", foreground=COLORS["accent"],
-            background=COLORS["fond"], font=(FAMILY, 9), cursor="hand2",
+        # Le Discord du projet. Un vrai bouton depuis le 06/08/2026, et non
+        # plus une ligne de texte rouge parmi trois autres : Maxime ne le
+        # voyait pas. Il porte le VRAI logo Discord, celui que tout le monde
+        # reconnaît sans lire, jamais un dessin qui lui ressemble : une marque
+        # approximative se lit comme une imitation, ce qui donne exactement
+        # l'impression contraire de celle qu'on cherche.
+        self._discord_bouton = tk.Button(
+            cadre,
+            text="  Rejoindre le Discord",
+            image=self._discord_logo or "",
+            compound="left",
+            command=lambda: webbrowser.open(DISCORD_URL),
+            # Le blurple officiel de Discord. Le bouton doit se voir du premier
+            # coup d'œil, donc il ne prend pas la couleur du thème.
+            background=DISCORD_BLURPLE,
+            activebackground=DISCORD_BLURPLE_SURVOL,
+            foreground="#ffffff",
+            activeforeground="#ffffff",
+            font=(FAMILY, 9, "bold"),
+            relief="flat",
+            borderwidth=0,
+            cursor="hand2",
+            padx=10,
+            pady=5,
         )
-        self._discord_lien.pack(anchor="w")
-        self._discord_lien.bind(
-            "<Button-1>", lambda _e: webbrowser.open(DISCORD_URL)
-        )
+        self._discord_bouton.pack(anchor="w", pady=(6, 0))
 
         # Le bouton de mise à jour, invisible tant qu'aucune n'est connue.
         # Demandé par Maxime le 06/08/2026 : un clic doit suffire, contre le
@@ -1484,6 +1590,75 @@ class RubinApp:
         threading.Thread(target=demander, daemon=True).start()
         self.root.after(UPDATE_POLL_MS, self._poll_for_update)
 
+    def _ask_discord_account(self) -> None:
+        """Demande au serveur si ce joueur est rattaché, sur un fil séparé.
+
+        Appelée au lancement, puis en boucle après un clic sur le bouton :
+        voir `_poll_discord_account`. Au lancement parce qu'un joueur qui
+        s'est rattaché lors d'une session précédente doit voir son état, pas
+        un bouton qui laisse croire qu'il n'a jamais rien fait.
+
+        Sur un fil, comme `check_for_update` : l'identité se lit sur le
+        disque et la requête peut prendre cinq secondes, deux choses qu'on ne
+        fait pas dans le fil de Tk sous peine de figer la fenêtre.
+        """
+        server = self._server
+        if not server:
+            return
+        home = self._home
+
+        def demander() -> None:
+            try:
+                identity = PlayerIdentity.load_or_create(home / "identite")
+            except OSError:  # pragma: pas de couverture
+                # Sans identifiant, il n'y a pas de question à poser. Se taire
+                # plutôt que d'annoncer un état qu'on n'a pas pu vérifier.
+                return
+            self.publish("discord", fetch_account(server, identity.value))
+
+        threading.Thread(target=demander, daemon=True).start()
+
+    def _poll_discord_account(self, remaining_ms: int = DISCORD_POLL_LIMIT_MS) -> None:
+        """Redemande l'état du rattachement jusqu'à ce qu'il aboutisse.
+
+        Le rattachement se termine **hors du logiciel**, dans le navigateur :
+        Discord renvoie le joueur vers le serveur, pas vers nous, et rien ne
+        nous prévient. Sans ce sondage, la fenêtre reste indéfiniment sur
+        « autorisez Rubin dans votre navigateur », y compris quand tout a
+        parfaitement marché. C'est ce qui est arrivé à Maxime le 06/08/2026,
+        sur un compte pourtant rattaché pour de vrai.
+
+        S'arrête dès que le compte est rattaché (`_discord_attente` retombe
+        dans `_show_discord_account`), et de toute façon au bout de
+        `DISCORD_POLL_LIMIT_MS`.
+        """
+        if not self._discord_attente or self._stop.is_set():
+            return
+        self._ask_discord_account()
+        if remaining_ms <= 0:
+            self._discord_attente = False
+            return
+        self.root.after(
+            DISCORD_POLL_MS,
+            lambda: self._poll_discord_account(remaining_ms - DISCORD_POLL_MS),
+        )
+
+    def _show_discord_account(self, account: DiscordAccount | None) -> None:
+        """Écrit l'état du compte Discord, ou laisse l'étiquette tranquille.
+
+        `format_discord_account` rend `None` dans les deux cas où écrire
+        serait mentir, voir sa docstring. Ici, `None` veut donc dire « ne
+        touche à rien », jamais « efface ».
+        """
+        if account is not None and account.linked:
+            # Abouti : plus rien à attendre, le sondage peut cesser.
+            self._discord_attente = False
+        rendu = format_discord_account(account, waiting=self._discord_attente)
+        if rendu is None:
+            return
+        texte, balise = rendu
+        self._discord_etat.config(text=texte, foreground=COLORS[balise])
+
     def _search_changed(self, *_arguments: object) -> None:
         """Refiltre le catalogue à chaque frappe, sans aucun réseau.
 
@@ -1995,6 +2170,8 @@ class RubinApp:
             self._autres.config(text=format_other_quests(int(charge)) or "")
         elif genre == "lien":
             self._show_link(charge)
+        elif genre == "discord":
+            self._show_discord_account(charge)
         elif genre == "maj":
             self._show_update_status(charge)
         elif genre == "maj_echouee":
@@ -2602,9 +2779,12 @@ class RubinApp:
             return
 
         webbrowser.open(adresse)
-        self._discord_etat.config(
-            text="autorisez Rubin dans votre navigateur, puis revenez ici"
-        )
+        self._discord_etat.config(text=DISCORD_WAITING, foreground=COLORS["faible"])
+        # Le rattachement se termine dans le navigateur, pas ici : sans ce
+        # sondage, cette consigne resterait affichée pour toujours, y compris
+        # une fois le compte rattaché. Voir `_poll_discord_account`.
+        self._discord_attente = True
+        self._poll_discord_account()
 
     def _read_crash_log(self, max_chars: int) -> str:
         """Les derniers caractères de `echecs/erreurs.log`, ou une chaîne vide.

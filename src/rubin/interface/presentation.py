@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Final
 
 from ..capture import Rect
+from ..discord import DiscordAccount
 from ..reference import Catalog, Chain, Quest, QuestId, fold
 from ..references import (
     MIN_SAMPLES_PER_QUEST,
@@ -547,6 +548,48 @@ def format_link(base_url: str | None, health: ServerHealth | None) -> tuple[str,
         f"connecté ({health.latency_ms:.0f} ms)   —   {health.measures} {mesures} reçues",
         LINK_TAGS["connecte"],
     )
+
+
+# ------------------------------------------------------------- compte Discord
+
+#: Ce qui s'affiche sous le bouton pendant qu'on attend le retour du navigateur.
+DISCORD_WAITING: Final = "autorisez Rubin dans votre navigateur, puis revenez ici"
+
+
+def format_discord_account(
+    account: DiscordAccount | None, waiting: bool = False
+) -> tuple[str, str] | None:
+    """L'état du compte Discord : quoi écrire, de quelle couleur, ou rien.
+
+    `None` veut dire **ne touche pas à l'étiquette**, et couvre les deux cas
+    où écrire serait mentir :
+
+    - `account is None`, c'est-à-dire « on ne sait pas » : serveur injoignable,
+      point d'entrée absent, réponse illisible. Écrire « pas encore connecté »
+      là-dessus enverrait un joueur déjà rattaché refaire un rattachement qui
+      a marché, ce qui est précisément le défaut que cette fonction répare ;
+    - `waiting` et pas encore rattaché : le joueur vient de cliquer, il est en
+      train d'autoriser dans son navigateur. Remplacer la consigne
+      `DISCORD_WAITING` par « pas encore connecté » à la première réponse
+      négative lui retirerait la seule phrase qui lui dit quoi faire, une
+      seconde après le clic.
+
+    Le pseudonyme affiché est celui que le serveur a enregistré, jamais un nom
+    deviné localement : c'est celui qui apparaîtra au classement, et c'est la
+    seule chose que le joueur cherche à vérifier ici.
+    """
+    if account is None:
+        return None
+    nom = account.display_name
+    if nom is not None:
+        return (f"connecté comme {nom}", LINK_TAGS["connecte"])
+    if account.linked:
+        # Rattaché, mais le serveur n'a rendu aucun nom. Le dire tel quel :
+        # inventer « connecté comme vous » ne renseignerait sur rien.
+        return ("compte Discord rattaché", LINK_TAGS["connecte"])
+    if waiting:
+        return None
+    return ("pas encore connecté", LINK_TAGS["absent"])
 
 
 # ------------------------------------------------------------- classement par quête

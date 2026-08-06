@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 from rubin.capture import Rect, banner_region, tracker_region
+from rubin.discord import DiscordAccount
 from rubin.interface import (
     AUTRES_CHAIN_CATEGORY,
     CLASS_CHAIN_CATEGORY,
@@ -37,6 +38,7 @@ from rubin.interface import (
     format_chain_header,
     format_coverage,
     format_current_reference,
+    format_discord_account,
     format_duration,
     format_gap,
     format_link,
@@ -762,6 +764,47 @@ class TestLargeurDeColonne:
     def test_un_arbre_vide_prend_la_place_disponible(self) -> None:
         # Avant la première réponse du serveur, il n'y a rien à mesurer.
         assert column_width([], available=394) == 394
+class TestEtatDuCompteDiscord:
+    """Ce que la fenêtre écrit sous le bouton « Se connecter avec Discord »."""
+
+    def test_annonce_le_pseudonyme_une_fois_rattache(self) -> None:
+        rendu = format_discord_account(DiscordAccount(linked=True, name="maxyull"))
+        assert rendu is not None
+        texte, balise = rendu
+        assert texte == "connecté comme maxyull"
+        assert balise == LINK_TAGS["connecte"]
+
+    def test_ne_touche_a_rien_quand_on_ne_sait_pas(self) -> None:
+        """Régression, cas réel du 06/08/2026 : le compte de Maxime était
+        rattaché (`/v1/discord/retour` avait rendu
+        `{"rattache":true,"nom":"maxyull"}`), et la fenêtre affichait encore
+        « autorisez Rubin dans votre navigateur, puis revenez ici ».
+
+        Le correctif interroge le serveur ; l'écueil du correctif est de
+        traiter « le serveur n'a pas répondu » comme « vous n'êtes pas
+        connecté », ce qui enverrait refaire un rattachement déjà fait. `None`
+        veut dire « ne touche pas à l'étiquette », jamais « efface »."""
+        assert format_discord_account(None) is None
+        assert format_discord_account(None, waiting=True) is None
+
+    def test_laisse_la_consigne_pendant_l_autorisation(self) -> None:
+        """Régression : une seconde après le clic, le serveur répond
+        honnêtement « pas rattaché », puisque le joueur est encore en train
+        d'autoriser dans son navigateur. Écrire « pas encore connecté » à ce
+        moment-là effacerait la seule phrase qui lui dit quoi faire."""
+        assert format_discord_account(DiscordAccount(linked=False, name=None), waiting=True) is None
+
+    def test_le_dit_quand_le_compte_nest_pas_rattache_et_qu_on_n_attend_rien(self) -> None:
+        rendu = format_discord_account(DiscordAccount(linked=False, name=None))
+        assert rendu is not None
+        assert rendu[0] == "pas encore connecté"
+        assert rendu[1] == LINK_TAGS["absent"]
+
+    def test_un_rattachement_sans_nom_se_dit_sans_inventer_de_nom(self) -> None:
+        rendu = format_discord_account(DiscordAccount(linked=True, name=None))
+        assert rendu is not None
+        assert rendu[0] == "compte Discord rattaché"
+        assert "comme" not in rendu[0]
 
 
 class TestTemoinDeConnexion:
