@@ -673,3 +673,83 @@ class TestDiscordConfigure:
         nom = reponse.json()["nom"]
         assert len(nom) == 64
         assert nom.isprintable()
+
+
+class TestRapportSansWebhook:
+    def test_dit_que_ce_nest_pas_configure(self, client: TestClient) -> None:
+        reponse = client.post(
+            "/v1/rapport", json={"joueur": "a" * 32, "contenu": "un souci"}
+        )
+        assert reponse.status_code == 503
+
+
+class TestRapportAvecWebhook:
+    """Le serveur muni d'un webhook, sans jamais appeler Discord pour de vrai.
+
+    Même raison que `TestDiscordConfigure` : une suite qui dépendrait de la
+    disponibilité de discord.com ne dirait plus rien du code le jour où elle
+    casserait.
+    """
+
+    @pytest.fixture(autouse=True)
+    def avec_webhook(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(main, "REPORT_WEBHOOK_URL", "https://discord.com/api/webhooks/x")
+
+    def test_relaie_le_rapport(self, client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+        envoyes: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            main, "send_report", lambda url, message: envoyes.append((url, message)) or True
+        )
+
+        reponse = client.post(
+            "/v1/rapport", json={"joueur": "a" * 32, "contenu": "le compteur a l'air faux"}
+        )
+
+        assert reponse.status_code == 202
+        assert reponse.json() == {"envoye": True}
+        assert len(envoyes) == 1
+        url, message = envoyes[0]
+        assert url == "https://discord.com/api/webhooks/x"
+        assert "le compteur a l'air faux" in message
+        assert "joueur anonyme a" in message
+
+    def test_utilise_le_pseudonyme_rattache_sil_existe(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Régression : un joueur qui s'est rattaché à Discord doit apparaître
+        sous son nom dans le rapport, pas sous son identifiant anonyme — la
+        même règle que pour le classement."""
+        envoyes: list[str] = []
+        monkeypatch.setattr(
+            main, "send_report", lambda url, message: envoyes.append(message) or True
+        )
+        main.storage.link_discord("b" * 32, "9876", "Maxyull")
+
+        reponse = client.post("/v1/rapport", json={"joueur": "b" * 32, "contenu": "un souci"})
+
+        assert reponse.status_code == 202
+        assert "Maxyull" in envoyes[0]
+        assert "joueur anonyme" not in envoyes[0]
+
+    def test_refuse_un_identifiant_de_contributeur_malforme(self, client: TestClient) -> None:
+        reponse = client.post("/v1/rapport", json={"joueur": "trop court", "contenu": "x"})
+        assert reponse.status_code == 422
+
+    def test_refuse_un_rapport_vide(self, client: TestClient) -> None:
+        reponse = client.post("/v1/rapport", json={"joueur": "a" * 32, "contenu": "   "})
+        assert reponse.status_code == 422
+
+    def test_refuse_un_rapport_demesure(self, client: TestClient) -> None:
+        reponse = client.post(
+            "/v1/rapport", json={"joueur": "a" * 32, "contenu": "x" * 2000}
+        )
+        assert reponse.status_code == 413
+
+    def test_dit_quand_discord_ne_confirme_pas(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Un échec côté Discord ne doit ni faire tomber le serveur ni rendre
+        # une trace au visiteur, même principe que le rattachement de compte.
+        monkeypatch.setattr(main, "send_report", lambda url, message: False)
+        reponse = client.post("/v1/rapport", json={"joueur": "a" * 32, "contenu": "un souci"})
+        assert reponse.status_code == 502
