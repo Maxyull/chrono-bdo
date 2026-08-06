@@ -7,8 +7,28 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+## [0.6.0] - 2026-08-06
+
+### Ajouté
+
+- **Bouton « Envoyer le rapport ».** Dans Réglages, sous Compte Discord :
+  empaquette les dernières pannes enregistrées (`echecs/erreurs.log`) et les
+  envoie au serveur, qui les relaie dans un salon Discord. Le webhook Discord
+  n'est jamais connu du logiciel distribué : c'est le serveur qui le détient
+  et relaie, pour qu'il ne puisse jamais être extrait de l'exécutable et
+  détourné pour spammer le salon. Demandé par Maxime le 06/08/2026.
+
 ### Modifié
 
+- **« Toutes les quêtes par chaîne » suit maintenant l'ordre réel du jeu**,
+  et non plus l'ordre alphabétique. Relevé en observant l'écran de Maxime
+  (panneau « Principales » du journal, défilé en entier) : Balenos,
+  Serendia, Calpheon, Mediah, Valencia, Kamasylvia, Drieghan, O'dyllita,
+  Abyss One, Terre du matin radieux, Ulukita, Edania, dans cet ordre. 178
+  des 349 chaînes tombent dans cet ordre confirmé ; les 110 restantes, sans
+  région connue ou avec une région jamais vue en jeu, vont dans un nouvel
+  onglet replié « Autres chaînes (position non confirmée) » plutôt que
+  d'être placées au hasard.
 - **« Toutes les quêtes par chaîne » passe avant « les plus rapides ».**
   Demandé par Maxime le 06/08/2026 : la liste par chaîne est déjà utile avec
   une seule mesure, le classement exige trois mesures par quête et reste
