@@ -7,8 +7,45 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+## [0.6.0] - 2026-08-06
+
+### Ajouté
+
+- **Bouton « Envoyer le rapport ».** Dans Réglages, sous Compte Discord :
+  empaquette les dernières pannes enregistrées (`echecs/erreurs.log`) et les
+  envoie au serveur, qui les relaie dans un salon Discord. Le webhook Discord
+  n'est jamais connu du logiciel distribué : c'est le serveur qui le détient
+  et relaie, pour qu'il ne puisse jamais être extrait de l'exécutable et
+  détourné pour spammer le salon. Demandé par Maxime le 06/08/2026.
+- **La fenêtre apprend enfin que le rattachement Discord a abouti.** Trouvé
+  par Maxime le 06/08/2026 en se connectant pour de vrai : son compte était
+  rattaché, le serveur avait rendu `{"rattache":true,"nom":"maxyull"}`, et la
+  fenêtre affichait toujours « autorisez Rubin dans votre navigateur, puis
+  revenez ici ». Le rattachement se termine **hors du logiciel**, dans le
+  navigateur : Discord renvoie le joueur vers le serveur, pas vers nous, et
+  rien ne prévenait la fenêtre. Elle affiche maintenant « connecté comme
+  maxyull », au lancement comme après un clic, en interrogeant la nouvelle
+  route `GET /v1/discord/compte` (pseudonyme seul, jamais l'identifiant
+  Discord).
+
+  ⚠️ **Un serveur muet ne se lit pas « pas connecté ».** Trois états, jamais
+  deux : rattaché, pas rattaché, et **on ne sait pas**. Une panne de réseau,
+  ou un serveur d'une version antérieure à cette route, laissent l'étiquette
+  intacte plutôt que d'envoyer un joueur déjà rattaché refaire un
+  rattachement qui a marché. Même principe que partout ici : rater une
+  information donne un écran incomplet, en inventer une donne un écran faux.
+
 ### Modifié
 
+- **« Toutes les quêtes par chaîne » suit maintenant l'ordre réel du jeu**,
+  et non plus l'ordre alphabétique. Relevé en observant l'écran de Maxime
+  (panneau « Principales » du journal, défilé en entier) : Balenos,
+  Serendia, Calpheon, Mediah, Valencia, Kamasylvia, Drieghan, O'dyllita,
+  Abyss One, Terre du matin radieux, Ulukita, Edania, dans cet ordre. 178
+  des 349 chaînes tombent dans cet ordre confirmé ; les 110 restantes, sans
+  région connue ou avec une région jamais vue en jeu, vont dans un nouvel
+  onglet replié « Autres chaînes (position non confirmée) » plutôt que
+  d'être placées au hasard.
 - **« Toutes les quêtes par chaîne » passe avant « les plus rapides ».**
   Demandé par Maxime le 06/08/2026 : la liste par chaîne est déjà utile avec
   une seule mesure, le classement exige trois mesures par quête et reste
@@ -25,6 +62,19 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 - Vérifié à cette occasion que la liste ne contient déjà **que** des quêtes
   principales (`Catalog.chains` filtre sur `KIND_MAIN` depuis le début) :
   pas de séparation « Principales »/« Autres » à faire.
+
+### Corrigé
+
+- **Le bouton « Envoyer le rapport » n'aurait rien envoyé du tout.** Les deux
+  salons de rapports (`#rubin-bugs` et `#butin-bugs`) sont des **forums**, et
+  un webhook de forum refuse un message qui n'ouvre pas de fil : `POST
+  {"content": ...}` seul rend 400, code 220001. Mesuré contre l'API réelle
+  par la session `discord-bdo` le 06/08/2026, sur les deux webhooks, avant
+  que le premier rapport n'ait été envoyé. Chaque rapport ouvre désormais son
+  propre fil, nommé `🐛 {application} — {joueur}`. Le nom de fil est un
+  argument **obligatoire** de `send_report`, sans valeur par défaut : comme
+  cette fonction ne lève jamais, un oubli serait ressorti dans le seul
+  journal du serveur, et le joueur aurait vu son rapport partir dans le vide.
 
 ## [0.5.9] - 2026-08-06
 
