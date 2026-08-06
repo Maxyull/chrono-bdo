@@ -7,6 +7,8 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+## [0.5.8] - 2026-08-06
+
 ### Ajouté
 
 - **Un onglet Envois, qui montre les paquets réellement postés au serveur.**
