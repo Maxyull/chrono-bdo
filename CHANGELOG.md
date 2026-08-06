@@ -7,6 +7,14 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+### Modifié
+
+- **L'adresse du serveur n'est plus écrite dans la fenêtre.** Demandé par
+  Maxime le 06/08/2026 : le témoin de connexion se lit maintenant
+  « serveur : connecté (37 ms) — 31 mesures reçues », avec la latence de
+  `/sante` plutôt que l'URL. Un lien « voir ce qui est envoyé », juste en
+  dessous, ouvre la politique de confidentialité dans le navigateur.
+
 ## [0.5.6] - 2026-08-06
 
 ### Ajouté
