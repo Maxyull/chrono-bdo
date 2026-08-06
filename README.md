@@ -1,5 +1,11 @@
 # Rubin
 
+[![CI](https://github.com/Maxyull/rubin-bdo/actions/workflows/ci.yml/badge.svg)](https://github.com/Maxyull/rubin-bdo/actions/workflows/ci.yml)
+[![Dernière release](https://img.shields.io/github/v/release/Maxyull/rubin-bdo?label=release)](https://github.com/Maxyull/rubin-bdo/releases/latest)
+[![Licence MIT](https://img.shields.io/github/license/Maxyull/rubin-bdo)](LICENSE)
+[![Python 3.10 à 3.12](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)](pyproject.toml)
+[![Discord](https://img.shields.io/badge/discord-rejoindre-5865F2?logo=discord&logoColor=white)](https://discord.gg/qCuvN2Zna7)
+
 **Le chronomètre de quêtes pour Black Desert Online.**
 
 Rubin mesure le temps que prend chaque quête principale, sans que vous ayez à

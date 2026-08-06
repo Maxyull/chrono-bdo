@@ -26,6 +26,17 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
   mise à jour disponible juste à côté quand il y en a une : « RUBIN v0.5.8 —
   mise à jour disponible : v0.5.9 ». Demandé par Maxime le 06/08/2026, pour
   le voir d'un coup d'œil sans chercher.
+- **Un lien Discord**, dans la fenêtre (sous le lien de l'onglet Envois) et
+  dans le README. Demandé par Maxime le 06/08/2026.
+- **Des badges dans le README** : CI, dernière release, licence, versions de
+  Python prises en charge, Discord.
+
+### Corrigé (documentation)
+
+- La référence à SignPath dans le README pointait vers `signpath.io`, alors
+  que la demande de signature du 05/08/2026 a été faite auprès de la
+  [SignPath Foundation](https://signpath.org/), qui offre la signature
+  gratuite aux projets libres. Signalé par Maxime.
 
 ## [0.5.8] - 2026-08-06
 

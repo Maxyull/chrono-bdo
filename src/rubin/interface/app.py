@@ -133,6 +133,9 @@ REFRESH_MS: Final = 125
 #: rien.
 UPDATE_POLL_MS: Final = 5 * 60 * 1000
 
+#: Le Discord du projet, demandé par Maxime le 06/08/2026.
+DISCORD_URL: Final = "https://discord.gg/qCuvN2Zna7"
+
 #: Ce qu'on écrit sous le nom de la quête, selon le bandeau vu.
 #:
 #: Les deux derniers ne produisent aucune mesure, et le disent. Sans cela, un
@@ -345,6 +348,17 @@ class RubinApp:
         )
         self._voir_envois.pack(anchor="w")
         self._voir_envois.bind("<Button-1>", self._show_envois_tab)
+
+        # Le Discord du projet. Demandé par Maxime le 06/08/2026 : un lien
+        # depuis la fenêtre elle-même, pas seulement depuis le dépôt.
+        self._discord_lien = ttk.Label(
+            cadre, text="rejoindre le Discord", foreground=COLORS["accent"],
+            background=COLORS["fond"], font=(FAMILY, 9), cursor="hand2",
+        )
+        self._discord_lien.pack(anchor="w")
+        self._discord_lien.bind(
+            "<Button-1>", lambda _e: webbrowser.open(DISCORD_URL)
+        )
 
         # Le bouton de mise à jour, invisible tant qu'aucune n'est connue.
         # Demandé par Maxime le 06/08/2026 : un clic doit suffire, contre le
