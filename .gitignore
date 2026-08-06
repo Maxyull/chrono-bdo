@@ -11,11 +11,16 @@ donnees/cache/
 *.png
 *.jpg
 
-# Deux exceptions, vérifiées une à une comme ne portant aucune donnée de tiers :
+# Des exceptions, vérifiées une à une comme ne portant aucune donnée de tiers :
 # le gabarit de l'icône du bandeau, qui ne contient aucun texte, et l'échantillon
 # de test, qui ne montre qu'un bandeau et son nom de quête.
 !src/rubin/capture/data/*.png
 !tests/data/*.png
+# Le logo de Discord, qui n'est pas une capture de jeu du tout : c'est une
+# marque, prise sur l'installation de Discord, et elle ne montre évidemment
+# aucun joueur. Voir `src/rubin/interface/data/LISEZ-MOI.md` pour ce qu'elle
+# est et ce qu'elle n'est pas.
+!src/rubin/interface/data/discord-logo.png
 
 .venv/
 __pycache__/
