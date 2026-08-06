@@ -25,6 +25,7 @@ from rubin.interface import (
     ListedQuest,
     Watching,
     ZoneState,
+    build_report,
     chain_sections,
     demo_active,
     demo_ranking,
@@ -831,6 +832,36 @@ class TestOngletEnvois:
         assert "14:32:07" in en_tête
         assert "842 octets" in en_tête
         assert "/v1/sessions" in en_tête
+
+
+class TestRapportDeBogue:
+    """Le bouton « Envoyer le rapport », côté texte pur.
+
+    Demandé par Maxime le 06/08/2026 : signaler un souci depuis l'app, sans
+    exposer le webhook Discord dans l'exécutable distribué (voir
+    `rubin_serveur.rapport`, qui le détient côté serveur).
+    """
+
+    def test_porte_la_version(self) -> None:
+        assert "Rubin v0.5.9" in build_report("0.5.9", "")
+
+    def test_dit_labsence_de_panne_en_toutes_lettres(self) -> None:
+        """Régression : un rapport vide serait indiscernable d'un rapport qui
+        a échoué à lire le journal. Le dire explicitement lève le doute."""
+        rapport = build_report("0.5.9", "")
+
+        assert "Aucune panne enregistrée" in rapport
+
+    def test_inclut_le_journal_quand_il_y_en_a_un(self) -> None:
+        rapport = build_report("0.5.9", "--- 2026-08-06 12:00:00 ---\nKeyError: None\n")
+
+        assert "KeyError: None" in rapport
+        assert "erreurs.log" in rapport
+
+    def test_ne_double_pas_le_message_dabsence_avec_un_journal_present(self) -> None:
+        rapport = build_report("0.5.9", "une vraie panne")
+
+        assert "Aucune panne enregistrée" not in rapport
 
 
 def _classee(chain: int, position: int, seconds: float, samples: int = 3) -> RankedQuest:

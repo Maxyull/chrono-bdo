@@ -63,9 +63,11 @@ from .presentation import (
     DEMO_BANNER,
     LOCKED_WHILE_MEASURING,
     QUEST_LIST_LIMIT,
+    REPORT_LOG_CHARS,
     SEARCH_MIN_LENGTH,
     ListedQuest,
     ZoneState,
+    build_report,
     chain_sections,
     demo_active,
     demo_ranking,
@@ -1053,6 +1055,25 @@ class RubinApp:
             self._reglages, text="", style="Faible.TLabel", anchor="w", wraplength=400
         )
         self._reglages_etat.pack(fill="x", padx=12, pady=(0, 10))
+
+        ttk.Label(
+            self._reglages, text="SIGNALER UN PROBLÈME", style="Section.TLabel", anchor="w"
+        ).pack(fill="x", padx=12, pady=(16, 2))
+        ttk.Label(
+            self._reglages,
+            text=(
+                "Envoie au serveur les dernières pannes enregistrées\n"
+                "(echecs/erreurs.log), qui les relaie dans un salon Discord."
+            ),
+            style="Faible.TLabel", anchor="w", justify="left",
+        ).pack(fill="x", padx=12)
+        ttk.Button(
+            self._reglages, text="Envoyer le rapport", command=self.send_report
+        ).pack(padx=12, pady=(8, 2), anchor="w")
+        self._rapport_etat = ttk.Label(
+            self._reglages, text="", style="Faible.TLabel", anchor="w", wraplength=400
+        )
+        self._rapport_etat.pack(fill="x", padx=12, pady=(0, 10))
 
     def _slider_moved(self, name: str, widget: ttk.Label) -> Callable[[str], None]:
         """Fabrique le rappel d'un curseur, avec sa propre étiquette.
@@ -2498,6 +2519,63 @@ class RubinApp:
         self._discord_etat.config(
             text="autorisez Rubin dans votre navigateur, puis revenez ici"
         )
+
+    def _read_crash_log(self, max_chars: int) -> str:
+        """Les derniers caractères de `echecs/erreurs.log`, ou une chaîne vide.
+
+        Une chaîne vide dit aussi bien « aucune panne enregistrée » que
+        « le fichier n'a pas pu être lu » : les deux cas produisent le même
+        rapport, honnête dans les deux cas (voir `build_report`), et aucune
+        panne de lecture ne doit empêcher l'envoi du reste du rapport.
+        """
+        chemin = self._home / "echecs" / "erreurs.log"
+        if not chemin.exists():
+            return ""
+        try:
+            contenu = chemin.read_text(encoding="utf-8", errors="replace")
+        except OSError:  # pragma: pas de couverture
+            return ""
+        return contenu[-max_chars:]
+
+    def send_report(self) -> None:
+        """Empaquette un rapport et l'envoie au serveur, qui le relaie sur Discord.
+
+        Synchrone, comme `link_discord` : un clic explicite du joueur, pas une
+        boucle de mesure, un court délai n'a pas besoin d'un fil séparé.
+
+        Le webhook Discord n'est jamais connu du client : c'est le serveur qui
+        le détient et relaie, pour ne jamais l'exposer dans l'exécutable
+        distribué. Voir `rubin_serveur.rapport`.
+        """
+        if not self._server:
+            self._rapport_etat.config(
+                text="aucun serveur indiqué : relancez avec --envoyer pour envoyer un rapport"
+            )
+            return
+        try:
+            identity = PlayerIdentity.load_or_create(self._home / "identite")
+        except OSError as erreur:  # pragma: pas de couverture
+            self._rapport_etat.config(text=f"identifiant illisible : {erreur}")
+            return
+
+        contenu = build_report(__version__, self._read_crash_log(REPORT_LOG_CHARS))
+        adresse = f"{self._server.rstrip('/')}/v1/rapport"
+        try:
+            réponse = requests.post(
+                adresse, json={"joueur": identity.value, "contenu": contenu}, timeout=10
+            )
+        except requests.RequestException as erreur:
+            self._rapport_etat.config(text=f"serveur injoignable : {erreur}")
+            return
+        if réponse.status_code == 503:
+            self._rapport_etat.config(
+                text="l'envoi de rapport n'est pas encore configuré sur le serveur"
+            )
+            return
+        if réponse.status_code >= 400:
+            self._rapport_etat.config(text=f"le serveur a refusé ({réponse.status_code})")
+            return
+        self._rapport_etat.config(text="rapport envoyé, merci")
 
     def toggle_session(self) -> None:
         """Démarre ou arrête la mesure, selon l'état.

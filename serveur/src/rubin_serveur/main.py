@@ -22,6 +22,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import asdict
+from datetime import datetime, timezone
 from typing import Annotated, Any
 
 from fastapi import Body, FastAPI, HTTPException
@@ -29,6 +30,7 @@ from fastapi.responses import RedirectResponse
 from rubin.protocol import PROTOCOL_VERSION, SessionPayload
 
 from .discord import DiscordConfig, authorize_url, exchange_code, read_state
+from .rapport import send_report
 from .storage import MIN_SAMPLES_PER_QUEST, Storage
 
 #: Nombre maximal de mesures dans un lot. Une session très longue en produit
@@ -90,6 +92,17 @@ MAX_DISCORD_CODE = 512
 #: nom plus long ferait échouer l'écriture en base, donc le rattachement, après
 #: que la personne a pourtant donné son accord.
 MAX_DISCORD_NAME = 64
+
+#: URL du webhook Discord qui reçoit les rapports de bogue, lue une seule
+#: fois au démarrage. `None` est l'état normal tant qu'elle n'est pas posée :
+#: le serveur tourne sans, et le dit à qui essaie de s'en servir plutôt que
+#: de refuser de démarrer — même principe que `discord_config`.
+REPORT_WEBHOOK_URL = os.environ.get("RUBIN_RAPPORT_WEBHOOK")
+
+#: Un message Discord plafonne à 2000 caractères. Borné plus bas ici pour
+#: laisser de la place à l'horodatage et au nom que la route ajoute avant
+#: l'envoi (voir `rapport`).
+MAX_REPORT_LENGTH = 1800
 
 
 @app.get("/v1/version")
@@ -319,6 +332,41 @@ def discord_callback(code: str = "", state: str = "") -> dict[str, Any]:
     name = _clean_discord_name(identity.name)
     storage.link_discord(player, identity.discord_id, name)
     return {"rattache": True, "nom": name}
+
+
+@app.post("/v1/rapport", status_code=202)
+def rapport(payload: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
+    """Reçoit un rapport de bogue et le relaie dans un salon Discord.
+
+    Le webhook Discord n'est jamais connu du client : voir l'en-tête de
+    `rapport.py`. Le pseudonyme affiché est celui du rattachement Discord
+    du joueur s'il en a un (voir `storage.display_name`), sinon les huit
+    premiers caractères de son identifiant anonyme — assez pour distinguer
+    deux rapports du même joueur, pas assez pour l'identifier.
+    """
+    if not REPORT_WEBHOOK_URL:
+        raise HTTPException(503, "envoi de rapport non configuré")
+
+    player = str(payload.get("joueur", ""))
+    if not PLAYER_PATTERN.fullmatch(player):
+        raise HTTPException(422, "identifiant de contributeur invalide")
+
+    contenu = str(payload.get("contenu", "")).strip()
+    if not contenu:
+        raise HTTPException(422, "rapport vide")
+    if len(contenu) > MAX_REPORT_LENGTH:
+        raise HTTPException(
+            413, f"rapport de {len(contenu)} caractères, {MAX_REPORT_LENGTH} au maximum"
+        )
+
+    nom = storage.display_name(player) or f"joueur anonyme {player[:8]}"
+    horodatage = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    message = f"**{horodatage} — {nom}**\n{contenu}"
+
+    if not send_report(REPORT_WEBHOOK_URL, message):
+        raise HTTPException(502, "Discord n'a pas confirmé l'envoi, réessayez")
+
+    return {"envoye": True}
 
 
 @app.get("/v1/chaines")

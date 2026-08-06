@@ -72,6 +72,34 @@ def format_packet_header(at: str, size_bytes: int, endpoint: str) -> str:
     return f"--- {at}, {format_packet_size(size_bytes)}, vers {endpoint} ---"
 
 
+#: Ce qu'un rapport garde du journal des pannes (`echecs/erreurs.log`) : les
+#: derniers caractères, pas tout le fichier. Un joueur qui a laissé Rubin
+#: tourner plusieurs jours a un fichier de plusieurs mégaoctets ; seules les
+#: pannes récentes intéressent un rapport ponctuel, et le serveur borne de
+#: toute façon la taille reçue.
+REPORT_LOG_CHARS: Final = 1500
+
+
+def build_report(version: str, log_tail: str) -> str:
+    """Construit le texte envoyé par le bouton « Envoyer le rapport ».
+
+    Pure : `log_tail` est déjà lu et tronqué par l'appelant (voir
+    `REPORT_LOG_CHARS`), pour que cette fonction reste testable sans disque.
+
+    Une absence de panne enregistrée est dite en toutes lettres plutôt que de
+    rendre un rapport vide : un rapport qui ne dit rien serait indiscernable
+    d'un rapport qui a échoué à lire le journal.
+    """
+    lignes = [f"Rubin v{version}"]
+    if log_tail.strip():
+        lignes.append("")
+        lignes.append("Dernières pannes (echecs/erreurs.log) :")
+        lignes.append(log_tail.strip())
+    else:
+        lignes.append("Aucune panne enregistrée dans echecs/erreurs.log.")
+    return "\n".join(lignes)
+
+
 def running_seconds(started_at: float | None, now: float) -> float | None:
     """Le temps écoulé sur la quête en cours, ou `None` si aucune n'est ouverte.
 
