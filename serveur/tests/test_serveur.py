@@ -693,7 +693,9 @@ class TestRapportAvecWebhook:
 
     @pytest.fixture(autouse=True)
     def avec_webhook(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(main, "REPORT_WEBHOOK_URL", "https://discord.com/api/webhooks/x")
+        monkeypatch.setattr(
+            main, "REPORT_WEBHOOKS", {"rubin": "https://discord.com/api/webhooks/x", "butin": None}
+        )
 
     def test_relaie_le_rapport(self, client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
         envoyes: list[tuple[str, str]] = []
@@ -753,3 +755,83 @@ class TestRapportAvecWebhook:
         monkeypatch.setattr(main, "send_report", lambda url, message: False)
         reponse = client.post("/v1/rapport", json={"joueur": "a" * 32, "contenu": "un souci"})
         assert reponse.status_code == 502
+
+    def test_labsence_de_champ_app_route_vers_rubin(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Compatibilité : un appelant plus ancien qui n'envoie pas `app`."""
+        urls: list[str] = []
+        monkeypatch.setattr(main, "send_report", lambda url, message: urls.append(url) or True)
+        reponse = client.post("/v1/rapport", json={"joueur": "a" * 32, "contenu": "x"})
+        assert reponse.status_code == 202
+        assert urls == ["https://discord.com/api/webhooks/x"]
+
+    def test_une_valeur_dapp_inconnue_retombe_sur_rubin(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Un rapport égaré vaut mieux qu'un rapport perdu : voir la docstring
+        de la route. Une valeur imprévue ne doit jamais rendre un 503."""
+        urls: list[str] = []
+        monkeypatch.setattr(main, "send_report", lambda url, message: urls.append(url) or True)
+        reponse = client.post(
+            "/v1/rapport", json={"joueur": "a" * 32, "contenu": "x", "app": "autre-chose"}
+        )
+        assert reponse.status_code == 202
+        assert urls == ["https://discord.com/api/webhooks/x"]
+
+
+class TestRapportChoixDuSalon:
+    """Demandé par la session butin-bdo le 06/08/2026 (voir COORDINATION.md) :
+    un salon par application, pour que les rapports de Butin n'atterrissent
+    pas dans celui de Rubin."""
+
+    def test_app_butin_route_vers_son_propre_webhook(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            main,
+            "REPORT_WEBHOOKS",
+            {
+                "rubin": "https://discord.com/api/webhooks/rubin",
+                "butin": "https://discord.com/api/webhooks/butin",
+            },
+        )
+        urls: list[str] = []
+        monkeypatch.setattr(main, "send_report", lambda url, message: urls.append(url) or True)
+
+        reponse = client.post(
+            "/v1/rapport", json={"joueur": "a" * 32, "contenu": "x", "app": "butin"}
+        )
+
+        assert reponse.status_code == 202
+        assert urls == ["https://discord.com/api/webhooks/butin"]
+
+    def test_app_butin_sans_son_propre_webhook_retombe_sur_rubin(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """État réel du 06/08/2026 : `BUTIN_RAPPORT_WEBHOOK` n'est pas encore
+        posé. La session butin-bdo a explicitement accepté ce repli en
+        attendant, plutôt qu'un 503 : voir COORDINATION.md."""
+        monkeypatch.setattr(
+            main,
+            "REPORT_WEBHOOKS",
+            {"rubin": "https://discord.com/api/webhooks/rubin", "butin": None},
+        )
+        urls: list[str] = []
+        monkeypatch.setattr(main, "send_report", lambda url, message: urls.append(url) or True)
+
+        reponse = client.post(
+            "/v1/rapport", json={"joueur": "a" * 32, "contenu": "x", "app": "butin"}
+        )
+
+        assert reponse.status_code == 202
+        assert urls == ["https://discord.com/api/webhooks/rubin"]
+
+    def test_aucun_webhook_configure_rend_503(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(main, "REPORT_WEBHOOKS", {"rubin": None, "butin": None})
+        reponse = client.post(
+            "/v1/rapport", json={"joueur": "a" * 32, "contenu": "x", "app": "butin"}
+        )
+        assert reponse.status_code == 503
