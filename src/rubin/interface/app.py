@@ -122,6 +122,19 @@ REFRESH_MS: Final = 125
 #: connexion. La même adresse que celle citée dans le README et `ETAT.md`.
 CONFIDENTIALITY_URL: Final = "https://maxyull.fr/confidentialite.html"
 
+#: Intervalle entre deux vérifications de version, en millisecondes.
+#:
+#: `_ask_server` en vérifie déjà une au lancement et après chaque quête
+#: mesurée, mais un joueur qui laisse Rubin ouvert sans jouer, ou en pleine
+#: quête très longue, ne verrait sinon rien tant qu'il ne relance pas. Un vrai
+#: push (WebSocket, connexion permanente) réglerait ça aussi, mais pour un
+#: événement aussi rare qu'une nouvelle version, il ferait porter au serveur
+#: une connexion ouverte par joueur pour un gain qu'un sondage périodique
+#: donne déjà. Choisi avec Maxime le 06/08/2026. Cinq minutes : assez
+#: réactif pour ne pas rater une soirée de jeu, assez rare pour ne peser sur
+#: rien.
+UPDATE_POLL_MS: Final = 5 * 60 * 1000
+
 #: Ce qu'on écrit sous le nom de la quête, selon le bandeau vu.
 #:
 #: Les deux derniers ne produisent aucune mesure, et le disent. Sans cela, un
@@ -268,6 +281,7 @@ class RubinApp:
         self._apply_window_style()
         self._place_beside_the_game()
         self._ask_server()
+        self._poll_for_update()
         self.root.after(REFRESH_MS, self._drain)
 
     # ------------------------------------------------------------------ mise en place
@@ -1292,10 +1306,6 @@ class RubinApp:
         catalogue, langue = self._catalog, self._settings.language
 
         def demander() -> None:
-            # Indépendant de `_references` : `check_for_update` interroge le
-            # même serveur mais par une requête à part, et continue de
-            # répondre même si le reste (classement, couverture) est éteint.
-            self.publish("maj", check_for_update(self._server))
             self.publish("lien", self._references.health())
             if catalogue is not None:
                 # Ne dépend d'aucun serveur : c'est un fait du catalogue, et il
@@ -1318,6 +1328,22 @@ class RubinApp:
                 )
 
         threading.Thread(target=demander, daemon=True).start()
+
+    def _poll_for_update(self) -> None:
+        """Revérifie une mise à jour toutes les `UPDATE_POLL_MS`, sans s'arrêter.
+
+        Se replanifie elle-même à chaque passage : c'est ce qui la distingue
+        de `_ask_server`, rappelée seulement au lancement et après chaque
+        quête mesurée. Un joueur qui laisse Rubin ouvert sans jouer verrait
+        sinon passer une release entière sans le savoir.
+        """
+        server = self._server
+
+        def demander() -> None:
+            self.publish("maj", check_for_update(server))
+
+        threading.Thread(target=demander, daemon=True).start()
+        self.root.after(UPDATE_POLL_MS, self._poll_for_update)
 
     def _search_changed(self, *_arguments: object) -> None:
         """Refiltre le catalogue à chaque frappe, sans aucun réseau.
