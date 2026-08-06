@@ -1,0 +1,36 @@
+version: 2
+updates:
+  # Trois environnements séparés (racine, serveur, robot), voir CLAUDE.md
+  # section 2bis : chacun a son propre pyproject.toml et ses propres
+  # dépendances, à mettre à jour indépendamment.
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      dependances:
+        patterns:
+          - "*"
+
+  - package-ecosystem: pip
+    directory: /serveur
+    schedule:
+      interval: weekly
+    groups:
+      dependances:
+        patterns:
+          - "*"
+
+  - package-ecosystem: pip
+    directory: /bot
+    schedule:
+      interval: weekly
+    groups:
+      dependances:
+        patterns:
+          - "*"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
