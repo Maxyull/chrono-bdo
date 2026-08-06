@@ -7,6 +7,27 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+### Modifié
+
+- **« Toutes les quêtes par chaîne » passe avant « les plus rapides ».**
+  Demandé par Maxime le 06/08/2026 : la liste par chaîne est déjà utile avec
+  une seule mesure, le classement exige trois mesures par quête et reste
+  souvent vide tant que la base est jeune. Un avertissement « en
+  construction » l'accompagne maintenant, pour ne pas laisser croire à une
+  fonctionnalité cassée.
+- **Les chaînes de Renaissance et d'Éveil (quêtes de classe) se replient à
+  part, en tête de la liste par chaîne.** Sur 349 chaînes, 61 appartiennent
+  au parcours d'une classe jouable (une paire Renaissance/Éveil chacune) et
+  noyaient les chaînes de scénario sous « [R » et « [É » une fois triées par
+  nom. Elles restent toutes présentes, seulement regroupées sous une
+  catégorie qui se déplie comme une chaîne ordinaire. Demandé par Maxime le
+  06/08/2026.
+- Vérifié à cette occasion que la liste ne contient déjà **que** des quêtes
+  principales (`Catalog.chains` filtre sur `KIND_MAIN` depuis le début) :
+  pas de séparation « Principales »/« Autres » à faire.
+
+## [0.5.9] - 2026-08-06
+
 ### Corrigé
 
 - **La mise à jour en un clic ne relançait pas Rubin.** Trouvé par Maxime en
@@ -24,6 +45,17 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
   mise à jour disponible juste à côté quand il y en a une : « RUBIN v0.5.8 —
   mise à jour disponible : v0.5.9 ». Demandé par Maxime le 06/08/2026, pour
   le voir d'un coup d'œil sans chercher.
+- **Un lien Discord**, dans la fenêtre (sous le lien de l'onglet Envois) et
+  dans le README. Demandé par Maxime le 06/08/2026.
+- **Des badges dans le README** : CI, dernière release, licence, versions de
+  Python prises en charge, Discord.
+
+### Corrigé (documentation)
+
+- La référence à SignPath dans le README pointait vers `signpath.io`, alors
+  que la demande de signature du 05/08/2026 a été faite auprès de la
+  [SignPath Foundation](https://signpath.org/), qui offre la signature
+  gratuite aux projets libres. Signalé par Maxime.
 
 ## [0.5.8] - 2026-08-06
 

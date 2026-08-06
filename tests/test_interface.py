@@ -11,6 +11,7 @@ import pytest
 
 from rubin.capture import Rect, banner_region, tracker_region
 from rubin.interface import (
+    CLASS_CHAIN_CATEGORY,
     COVERAGE_TAGS,
     DEMO_BANNER,
     DEMO_MARK,
@@ -29,6 +30,7 @@ from rubin.interface import (
     describe_conflict,
     describe_reading,
     describe_zone,
+    format_category_header,
     format_chain_header,
     format_coverage,
     format_current_reference,
@@ -49,6 +51,8 @@ from rubin.interface import (
     format_search_result,
     format_upcoming_line,
     format_watching,
+    group_chains_by_category,
+    is_class_chain,
     lock_label,
     main_quest_total,
     other_quest_total,
@@ -1473,3 +1477,79 @@ class TestListeParChaine:
 
         assert avertissement is not None
         assert str(QUEST_LIST_LIMIT) in avertissement
+
+
+class TestCategorieDeClasse:
+    """Les chaînes de Renaissance/Éveil, regroupées à part du scénario.
+
+    Demandé par Maxime le 06/08/2026 : sur 349 chaînes, 64 sont des
+    Renaissance/Éveil, une paire par classe jouable, et mélangées au reste
+    elles noient les chaînes de scénario sous « [R » et « [É ».
+    """
+
+    def test_is_class_chain_reconnait_renaissance_avec_de(self) -> None:
+        chaîne = Chain(1, (_lq(1, "La bravoure", chain=1, prefix="Renaissance de Berserker"),))
+
+        assert is_class_chain(chaîne)
+
+    def test_is_class_chain_reconnait_renaissance_avec_apostrophe(self) -> None:
+        # « Renaissance d'Agent », pas « Renaissance de Agent » : la classe
+        # commence par une voyelle. La coupure ne doit rien supposer dessus.
+        chaîne = Chain(
+            1, (_lq(1, "Souvenirs de deux mondes", chain=1, prefix="Renaissance d'Agent"),)
+        )
+
+        assert is_class_chain(chaîne)
+
+    def test_is_class_chain_reconnait_eveil(self) -> None:
+        chaîne = Chain(
+            1, (_lq(1, "Nouvelle arme", chain=1, prefix="Éveil de Guerrier"),)
+        )
+
+        assert is_class_chain(chaîne)
+
+    def test_is_class_chain_refuse_une_chaine_de_scenario(self) -> None:
+        chaîne = Chain(1, (_lq(1, "Magnus", chain=1, prefix="Abyss One"),))
+
+        assert not is_class_chain(chaîne)
+
+    def test_regression_is_class_chain_ne_confond_pas_un_mot_qui_commence_pareil(self) -> None:
+        """Régression : un préfixe qui commence par les mêmes lettres que
+        « Renaissance » sans être ce mot-là, à l'espace près (le pluriel
+        « Renaissances », par exemple), ne doit pas être pris pour une
+        chaîne de classe. La comparaison porte sur « renaissance » suivi
+        d'une espace, jamais sur un simple débuts de chaîne de caractères.
+        """
+        chaîne = Chain(1, (_lq(1, "Un mystère", chain=1, prefix="Renaissances légendaires"),))
+
+        assert not is_class_chain(chaîne)
+
+    def test_group_chains_by_category_separe_sans_rien_perdre(self) -> None:
+        catalogue = Catalog(
+            {
+                "fr": [
+                    _lq(1, "Magnus", chain=1, prefix="Abyss One"),
+                    _lq(1, "La bravoure", chain=2, prefix="Renaissance de Berserker"),
+                    _lq(1, "Nouvelle arme", chain=3, prefix="Éveil de Guerrier"),
+                ]
+            }
+        )
+        sections = chain_sections(catalogue, "fr", {})
+
+        classes, scénario = group_chains_by_category(sections)
+
+        assert len(classes) == 2
+        assert len(scénario) == 1
+        assert scénario[0][0].name == "[Abyss One] Magnus"
+        # Rien n'a disparu : les trois chaînes d'origine se retrouvent dans
+        # l'un des deux groupes, jamais les deux ni aucun.
+        assert len(classes) + len(scénario) == len(sections)
+
+    def test_format_category_header_accorde_le_pluriel(self) -> None:
+        une = (
+            (Chain(1, (_lq(1, "La bravoure", chain=1, prefix="Renaissance de Berserker"),)), ()),
+        )
+
+        assert format_category_header(CLASS_CHAIN_CATEGORY, une) == (
+            f"{CLASS_CHAIN_CATEGORY}   —   1 chaîne"
+        )

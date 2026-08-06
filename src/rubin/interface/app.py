@@ -57,6 +57,7 @@ from .autozone import search as search_banner_zone
 from .help import EXAMPLES, HelpWindow
 from .picker import ZonePicker, png_data
 from .presentation import (
+    CLASS_CHAIN_CATEGORY,
     COVERAGE_TAGS,
     DEMO_BANNER,
     LOCKED_WHILE_MEASURING,
@@ -70,6 +71,7 @@ from .presentation import (
     describe_conflict,
     describe_reading,
     describe_zone,
+    format_category_header,
     format_chain_header,
     format_coverage,
     format_current_reference,
@@ -89,6 +91,7 @@ from .presentation import (
     format_search_result,
     format_upcoming_line,
     format_watching,
+    group_chains_by_category,
     lock_label,
     main_quest_total,
     other_quest_total,
@@ -132,6 +135,14 @@ REFRESH_MS: Final = 125
 #: réactif pour ne pas rater une soirée de jeu, assez rare pour ne peser sur
 #: rien.
 UPDATE_POLL_MS: Final = 5 * 60 * 1000
+
+#: Le Discord du projet, demandé par Maxime le 06/08/2026.
+DISCORD_URL: Final = "https://discord.gg/qCuvN2Zna7"
+
+#: L'iid Tk de la catégorie « Renaissance et Éveil », fixe et distinct de
+#: tout `str(chain.number)` : un numéro de chaîne est toujours numérique,
+#: cet iid ne l'est jamais, les deux espaces ne se recouvrent donc jamais.
+_CLASS_CATEGORY_IID: Final = "categorie:classes"
 
 #: Ce qu'on écrit sous le nom de la quête, selon le bandeau vu.
 #:
@@ -242,6 +253,11 @@ class RubinApp:
         #: texte, retrouver la quête qu'elle désigne demande cette table.
         self._chain_quest_for_item: dict[str, Quest] = {}
         self._compteur_chain_liens = 0
+        #: Les chaînes de classe (Renaissance/Éveil), regroupées sous une
+        #: catégorie à part en tête d'arbre. Indexée par iid de catégorie,
+        #: valeur = les iid de chaînes qu'il faut poser à son ouverture.
+        #: Demandé par Maxime le 06/08/2026, voir `is_class_chain`.
+        self._category_members: dict[str, tuple[str, ...]] = {}
 
         #: Les notes du joueur, chargées une fois au démarrage et tenues à
         #: jour à chaque écriture par `_save_note` : voir `notes.py`. Purement
@@ -345,6 +361,17 @@ class RubinApp:
         )
         self._voir_envois.pack(anchor="w")
         self._voir_envois.bind("<Button-1>", self._show_envois_tab)
+
+        # Le Discord du projet. Demandé par Maxime le 06/08/2026 : un lien
+        # depuis la fenêtre elle-même, pas seulement depuis le dépôt.
+        self._discord_lien = ttk.Label(
+            cadre, text="rejoindre le Discord", foreground=COLORS["accent"],
+            background=COLORS["fond"], font=(FAMILY, 9), cursor="hand2",
+        )
+        self._discord_lien.pack(anchor="w")
+        self._discord_lien.bind(
+            "<Button-1>", lambda _e: webbrowser.open(DISCORD_URL)
+        )
 
         # Le bouton de mise à jour, invisible tant qu'aucune n'est connue.
         # Demandé par Maxime le 06/08/2026 : un clic doit suffire, contre le
@@ -587,6 +614,13 @@ class RubinApp:
         )
         self._temps.pack(fill="x", padx=12, pady=(4, 0))
 
+        # « Toutes les quêtes par chaîne » avant « les plus rapides » :
+        # ordre inversé le 06/08/2026 sur demande de Maxime. La liste par
+        # chaîne est déjà utile avec une seule mesure ; le classement, lui,
+        # exige trois mesures par quête et reste souvent vide tant que la
+        # base est jeune, voir la note « en construction » plus bas.
+        self._build_chains(dedans)
+
         ttk.Label(
             dedans,
             text="LES QUÊTES LES PLUS RAPIDES",
@@ -602,6 +636,14 @@ class RubinApp:
             ),
             style="Faible.TLabel", anchor="w", justify="left",
         ).pack(fill="x", padx=12)
+        ttk.Label(
+            dedans,
+            text=(
+                "⚠ En construction : trop peu de quêtes ont encore leurs trois\n"
+                "mesures. Cette liste s'étoffera avec la base."
+            ),
+            style="Alerte.TLabel", anchor="w", justify="left",
+        ).pack(fill="x", padx=12, pady=(2, 0))
 
         self._demo = tk.BooleanVar(value=False)
         ttk.Checkbutton(
@@ -623,8 +665,6 @@ class RubinApp:
         self._classement_etat.pack(fill="x", padx=12, pady=(2, 0))
         self._classement_texte = self._text_box(dedans, height=8)
         self._classement_texte.pack(fill="both", expand=True, padx=12, pady=(4, 6))
-
-        self._build_chains(dedans)
 
     def _build_chains(self, dedans: ttk.Frame) -> None:
         """Toutes les quêtes principales, repliées par chaîne, une pastille au bout.
@@ -1533,36 +1573,72 @@ class RubinApp:
         if ranked == self._chains_ranked:
             return
         self._chains_ranked = ranked
+        sections = chain_sections(
+            self._catalog, self._settings.language, samples_by_quest(ranked)
+        )
+        classes, scénario = group_chains_by_category(sections)
         self._chain_sections = {
-            str(chain.number): (chain, entrées)
-            for chain, entrées in chain_sections(
-                self._catalog, self._settings.language, samples_by_quest(ranked)
-            )
+            str(chain.number): (chain, entrées) for chain, entrées in sections
         }
         self._chains_loaded.clear()
         self._chain_quest_for_item.clear()
         self._chains.delete(*self._chains.get_children())
-        for iid, (chain, entrées) in self._chain_sections.items():
+
+        # Les chaînes de classe d'abord, repliées sous une seule catégorie :
+        # sur 349 chaînes, 64 sont des Renaissance/Éveil, une paire par
+        # classe jouable, et mélangées au reste elles noient les chaînes de
+        # scénario sous « [R » et « [É ». Demandé par Maxime le 06/08/2026.
+        # Voir `is_class_chain`.
+        self._category_members = {}
+        if classes:
             nœud = self._chains.insert(
-                "", "end", iid=iid, text=format_chain_header(chain, entrées), open=False
+                "", "end", iid=_CLASS_CATEGORY_IID,
+                text=format_category_header(CLASS_CHAIN_CATEGORY, classes), open=False,
             )
-            # Un enfant vide, pour que la flèche de dépliage apparaisse sans
-            # peupler la chaîne : voir l'en-tête de `_build_chains`.
-            # `_chains_open` le remplace par le vrai contenu à l'ouverture,
-            # jamais avant.
             self._chains.insert(nœud, "end", text="")
+            self._category_members[_CLASS_CATEGORY_IID] = tuple(
+                str(chain.number) for chain, _entrées in classes
+            )
+
+        for chain, entrées in scénario:
+            self._insert_chain_node("", chain, entrées)
+
+    def _insert_chain_node(
+        self, parent: str, chain: Chain, entrées: tuple[ListedQuest, ...]
+    ) -> None:
+        """Pose une chaîne repliée, avec son enfant vide pour la flèche de dépliage.
+
+        `parent` est `""` pour une chaîne de scénario, posée directement à la
+        racine de l'arbre, ou l'iid de la catégorie « Renaissance et Éveil »
+        pour une chaîne de classe : la même fonction sert aux deux niveaux,
+        voir `_show_chains`. `_chains_open` remplace l'enfant vide par le vrai
+        contenu à l'ouverture, jamais avant.
+        """
+        nœud = self._chains.insert(
+            parent, "end", iid=str(chain.number),
+            text=format_chain_header(chain, entrées), open=False,
+        )
+        self._chains.insert(nœud, "end", text="")
 
     def _chains_open(self, _event: object = None) -> None:
-        """Peuple une chaîne de l'arbre à son ouverture, jamais avant.
+        """Peuple une chaîne ou une catégorie de l'arbre à son ouverture, jamais avant.
 
         C'est tout l'intérêt de l'arbre lazy : voir l'en-tête de
-        `_build_chains`. `<<TreeviewOpen>>` place la chaîne ouverte au focus
-        avant de lever l'événement, ce qui évite d'avoir à retrouver laquelle
-        des 349 chaînes vient d'être dépliée autrement qu'en le demandant à
-        Tk.
+        `_build_chains`. `<<TreeviewOpen>>` place le nœud ouvert au focus
+        avant de lever l'événement, ce qui évite d'avoir à le retrouver
+        autrement qu'en le demandant à Tk.
         """
         iid = self._chains.focus()
-        if iid not in self._chain_sections or iid in self._chains_loaded:
+        if iid in self._chains_loaded:
+            return
+        if iid in self._category_members:
+            self._chains.delete(*self._chains.get_children(iid))
+            for membre in self._category_members[iid]:
+                chain, entrées = self._chain_sections[membre]
+                self._insert_chain_node(iid, chain, entrées)
+            self._chains_loaded.add(iid)
+            return
+        if iid not in self._chain_sections:
             return
         _chain, entrées = self._chain_sections[iid]
         self._chains.delete(*self._chains.get_children(iid))
@@ -1578,6 +1654,7 @@ class RubinApp:
             # Même geste que le nom cliquable de « QUÊTES FAITES » : direction
             # la fiche de recherche individuelle. Voir `_go_to_ranking`.
             self._chains.tag_bind(tag_lien, "<Button-1>", self._go_to_ranking(entrée.quest))
+        self._chains_loaded.add(iid)
         self._chains_loaded.add(iid)
 
     def _help(self, which: str) -> Callable[[], None]:

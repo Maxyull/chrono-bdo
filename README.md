@@ -1,5 +1,11 @@
 # Rubin
 
+[![CI](https://github.com/Maxyull/rubin-bdo/actions/workflows/ci.yml/badge.svg)](https://github.com/Maxyull/rubin-bdo/actions/workflows/ci.yml)
+[![Dernière release](https://img.shields.io/github/v/release/Maxyull/rubin-bdo?label=release)](https://github.com/Maxyull/rubin-bdo/releases/latest)
+[![Licence MIT](https://img.shields.io/github/license/Maxyull/rubin-bdo)](LICENSE)
+[![Python 3.10 à 3.12](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)](pyproject.toml)
+[![Discord](https://img.shields.io/badge/discord-rejoindre-5865F2?logo=discord&logoColor=white)](https://discord.gg/qCuvN2Zna7)
+
 **Le chronomètre de quêtes pour Black Desert Online.**
 
 Rubin mesure le temps que prend chaque quête principale, sans que vous ayez à
@@ -296,10 +302,10 @@ Les versions publiées sont construites par `empaquetage/construire.py` à parti
 de l'état du dépôt, et l'empreinte SHA-256 de chaque fichier (archive comme
 installateur) est publiée à côté de lui.
 
-La signature de code est assurée par [SignPath.io](https://signpath.io/), au
-moyen d'un certificat fourni par la [SignPath Foundation](https://signpath.org/),
-qui l'offre gratuitement aux projets libres. **La demande est en cours** : tant
-qu'elle n'a pas abouti, ce qui suit s'applique.
+La signature de code est demandée à la [SignPath Foundation](https://signpath.org/),
+qui l'offre gratuitement aux projets libres. **La demande a été envoyée le
+05/08/2026, son issue est encore inconnue.** Tant qu'elle n'a pas abouti, ce
+qui suit s'applique.
 
 ⚠️ **L'exécutable n'est pas encore signé.** Windows et certains antivirus
 peuvent donc l'annoncer comme provenant d'un éditeur inconnu, ce qui est un

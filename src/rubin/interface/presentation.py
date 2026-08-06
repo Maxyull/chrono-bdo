@@ -692,6 +692,48 @@ def chain_sections(
     )
 
 
+#: Préfixes qui marquent une chaîne de classe, une par classe jouable :
+#: Renaissance (Succession) et Éveil (Awakening). Les deux formes existent
+#: selon que le nom de la classe commence par une consonne ou une voyelle,
+#: « Renaissance de Berserker » comme « Renaissance d'Agent » : s'arrêter
+#: après le mot suffit à couvrir les deux, pas besoin de deviner la coupure.
+CLASS_CHAIN_PREFIXES: Final = ("[renaissance ", "[éveil ")
+
+#: Le nom de la catégorie qui les regroupe, en tête de la liste par chaîne.
+CLASS_CHAIN_CATEGORY: Final = "Renaissance et Éveil (quêtes de classe)"
+
+
+def is_class_chain(chain: Chain) -> bool:
+    """Vrai si cette chaîne appartient au parcours d'une classe.
+
+    Demandé par Maxime le 06/08/2026 : sur 349 chaînes principales, 64
+    (18 %) sont des chaînes de Renaissance ou d'Éveil, une paire par classe
+    jouable. Mélangées au reste, elles se suivent alphabétiquement et
+    noient les chaînes de scénario sous « [R » et « [É ». Les regrouper à
+    part rend le reste de la liste lisible, sans en retirer une seule
+    chaîne : voir `group_chains_by_category`.
+    """
+    nom = chain.name.lower()
+    return any(nom.startswith(préfixe) for préfixe in CLASS_CHAIN_PREFIXES)
+
+
+def group_chains_by_category(
+    sections: Sequence[tuple[Chain, tuple[ListedQuest, ...]]],
+) -> tuple[
+    tuple[tuple[Chain, tuple[ListedQuest, ...]], ...],
+    tuple[tuple[Chain, tuple[ListedQuest, ...]], ...],
+]:
+    """Sépare les chaînes de classe du reste, sans rien retirer ni réordonner.
+
+    Rend `(classes, scénario)`, dans cet ordre : les classes sont censées se
+    replier en tête de l'arbre, voir `_show_chains` dans `app.py`. Les deux
+    groupes gardent le tri alphabétique de `chain_sections`, chacun le sien.
+    """
+    classes = tuple(paire for paire in sections if is_class_chain(paire[0]))
+    scénario = tuple(paire for paire in sections if not is_class_chain(paire[0]))
+    return classes, scénario
+
+
 def format_chain_header(chain: Chain, entries: Sequence[ListedQuest]) -> str:
     """L'en-tête d'une chaîne repliée : son nom, et ce qui en est mesuré.
 
@@ -703,6 +745,15 @@ def format_chain_header(chain: Chain, entries: Sequence[ListedQuest]) -> str:
     total = len(entries)
     mesurées = sum(1 for entrée in entries if entrée.samples > 0)
     return f"{chain.name}   —   {mesurées}/{total} mesurée{'s' if mesurées != 1 else ''}"
+
+
+def format_category_header(
+    name: str, chains: Sequence[tuple[Chain, tuple[ListedQuest, ...]]]
+) -> str:
+    """L'en-tête d'une catégorie de chaînes repliée : son nom, et son échelle."""
+    total = len(chains)
+    chaîne = "chaîne" if total == 1 else "chaînes"
+    return f"{name}   —   {total} {chaîne}"
 
 
 def format_listed_quest(entry: ListedQuest) -> str:
