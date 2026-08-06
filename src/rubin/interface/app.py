@@ -33,6 +33,7 @@ from typing import Any, Final
 
 import requests
 
+from .. import __version__
 from ..autoupdate import download_installer, launch_installer
 from ..capture import (
     Rect,
@@ -292,7 +293,14 @@ class RubinApp:
         """
         cadre = ttk.Frame(self.root)
         cadre.pack(fill="x", padx=14, pady=(12, 6))
-        ttk.Label(cadre, text="RUBIN", style="Section.TLabel").pack(anchor="w")
+        # Le numéro de version, demandé par Maxime le 06/08/2026 : savoir
+        # d'un coup d'œil quelle version tourne, et si une plus récente
+        # existe, sans avoir à chercher dans les onglets. Mis à jour par
+        # `_show_update_status`, la même donnée que `_maj_bouton` plus bas.
+        self._rubin_titre = ttk.Label(
+            cadre, text=f"RUBIN v{__version__}", style="Section.TLabel"
+        )
+        self._rubin_titre.pack(anchor="w")
         self._titre = ttk.Label(cadre, text="En attente du jeu", style="Titre.TLabel")
         self._titre.pack(anchor="w", pady=(2, 0))
         self._sous_titre = ttk.Label(
@@ -1877,9 +1885,13 @@ class RubinApp:
         en_session = self._engine is not None and self._engine.running
         if status is None or not status.outdated or en_session:
             self._maj_bouton.pack_forget()
+            self._rubin_titre.config(text=f"RUBIN v{__version__}")
             return
         self._maj_bouton.config(text=f"Mettre à jour ({status.latest})", state="normal")
         self._maj_bouton.pack(anchor="w", pady=(4, 0))
+        self._rubin_titre.config(
+            text=f"RUBIN v{__version__}   —   mise à jour disponible : v{status.latest}"
+        )
 
     def _install_update(self) -> None:
         """Télécharge l'installateur et le lance, dans un fil.
@@ -1925,17 +1937,27 @@ class RubinApp:
         self._maj_bouton.config(text=texte, state="normal")
 
     def _show_update_launched(self) -> None:
-        """L'installateur est lancé : Rubin se ferme pour le laisser travailler.
+        """L'installateur est lancé : Rubin continue de tourner, exprès.
 
-        `rubin.iss` (`CloseApplications=force`, `RestartApplications=yes`)
-        fermerait Rubin de force via le Gestionnaire de redémarrage de
-        Windows si on ne faisait rien, puis le relancerait. Se fermer
-        soi-même, un court instant après, donne le temps à l'installateur de
-        démarrer sans dépendre de cette fermeture forcée, et laisse `close()`
-        finir proprement ce qu'il y a à finir plutôt que d'être coupé net.
+        ⚠️ **Bogue réel corrigé le 06/08/2026**, trouvé par Maxime en cliquant
+        pour de vrai : la première version fermait Rubin elle-même, 1,5 s
+        après avoir lancé l'installateur (`self.root.after(1500,
+        self.close)`). C'était exactement l'erreur à éviter. Le Gestionnaire
+        de redémarrage de Windows (`CloseApplications=force`,
+        `RestartApplications=yes` dans `rubin.iss`) ne relance que les
+        applications **qu'il a lui-même fermées** : un Rubin déjà éteint de
+        son propre chef au moment où l'installateur commence n'est plus rien
+        à relancer pour lui. Résultat vécu : Rubin se fermait, l'installateur
+        travaillait bien, mais rien ne rouvrait Rubin ensuite.
+
+        La correction est de ne rien faire de plus ici : rester ouvert, pour
+        que ce soit l'installateur qui ferme Rubin lui-même le moment venu,
+        et le relance une fois fini.
         """
-        self._maj_bouton.config(text="installation en cours…", state="disabled")
-        self.root.after(1500, self.close)
+        self._maj_bouton.config(
+            text="installation en cours, Rubin va se fermer puis se rouvrir…",
+            state="disabled",
+        )
 
     def _show_packet(self, at: str, size: int, endpoint: str, content: str) -> None:
         """Ajoute un paquet réellement envoyé à l'onglet Envois, en clair.
