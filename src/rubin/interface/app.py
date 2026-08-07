@@ -36,7 +36,7 @@ from typing import Any, Final
 import requests
 
 from .. import __version__
-from ..autoupdate import download_installer, launch_installer, register_for_restart
+from ..autoupdate import download_installer, launch_installer
 from ..capture import (
     Rect,
     ScreenCapture,
@@ -350,16 +350,6 @@ class RubinApp:
         # L'habillage d'abord : les composants créés ensuite en héritent, alors
         # qu'appliquer un style après coup en laisse toujours un au gris natif.
         apply_theme(self.root)
-        # ⚠️ **Au démarrage, et pas au moment de cliquer.** Windows doit
-        # connaître la commande de relance AVANT que le Gestionnaire de
-        # redémarrage ne ferme Rubin, et il le ferme dès que l'installateur
-        # commence. L'enregistrer au clic marcherait par chance, tant que le
-        # joueur ne se fait pas fermer par une mise à jour lancée autrement,
-        # à la main ou depuis un autre poste de travail.
-        #
-        # Voir `register_for_restart` : sans cet appel, `RestartApplications`
-        # d'Inno Setup n'a rien à relancer, et Rubin se ferme pour de bon.
-        register_for_restart()
         self._load_icons()
         self._build_header()
         self._build_tabs()

@@ -7,6 +7,38 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+## [0.6.6.0] - 2026-08-07
+
+### Corrigé
+
+- **La relance après une mise à jour ne dépend plus du Gestionnaire de
+  redémarrage de Windows.** Troisième tentative sur ce défaut, et la première
+  qui ne repose sur rien qu'on espère.
+
+  Les deux précédentes : retirer le `self.close` de Rubin (06/08), puis
+  appeler `RegisterApplicationRestart` (07/08 au matin), que la documentation
+  d'Inno Setup exige pour `RestartApplications`. L'appel réussissait, vérifié
+  sur le binaire distribué, et **rien ne prouvait que le Gestionnaire de
+  redémarrage relancerait pour autant**.
+
+  ⭐ **La solution vient de Butin**, le logiciel jumeau, qui a rencontré le
+  même défaut le même jour et l'a tranché le premier : le Gestionnaire de
+  redémarrage **ferme** (`CloseApplications=force`), et une ligne explicite de
+  la section `[Run]`, conditionnée à `/RELANCER`, **rouvre**. « Un mécanisme
+  qu'on peut lire, tester et voir échouer, au lieu d'un comportement du
+  système qu'on espère. »
+
+  Rubin s'aligne sur Butin plutôt que d'entretenir deux mécanismes différents
+  pour un seul problème. Demandé par Maxime le 07/08/2026 : « hésites pas à
+  demander sur le net ou à butin avant de faire une fonctionnalité qui existe
+  déjà ».
+
+  ⚠️ **Les deux mécanismes ne doivent jamais être actifs ensemble**, et un
+  test le garde : ils rouvriraient chacun leur exemplaire, et deux Rubin en
+  parallèle voudraient dire deux fils de capture sur la même session, donc la
+  même quête envoyée deux fois au serveur. C'est le seul de ces tests dont
+  l'échec produirait des données **fausses** et pas seulement une gêne.
+
 ## [0.6.5.0] - 2026-08-07
 
 ### Ajouté

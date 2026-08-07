@@ -121,7 +121,10 @@ class TestLaunchInstaller:
         # Windows ne doit jamais redémarrer, seule l'application est
         # relancée : les deux indicateurs ne se confondent pas.
         assert "/NORESTART" in commande
-        assert "/RESTARTAPPLICATIONS" in commande
+        # ⛔ /RELANCER depuis le 07/08/2026 : la relance ne passe plus par le
+        # Gestionnaire de redémarrage, qui ne la faisait pas. Voir
+        # tests/test_relance.py et empaquetage/rubin.iss.
+        assert "/RELANCER" in commande
 
     def test_ne_bloque_pas_en_attendant_l_installateur(self, tmp_path: Path) -> None:
         """Régression attendue : `Popen`, jamais `run` ni `call`. Attendre la
