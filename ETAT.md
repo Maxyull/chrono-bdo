@@ -1,4 +1,4 @@
-# État du projet, au 07/08/2026 (v0.6.1 en ligne)
+# État du projet, au 07/08/2026 au soir (v0.6.6.1 en ligne)
 
 **À lire en entier avant de coder.** Ce fichier dit où en est Rubin, ce qui a
 été appris en conditions réelles, et ce qui reste. Les pièges consignés plus
@@ -7,24 +7,29 @@ qu'en jouant.
 
 ## ⭐ À faire en tout premier, avant toute nouvelle fonctionnalité
 
-1. **Demander à Maxime ce qu'il veut sur le visuel.** C'est la seule chose en
-   attente. Demandé le 06/08/2026 : « on va faire une update release puis
-   attaquer un peu plus le visuel du logiciel ». Le 07/08 a traité trois
-   points concrets (icônes, bouton Discord, noms coupés dans la liste par
-   chaîne), et un quatrième reste **sans réponse de sa part** :
+**Rien n'est en attente.** Huit versions ont été publiées le 07/08/2026, de la
+v0.6.0 à la v0.6.6.1, et tout ce qui avait été demandé est livré et vérifié.
 
-   > la liste par chaîne répète « — 0/18 mesurées » sur chacune de ses 349
-   > lignes. Beaucoup de bruit pour une information que la pastille de
-   > couleur porte déjà. Faut-il l'enlever ?
+Deux règles à appliquer avant d'écrire la moindre ligne, données par Maxime le
+07/08 et qui ont chacune prouvé leur valeur le jour même :
 
-   La question a été posée, elle n'a pas eu de réponse. C'est le seul de ces
-   points qui toucherait à une information et pas à de la mise en forme :
-   **ne pas trancher tout seul.**
+1. ⭐ **Chercher si ça existe déjà**, chez `butin-bdo`, dans `bdo-ocr-core`,
+   ou dans la documentation officielle de l'outil concerné. « Hésites pas à
+   demander sur le net ou à butin avant de faire une fonctionnalité qui existe
+   déjà. » La relance après mise à jour en est l'exemple coûteux : Butin avait
+   rencontré le même défaut le même jour et l'avait déjà résolu, mieux. Une
+   heure et une release perdues à écrire une seconde version avant d'aller
+   voir.
 
-2. **Ne rien redécouvrir de ce qui suit.** Trois bancs de test ont menti le
-   07/08, et ont dû être refaits : voir « Trois bancs qui passaient le
-   sabotage » plus bas. Le geste qui les a démasqués est toujours le même,
-   casser exprès ce qu'ils sont censés garder.
+2. ⚠️ **Un test vert ne prouve rien tant qu'il n'a pas su dire non.** Six
+   bancs ont passé leur sabotage le 07/08 sans rien garder. Casser exprès ce
+   qu'un test garde est le seul geste qui les démasque, et il vaut aussi pour
+   les outils de vérification, qui ont menti trois fois ce jour-là.
+
+Le seul point qui reste appartient à Maxime : **jouer une vraie session**.
+Tout ce qui a été livré le 07/08 n'a été vérifié que par capture d'écran, par
+sonde HTTP et en fouillant l'exécutable. Chaque bug réel de ce projet vient
+d'un usage réel.
 
 ---
 
@@ -43,8 +48,8 @@ les temps de référence des autres. La chaîne complète tient debout.
 | Panneau de suivi de quête | ✅ |
 | Liste des quêtes suivantes | ✅ trous et branches signalés |
 | Serveur, classement, envoi | ✅ **en ligne** |
-| Exécutable Windows | ✅ **v0.6.1 en ligne**, publiée le 07/08/2026 |
-| Vérification de version | ✅ le serveur annonce **0.6.1**, vérifié en direct |
+| Exécutable Windows | ✅ **v0.6.6.1 en ligne** |
+| Vérification de version | ✅ le serveur annonce **0.6.6.1**, et **dit à quel point la mise à jour presse** (voir `docs/versionnage.md`) |
 | Rétention des lectures ratées | ✅ local, envoi manuel, **et image gardée à l'aveugle après deux minutes de silence** |
 | Interface graphique | ✅ 3 onglets, zones réglables, meilleur temps personnel, liste alphabétique, note de quête |
 | Rattachement Discord | ✅ en ligne, identifiants posés le 06/08/2026 |
@@ -56,7 +61,7 @@ les temps de référence des autres. La chaîne complète tient debout.
 |---|---|
 | Serveur | **https://rubin.maxyull.fr** |
 | Dépôt | https://github.com/Maxyull/rubin-bdo |
-| Release | **v0.6.1**, https://github.com/Maxyull/rubin-bdo/releases |
+| Release | **v0.6.6.1**, https://github.com/Maxyull/rubin-bdo/releases |
 | Confidentialité | https://maxyull.fr/confidentialite.html |
 
 Le serveur tourne en systemd sur le VPS OVH, dans `/opt/rubin`, base Postgres
@@ -200,9 +205,11 @@ aider fabrique une archive et l'envoie lui-même, ce qui rend la question du
 consentement sans objet. Les plafonds des trois destinations sont dans
 `failures.py`, en une seule table.
 
-### ✅ Fait le 07/08/2026 : la v0.6.0 puis la v0.6.1, et trois bancs menteurs
+### ✅ Fait le 07/08/2026 au matin : la v0.6.0 puis la v0.6.1
 
 Six PR fusionnées (#114 à #121), deux versions publiées, serveur redéployé.
+La suite de la journée est plus bas, « huit versions, et six bancs de test qui
+mentaient ».
 
 **Ce qui a été corrigé, et où chacun se cachait :**
 
@@ -243,23 +250,6 @@ Six PR fusionnées (#114 à #121), deux versions publiées, serveur redéployé.
   `bash -s` distant. Une variable posée dans l'unité systemd mais non passée à
   `ssh` n'existe pas sur le VPS, et fait échouer le déploiement sous `set -u`.
 
-### Trois bancs qui passaient le sabotage
-
-Écrit ici parce que c'est la leçon la plus transférable de la journée. Les
-trois étaient verts, et gardaient **exactement** le défaut qu'ils étaient
-censés garder :
-
-1. le test de l'empaquetage cherchait le chemin dans **tout** `rubin.spec`, et
-   un commentaire voisin citait ce même chemin ;
-2. le test des enfants vides de l'arbre employait un nom de 30 px contre 20 px
-   d'indentation : les deux calculs rendaient le même maximum ;
-3. le test du passage `ssh` cherchait le nom dans tout le préambule, où il
-   figure déjà, à la ligne qui lui donne sa valeur par défaut.
-
-Le geste qui les a démasqués est le même à chaque fois : **casser exprès ce
-qu'ils gardent, et vérifier qu'ils tombent.** Un banc qui n'a jamais su dire
-non ne prouve rien.
-
 ### ⚠️ Les deux images du guide ne sont pas dans le dépôt
 
 `exemple-bandeau.png` et `exemple-suivi.png` ne sont pas suivies par git :
@@ -270,6 +260,102 @@ Elles sont dans l'archive v0.6.1 **parce qu'elles existent sur le poste de
 Maxime**. Une construction faite ailleurs, ou en intégration continue, les
 perdrait sans rien dire. Les committer demande de vérifier d'abord qu'aucun
 joueur tiers n'y figure : **c'est une décision de Maxime, pas du code.**
+
+### ✅ Fait le 07/08/2026 : huit versions, et six bancs de test qui mentaient
+
+19 PR (#114 à #132), huit versions publiées, serveur redéployé six fois.
+
+**Ce qui a été livré**, dans l'ordre où Maxime l'a demandé : le fil Discord
+par rapport, l'état du rattachement dans la fenêtre, les icônes, le vrai
+bouton Discord, les noms longs de la liste par chaîne, le filtre
+« mesurées / non mesurées », le barème d'importance des mises à jour, la
+relance après mise à jour, et le rattachement porté dans l'en-tête.
+
+### ⚠️ Le barème d'importance des mises à jour
+
+Le numéro de version porte quatre nombres depuis la v0.6.3.0 :
+
+    0 . IMPORTANTE . SECONDAIRE . NÉGLIGEABLE
+
+**Le niveau se lit dans le numéro, et nulle part ailleurs.** Aucun champ
+« importance » n'est servi par le serveur, exprès : un champ posé à côté du
+numéro pourrait annoncer « mineure » sur une version qui change la
+reconnaissance, et rien ne rattraperait la contradiction. Publier une version
+dont le deuxième chiffre bouge **est** l'annonce.
+
+Le barème complet, avec le gabarit des annonces GitHub et Discord, est dans
+`docs/versionnage.md`. Un test vérifie que la doc et le code ne divergent pas.
+
+### ⚠️ La relance après mise à jour a demandé TROIS tentatives
+
+Et les deux premières ont été **annoncées comme des correctifs** alors
+qu'elles ne suffisaient pas.
+
+1. Retirer le `self.close` de Rubin (06/08). Nécessaire, le Gestionnaire de
+   redémarrage ne relançant que ce qu'il a lui-même fermé. Insuffisant.
+2. Appeler `RegisterApplicationRestart` (07/08 matin), que la documentation
+   d'Inno Setup exige pour `RestartApplications`. L'appel réussissait, vérifié
+   sur le binaire distribué. Et rien ne prouvait que le Gestionnaire de
+   redémarrage relancerait pour autant. Insuffisant aussi.
+3. **Ne plus dépendre de lui du tout.** Il ferme
+   (`CloseApplications=force`), une ligne `[Run]` conditionnée à `/RELANCER`
+   rouvre. ✅ Confirmé par Maxime en cliquant pour de vrai.
+
+⭐ **La troisième solution vient de `butin-bdo`**, qui avait rencontré le même
+défaut le même jour et l'avait tranché le premier, avec cette phrase qui
+résume tout le projet : « un mécanisme qu'on peut lire, tester et voir
+échouer, au lieu d'un comportement du système qu'on espère ».
+
+⚠️ **Les deux mécanismes ne doivent jamais être actifs ensemble** : ils
+rouvriraient chacun leur exemplaire, donc deux fils de capture sur la même
+session, donc la même quête envoyée deux fois au serveur. Un test le garde, et
+c'est le seul dont l'échec produirait des données **fausses**.
+
+**La leçon dépasse ce bug** : la moitié visible d'un défaut peut se corriger
+sans que l'autre moitié bouge. Ne jamais écrire « corrigé » sur la foi du
+raisonnement seul, quand la seule preuve est un usage réel.
+
+### ⚠️ Six bancs de test qui passaient leur sabotage
+
+Tous verts, tous inutiles, et tous démasqués par le même geste : **casser
+exprès ce qu'ils sont censés garder**.
+
+| Le banc | Pourquoi il ne gardait rien |
+|---|---|
+| dossiers de données déclarés | cherchait le chemin dans tout le `.spec`, un commentaire voisin le citait |
+| enfants vides de l'arbre | données de test qui ne discriminaient pas les deux calculs |
+| variables passées au `ssh` | le nom figurait déjà dans la ligne de valeur par défaut |
+| absence de `CmdLineParamExists` | cherchait dans le fichier entier, mon propre commentaire le citait |
+| numéros de version courts | le sabotage était neutre, pas le banc faible |
+| remplissage des numéros | ne discriminait qu'avec `strict=True` gardé |
+
+### ⚠️ Et trois outils de vérification qui mentaient aussi
+
+Un outil est du code comme un autre, et il se piège de la même façon. Le
+07/08, la lecture naïve a été « ce n'est pas là » trois fois, et trois fois
+c'était faux :
+
+- un jeu d'objets déjà vus **partagé entre deux appels** faisait rendre une
+  liste vide au second module fouillé ;
+- une poignée de processus **non typée** était tronquée sur 32 bits et Windows
+  rendait `E_HANDLE` ;
+- une poignée **sans `PROCESS_VM_READ`** rendait `E_ACCESSDENIED`.
+
+Et un `HRESULT` à zéro s'est révélé ne rien discriminer du tout, Windows
+acceptant même un drapeau invalide.
+
+### ⚠️ `mypy` et `ruff` ne voient pas le même code que la CI
+
+`ctypes.windll` n'existe que sous Windows. `mypy` le connaît sur le poste de
+Maxime et pas en intégration continue, qui tourne sur Linux. Trois
+contournements échouent, chacun d'un côté : l'accès direct casse là-bas, un
+`type: ignore` est déclaré **inutile** ici, et `getattr(ctypes, "windll")` est
+réécrit en accès direct par `ruff` (règle B009), donc `ruff --fix` défait le
+correctif **sans rien dire**.
+
+La réponse est `platform = "win32"` dans `pyproject.toml` : Rubin lit l'écran
+d'un jeu Windows, il n'y a pas d'autre système, et `mypy` doit l'analyser comme
+tel où qu'il tourne.
 
 ### Piste ouverte, pas confirmée : une alerte de boss mondial se pose sur le bandeau
 
