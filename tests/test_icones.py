@@ -205,3 +205,41 @@ class TestLisibiliteDuIco:
             tailles = {largeur for largeur, _ in ico.ico.sizes()}
 
         assert tailles == {16, 24, 32, 48, 64, 128, 256}
+
+
+class TestSoutien:
+    """Le canal de don, et les trois endroits qui doivent rester d'accord.
+
+    ⚠️ Rien dans la chaîne de construction ne les relie : ni ruff, ni mypy, ni
+    la suite d'intégration ne lisent `.github/`, un README ou un PNG. Changer
+    de canal en n'en corrigeant que deux passerait au vert en laissant le
+    troisième pointer vers l'ancien.
+    """
+
+    RACINE = Path(__file__).resolve().parents[1]
+    FUNDING = RACINE / ".github" / "FUNDING.yml"
+    BANNIERE = RACINE / "ressources" / "bouton-don-rubin.png"
+    LIEN = "https://paypal.me/maxyull"
+
+    def test_le_bouton_sponsor_pointe_vers_le_bon_canal(self) -> None:
+        assert self.FUNDING.is_file(), "sans ce fichier, aucun bouton Sponsor"
+        assert self.LIEN in self.FUNDING.read_text(encoding="utf-8")
+
+    def test_la_banniere_existe_et_est_servie_par_le_readme(self) -> None:
+        """⚠️ Ce test est le seul garde-fou contre une bannière écartée par le
+        `*.png` de `.gitignore` : sur la machine qui l'a fabriquée le fichier
+        est là et tout passe, l'absence ne se voit qu'ici, sur une copie
+        propre."""
+        assert self.BANNIERE.is_file(), "bannière de don absente du dépôt"
+
+        readme = (self.RACINE / "README.md").read_text(encoding="utf-8")
+        assert "ressources/bouton-don-rubin.png" in readme
+        assert self.LIEN in readme
+
+    def test_la_banniere_a_les_dimensions_du_gabarit(self) -> None:
+        """560 x 120 est le gabarit du générateur. Une autre taille signale une
+        image venue d'ailleurs, qui divergerait de celle de Butin."""
+        Image = pytest.importorskip("PIL.Image", reason="Pillow arrive avec l'extra capture")
+
+        with Image.open(self.BANNIERE) as image:
+            assert image.size == (560, 120), f"gabarit inattendu : {image.size}"
