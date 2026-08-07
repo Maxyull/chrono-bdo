@@ -101,7 +101,20 @@ ignore = [
 # Pas de python_version figée : mypy vise la version de l'interpréteur qui
 # l'exécute, donc chaque job de la matrice vérifie le code avec la sémantique
 # de SA version. Même raisonnement que dans butin-bdo.
+# ⚠️ **Analysé COMME Windows, où que `mypy` tourne.** Rubin lit l'écran
+# d'un jeu Windows : il n'y a pas d'autre système, et le dire ici est la
+# seule écriture qui ne mente à personne.
+#
+# Sans cette ligne, `ctypes.windll` (qui n'existe QUE sous Windows) passe
+# sur le poste de Maxime et casse en intégration continue, qui tourne sur
+# Linux. Trois contournements ont été essayés et échouent tous, chacun
+# d'un côté : un `type: ignore[attr-defined]` fait l'inverse, `mypy` le
+# déclarant INUTILE sous Windows ; `getattr(ctypes, "windll")` est réécrit
+# en accès direct par `ruff` (règle B009), donc `ruff --fix` défait le
+# correctif sans rien dire ; et une garde `sys.platform` rend tout le
+# reste de la fonction inatteignable pour `warn_unreachable`.
 files = ["src"]
+platform = "win32"
 strict = true
 warn_unreachable = true
 
