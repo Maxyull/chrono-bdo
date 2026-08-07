@@ -1,4 +1,4 @@
-# État du projet, au 06/08/2026 (v0.5.9 en ligne, v0.6.0 prête)
+# État du projet, au 07/08/2026 (v0.6.1 en ligne)
 
 **À lire en entier avant de coder.** Ce fichier dit où en est Rubin, ce qui a
 été appris en conditions réelles, et ce qui reste. Les pièges consignés plus
@@ -7,31 +7,24 @@ qu'en jouant.
 
 ## ⭐ À faire en tout premier, avant toute nouvelle fonctionnalité
 
-1. **Finir de publier la v0.6.0.** Tout est prêt et vérifié : 719 tests
-   racine + 60 serveur + 62 bot, ruff/mypy strict verts sur les 3, archive
-   ET installateur construits (`empaquetage/construire.py`), **archive
-   extraite pour de vrai** (`Expand-Archive`, `rubin.exe` confirmé présent,
-   SHA-256 vérifié). PR **#114** ouverte sur la branche `release-0.6.0`,
-   bloquée uniquement par une panne GitHub majeure (`githubstatus.com`
-   annonçait « Partial System Outage », plus aucun run CI ne se déclenchait
-   du tout). Reste, une fois GitHub revenu :
-   - fusionner la PR #114 ;
-   - `git tag -a v0.6.0 -m "..."` puis `git push origin v0.6.0` ;
-   - `gh release create v0.6.0` avec `dist/rubin-windows-0.6.0.zip`,
-     `dist/rubin-installateur-0.6.0.exe` et leurs `.sha256` en pièces jointes
-     (déjà construits dans `dist/`, pas besoin de reconstruire sauf si le
-     dossier a été nettoyé entre-temps) ;
-   - `bash serveur/deploiement/deployer.sh` pour redéployer (dérive
-     `RUBIN_LATEST` automatiquement de `__version__`) ;
-   - vérifier `curl https://rubin.maxyull.fr/v1/version` répond `"derniere":
-     "0.6.0"`.
-2. **Ensuite seulement : le visuel du logiciel.** Demandé par Maxime le
-   06/08/2026, juste après avoir demandé la release : « on va faire une
-   update release puis attaquer un peu plus le visuel du logiciel ». Rien
-   de plus précis n'a encore été dit sur ce que « le visuel » recouvre :
-   demander avant de se lancer (thème déjà sombre avec accents rouges dans
-   `interface/theme.py`, donc probablement pas une refonte de zéro, plutôt
-   des raffinements — mais ne pas deviner, demander).
+1. **Demander à Maxime ce qu'il veut sur le visuel.** C'est la seule chose en
+   attente. Demandé le 06/08/2026 : « on va faire une update release puis
+   attaquer un peu plus le visuel du logiciel ». Le 07/08 a traité trois
+   points concrets (icônes, bouton Discord, noms coupés dans la liste par
+   chaîne), et un quatrième reste **sans réponse de sa part** :
+
+   > la liste par chaîne répète « — 0/18 mesurées » sur chacune de ses 349
+   > lignes. Beaucoup de bruit pour une information que la pastille de
+   > couleur porte déjà. Faut-il l'enlever ?
+
+   La question a été posée, elle n'a pas eu de réponse. C'est le seul de ces
+   points qui toucherait à une information et pas à de la mise en forme :
+   **ne pas trancher tout seul.**
+
+2. **Ne rien redécouvrir de ce qui suit.** Trois bancs de test ont menti le
+   07/08, et ont dû être refaits : voir « Trois bancs qui passaient le
+   sabotage » plus bas. Le geste qui les a démasqués est toujours le même,
+   casser exprès ce qu'ils sont censés garder.
 
 ---
 
@@ -50,8 +43,8 @@ les temps de référence des autres. La chaîne complète tient debout.
 | Panneau de suivi de quête | ✅ |
 | Liste des quêtes suivantes | ✅ trous et branches signalés |
 | Serveur, classement, envoi | ✅ **en ligne** |
-| Exécutable Windows | ✅ **v0.5.9 en ligne**, **v0.6.0 construite et vérifiée localement**, PR #114 bloquée par une panne GitHub (voir tout en bas) |
-| Vérification de version | ✅ le serveur annonce **0.5.9** (0.6.0 pas encore déployée, voir tout en bas) |
+| Exécutable Windows | ✅ **v0.6.1 en ligne**, publiée le 07/08/2026 |
+| Vérification de version | ✅ le serveur annonce **0.6.1**, vérifié en direct |
 | Rétention des lectures ratées | ✅ local, envoi manuel, **et image gardée à l'aveugle après deux minutes de silence** |
 | Interface graphique | ✅ 3 onglets, zones réglables, meilleur temps personnel, liste alphabétique, note de quête |
 | Rattachement Discord | ✅ en ligne, identifiants posés le 06/08/2026 |
@@ -63,7 +56,7 @@ les temps de référence des autres. La chaîne complète tient debout.
 |---|---|
 | Serveur | **https://rubin.maxyull.fr** |
 | Dépôt | https://github.com/Maxyull/rubin-bdo |
-| Release | **v0.5.9**, https://github.com/Maxyull/rubin-bdo/releases (v0.6.0 prête, pas encore publiée) |
+| Release | **v0.6.1**, https://github.com/Maxyull/rubin-bdo/releases |
 | Confidentialité | https://maxyull.fr/confidentialite.html |
 
 Le serveur tourne en systemd sur le VPS OVH, dans `/opt/rubin`, base Postgres
@@ -206,6 +199,77 @@ et `rubin echecs` les compte. **Rien ne part sur le réseau** : le joueur qui ve
 aider fabrique une archive et l'envoie lui-même, ce qui rend la question du
 consentement sans objet. Les plafonds des trois destinations sont dans
 `failures.py`, en une seule table.
+
+### ✅ Fait le 07/08/2026 : la v0.6.0 puis la v0.6.1, et trois bancs menteurs
+
+Six PR fusionnées (#114 à #121), deux versions publiées, serveur redéployé.
+
+**Ce qui a été corrigé, et où chacun se cachait :**
+
+- **Le webhook de rapport rendait 400.** `#rubin-bugs` et `#butin-bugs` sont
+  des **forums**, et un webhook de forum refuse un message qui n'ouvre pas de
+  fil (code 220001). Mesuré contre l'API par la session `discord-bdo` avant
+  qu'un seul rapport n'ait été envoyé. `thread_name` est désormais un argument
+  **obligatoire** de `send_report`, sans défaut : mypy tranche à l'écriture
+  plutôt que Discord en production.
+- **La fenêtre n'apprenait jamais qu'un rattachement Discord avait abouti.**
+  Trouvé par Maxime en se connectant pour de vrai. Le rattachement se termine
+  hors du logiciel : Discord renvoie vers le serveur, pas vers nous. Nouvelle
+  route `GET /v1/discord/compte`, sondée toutes les 3 s pendant 3 min après un
+  clic. ⚠️ **Trois états, jamais deux** : rattaché, pas rattaché, et **on ne
+  sait pas**, ce dernier laissant l'étiquette intacte.
+- **`src/rubin/interface/data` n'était déclaré nulle part dans `rubin.spec`.**
+  Aucun de ses fichiers n'entrait dans l'exécutable, et `help.py` garde le
+  coup par un `chemin.is_file()` : le guide s'affichait sans ses illustrations,
+  sans erreur, chez tous les joueurs. Même motif que `tkinter` retiré des
+  `excludes` (#77).
+- **`deployer.sh` ne portait pas les deux webhooks jusqu'au service.** Mesuré
+  en production **cinq minutes après avoir déployé la v0.6.0** :
+  `POST /v1/rapport` rendait encore 503. Le bouton, fonctionnalité phare de
+  cette version, était complet, testé, empaqueté, publié, et incapable
+  d'envoyer quoi que ce soit. Et rien ne le disait : un rapport qui ne part
+  pas ne se voit ni côté joueur, ni côté salon Discord.
+- **Les noms de chaîne longs étaient coupés** dans la liste par chaîne, 12
+  en-têtes sur 180, la pire à 517 px pour un arbre de 394.
+
+**Deux pièges d'outillage à ne pas redécouvrir :**
+
+- ⚠️ **`ttk.Style().lookup("Treeview", "font")` rend une DESCRIPTION**,
+  `{Segoe UI} 10`, pas un nom de police. `tkfont.nametofont` la refuse.
+  `tkfont.Font(font=...)` accepte les deux. Les 722 tests, `ruff` et `mypy`
+  strict passaient tous, et la colonne restait à sa largeur par défaut :
+  `_show_chains` tourne dans un rappel Tk, qui imprime la trace et poursuit.
+- ⚠️ **`deployer.sh` s'exécute sur DEUX machines**, un préambule local et un
+  `bash -s` distant. Une variable posée dans l'unité systemd mais non passée à
+  `ssh` n'existe pas sur le VPS, et fait échouer le déploiement sous `set -u`.
+
+### Trois bancs qui passaient le sabotage
+
+Écrit ici parce que c'est la leçon la plus transférable de la journée. Les
+trois étaient verts, et gardaient **exactement** le défaut qu'ils étaient
+censés garder :
+
+1. le test de l'empaquetage cherchait le chemin dans **tout** `rubin.spec`, et
+   un commentaire voisin citait ce même chemin ;
+2. le test des enfants vides de l'arbre employait un nom de 30 px contre 20 px
+   d'indentation : les deux calculs rendaient le même maximum ;
+3. le test du passage `ssh` cherchait le nom dans tout le préambule, où il
+   figure déjà, à la ligne qui lui donne sa valeur par défaut.
+
+Le geste qui les a démasqués est le même à chaque fois : **casser exprès ce
+qu'ils gardent, et vérifier qu'ils tombent.** Un banc qui n'a jamais su dire
+non ne prouve rien.
+
+### ⚠️ Les deux images du guide ne sont pas dans le dépôt
+
+`exemple-bandeau.png` et `exemple-suivi.png` ne sont pas suivies par git :
+`.gitignore` écarte `*.png` dans tout le dépôt, exprès, parce que les captures
+de jeu portent des pseudonymes de joueurs tiers.
+
+Elles sont dans l'archive v0.6.1 **parce qu'elles existent sur le poste de
+Maxime**. Une construction faite ailleurs, ou en intégration continue, les
+perdrait sans rien dire. Les committer demande de vérifier d'abord qu'aucun
+joueur tiers n'y figure : **c'est une décision de Maxime, pas du code.**
 
 ### Piste ouverte, pas confirmée : une alerte de boss mondial se pose sur le bandeau
 
