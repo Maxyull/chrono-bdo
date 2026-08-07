@@ -79,6 +79,8 @@ from .presentation import (
     describe_conflict,
     describe_reading,
     describe_zone,
+    filter_chains,
+    filter_summary,
     format_category_header,
     format_chain_header,
     format_coverage,
@@ -838,6 +840,33 @@ class RubinApp:
             justify="left", wraplength=400,
         )
         self._chains_avertissement.pack(fill="x", padx=12)
+
+        # Le filtre, demandé par Maxime le 07/08/2026 en même temps que le
+        # retrait du décompte des en-têtes : « enlève le 0/18 mesurées sur les
+        # lignes mais rajoute un bouton au dessus mesuré / non mesuré ».
+        #
+        # Deux cases plutôt qu'un choix exclusif, et les deux cochées au
+        # départ : un filtre part de « tout », sinon il cache des choses avant
+        # qu'on ait rien demandé. Les décocher toutes les deux est permis, et
+        # dit (voir `filter_summary`) : réafficher tout en douce ferait croire
+        # que les cases ne servent à rien.
+        filtre = ttk.Frame(dedans)
+        filtre.pack(fill="x", padx=12, pady=(6, 0))
+        self._voir_mesurees = tk.BooleanVar(value=True)
+        self._voir_non_mesurees = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            filtre, text="mesurées", variable=self._voir_mesurees,
+            command=self._refresh_chains,
+        ).pack(side="left")
+        ttk.Checkbutton(
+            filtre, text="non mesurées", variable=self._voir_non_mesurees,
+            command=self._refresh_chains,
+        ).pack(side="left", padx=(14, 0))
+        self._chains_filtre_etat = ttk.Label(
+            dedans, text="", style="Faible.TLabel", anchor="w",
+            justify="left", wraplength=400,
+        )
+        self._chains_filtre_etat.pack(fill="x", padx=12)
 
         cadre = ttk.Frame(dedans)
         cadre.pack(fill="both", expand=True, padx=12, pady=(4, 12))
@@ -1804,9 +1833,32 @@ class RubinApp:
         if ranked == self._chains_ranked:
             return
         self._chains_ranked = ranked
+        self._refresh_chains()
+
+    def _refresh_chains(self) -> None:
+        """Reconstruit l'arbre à partir de la dernière réponse connue.
+
+        Séparée de `_show_chains` depuis le 07/08/2026, parce que le filtre
+        « mesurées / non mesurées » doit pouvoir refaire l'arbre **sans**
+        nouvelle réponse du serveur : cocher une case ne justifie pas une
+        requête, la matière est déjà là.
+
+        `_chains_ranked` à `None` veut dire que le serveur n'a encore rien
+        dit. Cliquer sur une case à ce moment-là ne doit rien faire, surtout
+        pas vider un arbre déjà vide en affichant un message de filtre qui
+        laisserait croire que les cases masquent quelque chose.
+        """
+        ranked = self._chains_ranked
+        if self._catalog is None or ranked is None:
+            return
         sections = chain_sections(
             self._catalog, self._settings.language, samples_by_quest(ranked)
         )
+        total = len(sections)
+        sections = filter_chains(
+            sections, self._voir_mesurees.get(), self._voir_non_mesurees.get()
+        )
+        self._chains_filtre_etat.config(text=filter_summary(len(sections), total) or "")
         classes, scénario = group_chains_by_category(sections)
         ordonnées, autres = group_chains_by_game_order(scénario)
         self._chain_sections = {

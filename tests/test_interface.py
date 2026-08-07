@@ -27,6 +27,7 @@ from rubin.interface import (
     Watching,
     ZoneState,
     build_report,
+    chain_is_measured,
     chain_sections,
     column_width,
     demo_active,
@@ -34,6 +35,8 @@ from rubin.interface import (
     describe_conflict,
     describe_reading,
     describe_zone,
+    filter_chains,
+    filter_summary,
     format_category_header,
     format_chain_header,
     format_coverage,
@@ -1524,13 +1527,106 @@ class TestListeParChaine:
 
         assert sections[0][1][0].samples == 7
 
-    def test_format_chain_header_accorde_le_pluriel(self) -> None:
+    def test_format_chain_header_ne_porte_que_le_nom(self) -> None:
+        """Le décompte « 1/2 mesurée » a été retiré des en-têtes le
+        07/08/2026, sur demande de Maxime : « enlève le 0/18 mesurées sur les
+        lignes mais rajoute un bouton au dessus mesuré / non mesuré ».
+
+        Il était répété sur les 349 lignes, valait presque toujours zéro tant
+        que la base est jeune, et poussait les noms longs hors de la largeur
+        de l'arbre. Le filtre porte désormais cette information, et mieux :
+        il permet d'agir dessus au lieu de la lire 349 fois."""
         chaîne = Chain(21136, (_lq(1, "Abricot"),))
         une = (ListedQuest(_lq(1, "Abricot"), 3),)
         deux = (ListedQuest(_lq(1, "Abricot"), 0), ListedQuest(_lq(2, "Amande"), 2))
 
-        assert format_chain_header(chaîne, une) == "[Calpheon] Abricot   —   1/1 mesurée"
-        assert format_chain_header(chaîne, deux) == "[Calpheon] Abricot   —   1/2 mesurée"
+        assert format_chain_header(chaîne, une) == "[Calpheon] Abricot"
+        assert format_chain_header(chaîne, deux) == "[Calpheon] Abricot"
+
+
+class TestFiltreDesChaines:
+    """Le filtre « mesurées / non mesurées », demandé le 07/08/2026."""
+
+    def _section(self, numero: int, *echantillons: int):
+        chaîne = Chain(numero, (_lq(1, "Abricot"),))
+        return (chaîne, tuple(ListedQuest(_lq(i + 1, "Abricot"), n)
+                              for i, n in enumerate(echantillons)))
+
+    def test_une_seule_mesure_suffit_a_rendre_une_chaine_mesuree(self) -> None:
+        """Le seuil est à UNE mesure, pas aux trois du classement : la
+        question posée par ce filtre n'est pas « ce temps fait-il référence »
+        mais « quelqu'un est-il déjà passé par là »."""
+        assert chain_is_measured((ListedQuest(_lq(1, "Abricot"), 1),))
+        assert not chain_is_measured((ListedQuest(_lq(1, "Abricot"), 0),))
+        assert not chain_is_measured(())
+
+    def test_les_deux_cases_cochees_rendent_tout(self) -> None:
+        # L'état de départ : un filtre part de « tout », sinon il cache des
+        # choses avant qu'on ait rien demandé.
+        sections = [self._section(1, 0, 0), self._section(2, 3)]
+        assert len(filter_chains(sections, True, True)) == 2
+
+    def test_ne_garde_que_les_mesurees(self) -> None:
+        mesuree = self._section(2, 3)
+        sections = [self._section(1, 0, 0), mesuree]
+
+        gardees = filter_chains(sections, show_measured=True, show_unmeasured=False)
+
+        assert [c.number for c, _e in gardees] == [2]
+
+    def test_ne_garde_que_les_non_mesurees(self) -> None:
+        sections = [self._section(1, 0, 0), self._section(2, 3)]
+
+        gardees = filter_chains(sections, show_measured=False, show_unmeasured=True)
+
+        assert [c.number for c, _e in gardees] == [1]
+
+    def test_les_deux_decochees_ne_rendent_rien(self) -> None:
+        """Volontairement permis : c'est un état que le joueur a demandé
+        explicitement. Le lui dire (voir `filter_summary`) vaut mieux que de
+        tout réafficher en douce, ce qui lui ferait croire que ses cases ne
+        servent à rien."""
+        sections = [self._section(1, 0), self._section(2, 3)]
+
+        assert filter_chains(sections, False, False) == ()
+
+    def test_lordre_dentree_est_conserve(self) -> None:
+        """Régression : l'ordre vient de `group_chains_by_game_order`, relevé
+        en observant le jeu. Un filtre qui le remanierait annulerait ce
+        travail sans que rien ne le signale."""
+        sections = [self._section(n, 1) for n in (21125, 21114, 21143)]
+
+        gardees = filter_chains(sections, True, True)
+
+        assert [c.number for c, _e in gardees] == [21125, 21114, 21143]
+
+
+class TestResumeDuFiltre:
+    def test_se_tait_quand_rien_nest_masque(self) -> None:
+        assert filter_summary(349, 349) is None
+
+    def test_dit_combien_de_chaines_sont_masquees(self) -> None:
+        """⚠️ Une liste filtrée qui ne le dit pas est une liste fausse. Même
+        règle que le plafond du classement : un joueur qui cherche une chaîne
+        absente doit distinguer « elle n'existe pas » de « je l'ai masquée
+        moi-même il y a dix minutes »."""
+        texte = filter_summary(12, 349)
+        assert texte is not None
+        assert "12" in texte
+        assert "349" in texte
+
+    def test_accorde_le_singulier(self) -> None:
+        texte = filter_summary(1, 349)
+        assert texte is not None
+        assert "1 chaîne sur 349" in texte
+
+    def test_le_cas_vide_a_son_propre_message(self) -> None:
+        """Un arbre vide est exactement ce qui se lit comme une panne. Il faut
+        donc dire que c'est le filtre, et comment en sortir."""
+        texte = filter_summary(0, 349)
+        assert texte is not None
+        assert "aucune chaîne" in texte
+        assert "Recochez" in texte
 
     def test_format_listed_quest_dit_jamais_mesuree(self) -> None:
         assert (

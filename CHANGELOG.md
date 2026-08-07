@@ -7,6 +7,30 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+### Ajouté
+
+- **Un filtre « mesurées / non mesurées » au-dessus de la liste par chaîne.**
+  Demandé par Maxime le 07/08/2026. Deux cases, les deux cochées au départ :
+  un filtre part de « tout », sinon il cache des choses avant qu'on ait rien
+  demandé. Les décocher toutes les deux est permis et le dit en toutes
+  lettres, plutôt que de tout réafficher en douce, ce qui ferait croire que
+  les cases ne servent à rien.
+
+  ⚠️ **Une liste filtrée qui ne le dit pas est une liste fausse.** Une ligne
+  sous les cases annonce « 12 chaînes sur 349, le reste est masqué par le
+  filtre » dès que quelque chose est caché : un joueur qui cherche une chaîne
+  absente doit pouvoir distinguer « elle n'existe pas » de « je l'ai masquée
+  moi-même il y a dix minutes ». Même règle que le plafond du classement.
+
+### Modifié
+
+- **Le décompte « 0/18 mesurées » disparaît des en-têtes de chaîne**, qui ne
+  portent plus que le nom. Demandé par Maxime le 07/08/2026, en même temps
+  que le filtre. Il était répété sur les 349 lignes, valait presque toujours
+  zéro tant que la base est jeune, et poussait les noms longs hors de la
+  largeur de l'arbre. Le filtre porte désormais cette information, et mieux :
+  il permet d'agir dessus au lieu de la lire 349 fois.
+
 ## [0.6.1] - 2026-08-07
 
 ### Ajouté
