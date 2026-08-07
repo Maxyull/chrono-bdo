@@ -7,6 +7,42 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+## [0.6.4.0] - 2026-08-07
+
+### Corrigé
+
+- **La mise à jour fermait Rubin et ne le relançait pas.** Signalé par Maxime
+  le 07/08/2026, en cliquant pour de vrai. Le CHANGELOG de la v0.5.9
+  annonçait pourtant ce défaut corrigé.
+
+  Il ne l'était qu'à moitié. Le correctif du 06/08 avait retiré le
+  `self.close` de Rubin, ce qui était nécessaire : le Gestionnaire de
+  redémarrage de Windows ne relance que les applications **qu'il a lui-même
+  fermées**. Mais il manquait l'autre moitié, écrite noir sur blanc dans la
+  documentation d'Inno Setup à propos de `RestartApplications` :
+
+  > for restart to work, the application needs to be using the Windows
+  > `RegisterApplicationRestart` API function
+
+  Rubin ne l'appelait **nulle part**. Windows le fermait, et n'avait aucune
+  commande de relance à jouer ensuite.
+
+  L'enregistrement se fait désormais au **démarrage** de la fenêtre, et non au
+  moment de cliquer : Windows doit connaître la commande de relance avant que
+  le Gestionnaire de redémarrage ne ferme Rubin, ce qu'il fait dès que
+  l'installateur commence.
+
+  ⚠️ **Rubin ne se relance pas après un plantage**, seulement après une mise à
+  jour (`RESTART_NO_CRASH`, `RESTART_NO_HANG` et `RESTART_NO_REBOOT` sont
+  posés). Une fenêtre qui revient toute seule après une panne cache la panne,
+  et Rubin garde justement ses pannes dans `echecs/erreurs.log` pour qu'elles
+  se voient.
+
+  La commande enregistrée est « fenetre » explicitement, jamais une ligne
+  vide qui compterait sur le défaut de l'analyseur d'arguments : ce défaut a
+  déjà été faux une fois, jusqu'à #78, où un exécutable lancé sans
+  sous-commande ouvrait le référentiel au lieu de la fenêtre.
+
 ### Corrigé
 
 - **Le serveur annonçait « 0.6.3 » pour la v0.6.3.0.** Mesuré en production
