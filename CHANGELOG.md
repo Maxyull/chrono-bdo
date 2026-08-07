@@ -7,6 +7,33 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+## [0.6.5.0] - 2026-08-07
+
+### Ajouté
+
+- **Le rattachement Discord se fait depuis l'en-tête**, à côté de « Rejoindre
+  le Discord ». Demandé par Maxime le 07/08/2026 : il vivait jusqu'ici au fond
+  de l'onglet Réglages, où il fallait aller le chercher.
+
+  Le bouton « Se connecter à Discord » **cède la place au nom** une fois le
+  compte rattaché : « connecté en tant que maxyull ». Les deux ne s'affichent
+  jamais ensemble, un bouton « se connecter » à côté du nom se lisant comme un
+  échec du rattachement.
+
+  Le second bouton n'a pas de fond bleu, contrairement au premier : deux
+  boutons pleins côte à côte se disputeraient le regard, et celui qui compte
+  le plus pour un nouveau venu reste « rejoindre ».
+
+  ⚠️ **Un serveur muet ne touche à aucun des deux affichages.** L'en-tête et
+  les Réglages sont commandés par le même état, donc ils ne peuvent pas se
+  contredire, et une panne de réseau ne fait pas repasser l'en-tête au bouton :
+  ce serait dire à un joueur rattaché qu'il ne l'est plus.
+
+### Modifié
+
+- « connecté comme » devient **« connecté en tant que »**, la formulation
+  demandée.
+
 ## [0.6.4.0] - 2026-08-07
 
 ### Corrigé

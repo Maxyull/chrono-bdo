@@ -640,7 +640,7 @@ def format_discord_account(
         return None
     nom = account.display_name
     if nom is not None:
-        return (f"connecté comme {nom}", LINK_TAGS["connecte"])
+        return (f"connecté en tant que {nom}", LINK_TAGS["connecte"])
     if account.linked:
         # Rattaché, mais le serveur n'a rendu aucun nom. Le dire tel quel :
         # inventer « connecté comme vous » ne renseignerait sur rien.

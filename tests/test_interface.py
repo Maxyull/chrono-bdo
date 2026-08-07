@@ -776,7 +776,7 @@ class TestEtatDuCompteDiscord:
         rendu = format_discord_account(DiscordAccount(linked=True, name="maxyull"))
         assert rendu is not None
         texte, balise = rendu
-        assert texte == "connecté comme maxyull"
+        assert texte == "connecté en tant que maxyull"
         assert balise == LINK_TAGS["connecte"]
 
     def test_ne_touche_a_rien_quand_on_ne_sait_pas(self) -> None:

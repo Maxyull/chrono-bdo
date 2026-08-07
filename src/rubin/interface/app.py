@@ -491,8 +491,16 @@ class RubinApp:
         # reconnaît sans lire, jamais un dessin qui lui ressemble : une marque
         # approximative se lit comme une imitation, ce qui donne exactement
         # l'impression contraire de celle qu'on cherche.
+        # Les deux boutons Discord côte à côte, demandés par Maxime le
+        # 07/08/2026 : « à côté rejoindre le discord ajoute se connecter à
+        # discord et met connecté en tant que ». Le rattachement vivait
+        # jusqu'ici au fond de l'onglet Réglages, où il fallait aller le
+        # chercher.
+        rangee_discord = ttk.Frame(cadre)
+        rangee_discord.pack(anchor="w", pady=(6, 0))
+
         self._discord_bouton = tk.Button(
-            cadre,
+            rangee_discord,
             text="  Rejoindre le Discord",
             image=self._discord_logo or "",
             compound="left",
@@ -510,7 +518,40 @@ class RubinApp:
             padx=10,
             pady=5,
         )
-        self._discord_bouton.pack(anchor="w", pady=(6, 0))
+        self._discord_bouton.pack(side="left")
+
+        # Le second bouton, celui du rattachement de compte. Même dessin que
+        # le premier mais SANS le fond blurple : deux boutons pleins côte à
+        # côte se disputeraient le regard, et celui qui compte le plus pour un
+        # nouveau venu reste « rejoindre ».
+        #
+        # ⚠️ Il s'efface une fois le compte rattaché, remplacé par le nom :
+        # un bouton « se connecter » à côté de « connecté en tant que Maxyull »
+        # se lirait comme un échec du rattachement.
+        self._discord_connexion = tk.Button(
+            rangee_discord,
+            text="Se connecter à Discord",
+            command=self.link_discord,
+            background=COLORS["carte"],
+            activebackground=COLORS["bordure"],
+            foreground=COLORS["texte"],
+            activeforeground=COLORS["texte"],
+            font=(FAMILY, 9),
+            relief="flat",
+            borderwidth=0,
+            cursor="hand2",
+            padx=10,
+            pady=5,
+        )
+        self._discord_connexion.pack(side="left", padx=(8, 0))
+
+        #: Le nom du compte rattaché, à la place du bouton de connexion.
+        #: Vide tant qu'on ne sait pas : voir `_show_discord_account`, et
+        #: surtout `format_discord_account`, qui distingue « pas rattaché »
+        #: de « on ne sait pas ».
+        self._discord_nom = ttk.Label(
+            rangee_discord, text="", style="Faible.TLabel", anchor="w"
+        )
 
         # Le bouton de mise à jour, invisible tant qu'aucune n'est connue.
         # Demandé par Maxime le 06/08/2026 : un clic doit suffire, contre le
@@ -1698,6 +1739,25 @@ class RubinApp:
             return
         texte, balise = rendu
         self._discord_etat.config(text=texte, foreground=COLORS[balise])
+
+        # L'en-tête, depuis le 07/08/2026 : le bouton de connexion cède la
+        # place au nom une fois le compte rattaché. Les deux ne s'affichent
+        # jamais ensemble, et c'est le même état qui les commande, donc ils ne
+        # peuvent pas se contredire.
+        #
+        # ⚠️ Rien n'est touché quand `format_discord_account` rend `None`,
+        # c'est-à-dire quand on ne sait pas : le `return` ci-dessus s'en charge
+        # pour les deux endroits à la fois. Un en-tête qui repasserait au
+        # bouton sur une panne de réseau dirait à un joueur rattaché qu'il ne
+        # l'est plus.
+        nom = account.display_name if account is not None else None
+        if nom is not None:
+            self._discord_connexion.pack_forget()
+            self._discord_nom.config(text=texte, foreground=COLORS[balise])
+            self._discord_nom.pack(side="left", padx=(10, 0))
+        else:
+            self._discord_nom.pack_forget()
+            self._discord_connexion.pack(side="left", padx=(8, 0))
 
     def _search_changed(self, *_arguments: object) -> None:
         """Refiltre le catalogue à chaque frappe, sans aucun réseau.
