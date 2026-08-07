@@ -173,3 +173,52 @@ class TestVariablesTransportees:
         script = DEPLOYEUR.read_text(encoding="utf-8")
         assert "rapports Rubin" in script
         assert "rapports Butin" in script
+
+
+class TestVersionAnnoncee:
+    """Le numéro que `deployer.sh` extrait des sources pour `RUBIN_LATEST`.
+
+    ⚠️ **C'est ce numéro que tous les joueurs comparent au leur.** S'il est
+    tronqué, la comparaison porte sur autre chose que la version publiée, et
+    personne n'apprend qu'une mise à jour existe.
+
+    Mesuré en production le 07/08/2026 : après la v0.6.3.0, `/v1/version`
+    annonçait « 0.6.3 ». L'expression exigeait exactement deux points, et le
+    numéro venait d'en gagner un troisième. Anodin ce jour-là, puisque les
+    chiffres manquants valent zéro ; fatal le lendemain, car une v0.6.3.1 se
+    serait annoncée « 0.6.3 » elle aussi, donc identique à ce que les joueurs
+    ont déjà, donc invisible. **Tout le quatrième rang serait resté muet**,
+    c'est-à-dire exactement la fonctionnalité qu'il sert.
+    """
+
+    def motif(self) -> str:
+        """L'expression telle qu'elle est écrite dans le script, pas une copie.
+
+        La relire depuis le fichier est ce qui rend ce test utile : une
+        expression recopiée ici vivrait sa propre vie et pourrait rester juste
+        pendant que celle du script devient fausse.
+        """
+        for ligne in DEPLOYEUR.read_text(encoding="utf-8").splitlines():
+            if ligne.startswith("VERSION="):
+                return ligne.split("'")[1]
+        raise AssertionError("aucune ligne VERSION= dans deployer.sh")
+
+    @pytest.mark.parametrize(
+        "numero",
+        ["0.6.3.0", "0.6.2", "1.0.0.0", "0.10.11.12"],
+    )
+    def test_le_numero_est_extrait_en_entier(self, numero: str) -> None:
+        trouve = re.search(self.motif(), f'__version__ = "{numero}"')
+        assert trouve is not None
+        assert trouve.group(0) == numero, (
+            f"le script extrait « {trouve.group(0)} » de « {numero} » : le "
+            "serveur annoncerait une version qui n'existe pas"
+        )
+
+    def test_la_version_reelle_du_projet_passe(self) -> None:
+        """Le vrai numéro, celui qui sera déployé au prochain passage."""
+        source = (RACINE.parent / "src" / "rubin" / "__init__.py").read_text(encoding="utf-8")
+        version = source.split('__version__ = "')[1].split('"')[0]
+        trouve = re.search(self.motif(), source)
+        assert trouve is not None
+        assert trouve.group(0) == version

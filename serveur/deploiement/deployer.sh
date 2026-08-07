@@ -133,7 +133,15 @@ sudo "${CIBLE}/.venv/bin/pip" install --quiet -e "${CIBLE}" -e "${CIBLE}/serveur
 # Extraction sans expression régulière à échappements : ceux-ci ne survivent
 # pas au passage dans un document en ligne, et rendaient ici un caractère de
 # contrôle au lieu du numéro de version.
-VERSION="$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+' "${CIBLE}/src/rubin/__init__.py" | head -1)"
+# ⚠️ De UN à TROIS points, pas exactement deux. Le numéro de version est
+# passé à quatre nombres le 07/08/2026 (0.IMPORTANTE.SECONDAIRE.NÉGLIGEABLE)
+# et l'ancienne expression, qui exigeait deux points, n'en gardait que les
+# trois premiers : le serveur a annoncé « 0.6.3 » pour une v0.6.3.0. Anodin
+# ce jour-là, fatal le lendemain : une v0.6.3.1 se serait annoncée « 0.6.3 »
+# elle aussi, donc identique à ce que les joueurs ont déjà, donc invisible.
+# Tout le quatrième rang aurait été muet, c'est-à-dire précisément la
+# fonctionnalité qu'il sert.
+VERSION="$(grep -oE '[0-9]+(\.[0-9]+){1,3}' "${CIBLE}/src/rubin/__init__.py" | head -1)"
 
 # Le bloc Discord n'est écrit que si les identifiants existent. Poser les
 # variables à vide reviendrait au même pour le serveur, qui les traite comme
