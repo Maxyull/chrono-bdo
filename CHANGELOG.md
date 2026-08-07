@@ -7,6 +7,53 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+## [0.6.3.0] - 2026-08-07
+
+### Ajouté
+
+- **Les mises à jour annoncent maintenant à quel point elles pressent**, en
+  trois niveaux. Demandé par Maxime le 07/08/2026.
+
+  | Niveau | Ce qui bouge | Ce qu'il faut faire |
+  |---|---|---|
+  | **importante** | la reconnaissance, ou tout ce qui change une mesure | mettre à jour, sinon vos mesures peuvent être fausses |
+  | **secondaire** | affichage, placement, confort | recommandé, pas indispensable |
+  | **négligeable** | un détail sans conséquence | rien ne presse |
+
+  L'en-tête de la fenêtre et le bouton changent de texte **et de couleur**
+  selon le niveau. Chaque phrase dit ce qu'il faut **faire**, jamais
+  seulement ce qui a changé : un joueur ne sait pas ce qu'« OCR » veut dire
+  pour lui, il sait ce que « vos mesures peuvent être fausses » veut dire.
+
+  Le but est qu'un avertissement garde sa valeur. Répéter « une version est
+  disponible » du même ton pour un changement de reconnaissance et pour un
+  mot corrigé use l'alerte : le jour où elle compte, plus personne ne la lit.
+
+### Modifié
+
+- **Le numéro de version passe à quatre nombres**,
+  `0.IMPORTANTE.SECONDAIRE.NÉGLIGEABLE`. Demandé par Maxime le 07/08/2026 :
+  « pour ajouter le dernier chiffre maj vraiment pas importante ». Les trois
+  nombres de SemVer ne distinguaient pas une correction qui change les
+  mesures d'un mot corrigé dans une infobulle.
+
+  ⚠️ **Le niveau se lit dans le numéro, et nulle part ailleurs.** Aucun champ
+  « importance » n'est servi par le serveur : un champ posé à côté du numéro
+  pourrait annoncer « mineure » sur une version qui change la reconnaissance,
+  et rien ne rattraperait la contradiction. Publier une version dont le
+  deuxième chiffre bouge **est** l'annonce.
+
+  Les versions à trois chiffres publiées avant continuent de se comparer :
+  les chiffres manquants valent zéro, donc `0.6.2` et `0.6.2.1` ne diffèrent
+  qu'au quatrième rang, ce qui est exact.
+
+- **Le barème est écrit dans `docs/versionnage.md`**, avec le gabarit des
+  annonces GitHub et Discord, parce qu'il doit être dit au même endroit que
+  la version sur les deux canaux. Un test vérifie que la doc et le code ne
+  divergent pas : ce sont les deux endroits où le barème vit, et l'annonce
+  Discord et la fenêtre diraient sinon deux choses différentes de la même
+  version.
+
 ## [0.6.2] - 2026-08-07
 
 ### Ajouté

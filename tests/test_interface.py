@@ -58,6 +58,7 @@ from rubin.interface import (
     format_running,
     format_search_result,
     format_upcoming_line,
+    format_update_offer,
     format_watching,
     group_chains_by_category,
     group_chains_by_game_order,
@@ -93,6 +94,7 @@ from rubin.references import (
 )
 from rubin.settings import Settings
 from rubin.upcoming import UpcomingQuest
+from rubin.updates import UpdateStatus
 
 JEU = Rect(0, 0, 2559, 1439)
 ZONES = {"le bandeau de quête": banner_region(JEU), "le panneau de suivi": tracker_region(JEU)}
@@ -1881,3 +1883,68 @@ class TestOrdreDuJeu:
         assert format_category_header(AUTRES_CHAIN_CATEGORY, deux) == (
             f"{AUTRES_CHAIN_CATEGORY}   —   2 chaînes"
         )
+
+
+class TestOffreDeMiseAJour:
+    """Ce que l'en-tête et le bouton disent, selon l'importance de la version.
+
+    Demandé par Maxime le 07/08/2026 : trois niveaux, trois formulations.
+    """
+
+    def _statut(self, latest: str, minimum: str = "0.1.0") -> UpdateStatus:
+        return UpdateStatus("0.6.2.0", latest, minimum, "https://exemple.test/z.exe")
+
+    def test_rien_a_proposer_quand_tout_est_a_jour(self) -> None:
+        assert format_update_offer(self._statut("0.6.2.0"), "0.6.2.0") is None
+
+    def test_rien_a_proposer_quand_le_serveur_na_rien_dit(self) -> None:
+        assert format_update_offer(None, "0.6.2.0") is None
+
+    def test_rien_a_proposer_pendant_une_session(self) -> None:
+        """⚠️ Jamais pendant une mesure. Remplacer les fichiers de Rubin
+        pendant qu'un fil mesure, c'est risquer la fin d'une quête en cours
+        pour un confort de mise à jour."""
+        assert format_update_offer(self._statut("0.7.0.0"), "0.6.2.0", running=True) is None
+
+    def test_une_version_importante_se_voit_et_se_lit_comme_une_alerte(self) -> None:
+        rendu = format_update_offer(self._statut("0.7.0.0"), "0.6.2.0")
+        assert rendu is not None
+        entête, bouton, balise = rendu
+        assert "IMPORTANTE" in entête
+        assert "v0.7.0.0" in entête
+        assert "important" in bouton
+        assert balise == "alerte"
+
+    def test_une_version_secondaire_est_recommandee_sans_alarme(self) -> None:
+        rendu = format_update_offer(self._statut("0.6.3.0"), "0.6.2.0")
+        assert rendu is not None
+        entête, bouton, balise = rendu
+        assert "secondaire" in entête
+        assert balise == "moyen"
+        assert "important" not in bouton
+
+    def test_une_version_negligeable_ne_crie_pas(self) -> None:
+        rendu = format_update_offer(self._statut("0.6.2.1"), "0.6.2.0")
+        assert rendu is not None
+        entête, bouton, balise = rendu
+        assert "rien qui presse" in entête
+        assert balise == "faible"
+        assert "sans urgence" in bouton
+
+    def test_les_trois_niveaux_ne_se_ressemblent_pas(self) -> None:
+        """Trois niveaux qui donneraient le même écran ne serviraient à rien :
+        ni le texte, ni le bouton, ni la couleur ne doivent se confondre."""
+        rendus = [
+            format_update_offer(self._statut(v), "0.6.2.0")
+            for v in ("0.7.0.0", "0.6.3.0", "0.6.2.1")
+        ]
+        assert all(r is not None for r in rendus)
+        for rang in range(3):
+            assert len({r[rang] for r in rendus if r is not None}) == 3
+
+    def test_la_version_courante_apparait_toujours(self) -> None:
+        # Un joueur qui signale un problème doit pouvoir lire sa propre
+        # version sans aller la chercher ailleurs.
+        rendu = format_update_offer(self._statut("0.7.0.0"), "0.6.2.0")
+        assert rendu is not None
+        assert "v0.6.2.0" in rendu[0]

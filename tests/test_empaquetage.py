@@ -17,11 +17,15 @@ les sources et non sur l'exécutable.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
 
 RACINE = Path(__file__).resolve().parent.parent
+# `empaquetage` n'est pas un paquet installé : il vit à la racine du dépôt.
+if str(RACINE) not in sys.path:
+    sys.path.insert(0, str(RACINE))
 SPEC = RACINE / "empaquetage" / "rubin.spec"
 ISS = RACINE / "empaquetage" / "rubin.iss"
 SOURCES = RACINE / "src" / "rubin"
@@ -114,3 +118,37 @@ class TestLogoDiscord:
         with Image.open(SOURCES / "interface" / "data" / "discord-logo.png") as logo:
             assert logo.size == (20, 20)
             assert logo.mode == "RGBA"
+
+
+class TestVersionWindows:
+    """Le numéro que Windows lit dans l'exécutable.
+
+    ⚠️ **`VS_FIXEDFILEINFO` porte EXACTEMENT quatre entiers.** Ni plus ni
+    moins, et le « plus » ne lève rien : trouvé le 07/08/2026, le passage du
+    numéro de version à quatre nombres a fait produire un quintuplet
+    `(0, 6, 3, 0, 0)` à l'ancienne écriture, qui complétait par un zéro. La
+    construction n'a pas bronché, PyInstaller non plus, et Windows affichait
+    le bon numéro parce que le cinquième était **tronqué en silence**.
+
+    Compter sur une troncature silencieuse pour obtenir le bon résultat est
+    exactement ce que ce projet refuse partout ailleurs.
+    """
+
+    def test_un_numero_a_quatre_nombres_passe_tel_quel(self) -> None:
+        from empaquetage.construire import version_windows
+
+        assert version_windows("0.6.3.0") == (0, 6, 3, 0)
+
+    def test_un_numero_a_trois_nombres_est_complete(self) -> None:
+        """Toutes les versions publiées avant le 07/08/2026 en ont trois."""
+        from empaquetage.construire import version_windows
+
+        assert version_windows("0.6.2") == (0, 6, 2, 0)
+
+    def test_rend_toujours_quatre_nombres(self) -> None:
+        """Régression du défaut lui-même : c'est le COMPTE qui casse, pas les
+        valeurs, et c'est pour ça que personne ne l'a vu."""
+        from empaquetage.construire import version_windows
+
+        for numero in ("1", "0.6", "0.6.2", "0.6.3.0", "1.2.3.4.5"):
+            assert len(version_windows(numero)) == 4, numero

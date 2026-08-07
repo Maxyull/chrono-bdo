@@ -101,6 +101,7 @@ from .presentation import (
     format_running,
     format_search_result,
     format_upcoming_line,
+    format_update_offer,
     format_watching,
     group_chains_by_category,
     group_chains_by_game_order,
@@ -2322,15 +2323,18 @@ class RubinApp:
         """
         self._update_status = status
         en_session = self._engine is not None and self._engine.running
-        if status is None or not status.outdated or en_session:
+        offre = format_update_offer(status, __version__, running=en_session)
+        if offre is None:
             self._maj_bouton.pack_forget()
-            self._rubin_titre.config(text=f"RUBIN v{__version__}")
+            self._rubin_titre.config(text=f"RUBIN v{__version__}", foreground=COLORS["accent"])
             return
-        self._maj_bouton.config(text=f"Mettre à jour ({status.latest})", state="normal")
+        entête, libellé, balise = offre
+        self._maj_bouton.config(text=libellé, state="normal")
         self._maj_bouton.pack(anchor="w", pady=(4, 0))
-        self._rubin_titre.config(
-            text=f"RUBIN v{__version__}   —   mise à jour disponible : v{status.latest}"
-        )
+        # La couleur porte le niveau autant que le texte : une mise à jour
+        # importante doit se repérer sans être lue, et une négligeable ne doit
+        # pas crier. Voir `UPDATE_TAGS`.
+        self._rubin_titre.config(text=entête, foreground=COLORS[balise])
 
     def _install_update(self) -> None:
         """Télécharge l'installateur et le lance, dans un fil.

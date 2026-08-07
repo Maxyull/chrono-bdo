@@ -28,6 +28,13 @@ from ..references import (
     ServerHealth,
 )
 from ..upcoming import UpcomingQuest
+from ..updates import (
+    IMPORTANT,
+    NEGLIGEABLE,
+    SECONDAIRE,
+    UPDATE_HEADLINES,
+    UpdateStatus,
+)
 
 #: Les trois tranches de couverture, dans l'ordre où elles s'affichent, et la
 #: balise de couleur de chacune.
@@ -548,6 +555,57 @@ def format_link(base_url: str | None, health: ServerHealth | None) -> tuple[str,
         f"connecté ({health.latency_ms:.0f} ms)   —   {health.measures} {mesures} reçues",
         LINK_TAGS["connecte"],
     )
+
+
+# ------------------------------------------------------------- mise à jour
+
+#: La couleur de chaque niveau d'importance, dans l'en-tête de la fenêtre.
+#:
+#: Les mêmes trois balises que partout ailleurs, aucune couleur neuve : une
+#: mise à jour importante se lit comme une alerte, une secondaire comme un
+#: entre-deux, une négligeable comme une note de bas de page.
+UPDATE_TAGS: Final = {
+    IMPORTANT: "alerte",
+    SECONDAIRE: "moyen",
+    NEGLIGEABLE: "faible",
+}
+
+#: Ce que le bouton propose, par niveau. Plus court que le bandeau, puisqu'il
+#: est lu juste à côté de lui.
+UPDATE_BUTTONS: Final = {
+    IMPORTANT: "Mettre à jour, important",
+    SECONDAIRE: "Mettre à jour",
+    NEGLIGEABLE: "Mettre à jour, sans urgence",
+}
+
+
+def format_update_offer(
+    status: UpdateStatus | None, version: str, running: bool = False
+) -> tuple[str, str, str] | None:
+    """L'en-tête et le bouton de mise à jour : quoi lire, quoi cliquer, en quelle couleur.
+
+    Rend `None` quand il n'y a rien à proposer, ce qui couvre trois cas
+    distincts et volontairement confondus **ici** : rien de neuf, le serveur
+    n'a rien dit, ou une session mesure. Les trois donnent le même écran, une
+    fenêtre sans bouton.
+
+    ⚠️ **Jamais pendant une session**, d'où `running`. Remplacer les fichiers
+    de Rubin pendant qu'un fil mesure, c'est risquer la fin d'une quête en
+    cours pour un confort de mise à jour.
+
+    ⚠️ **Trois niveaux, trois formulations, trois couleurs.** Demandé par
+    Maxime le 07/08/2026. Répéter « une version est disponible » du même ton
+    pour un changement de reconnaissance et pour un mot corrigé use
+    l'avertissement : le jour où il compte, plus personne ne le lit. Voir
+    `UPDATE_HEADLINES` dans `updates.py`, qui porte le barème.
+    """
+    if status is None or not status.outdated or running:
+        return None
+    niveau = status.importance
+    if niveau is None:  # pragma: pas de couverture — `outdated` l'a déjà exclu
+        return None
+    entête = f"RUBIN v{version}   —   {UPDATE_HEADLINES[niveau]} : v{status.latest}"
+    return entête, UPDATE_BUTTONS[niveau], UPDATE_TAGS[niveau]
 
 
 # ------------------------------------------------------------- compte Discord
