@@ -884,16 +884,78 @@ def group_chains_by_game_order(
 
 
 def format_chain_header(chain: Chain, entries: Sequence[ListedQuest]) -> str:
-    """L'en-tête d'une chaîne repliée : son nom, et ce qui en est mesuré.
+    """L'en-tête d'une chaîne repliée : son nom, et rien d'autre.
 
-    « mesurées », jamais « terminées » : Rubin ne sait pas si le joueur a
-    fini une quête, seulement si elle a déjà été chronométrée par quelqu'un.
-    Les deux se ressemblent mais ne sont pas la même chose, contrairement au
-    « 0/104 » du jeu, qui compte la progression du joueur.
+    ⚠️ **Le décompte « 0/18 mesurées » a été retiré le 07/08/2026**, sur
+    demande de Maxime. Il était répété sur les 349 lignes de la liste, il
+    valait presque toujours zéro tant que la base est jeune, et il poussait
+    les noms longs hors de la largeur de l'arbre. Beaucoup de bruit pour une
+    information que le filtre au-dessus donne mieux, et que la pastille de
+    couleur porte déjà quête par quête.
+
+    Ce n'est pas une information perdue : `chain_is_measured` la porte
+    désormais, et le filtre s'en sert pour ne montrer que les chaînes qui ont
+    des mesures, ou que celles qui n'en ont pas.
     """
-    total = len(entries)
-    mesurées = sum(1 for entrée in entries if entrée.samples > 0)
-    return f"{chain.name}   —   {mesurées}/{total} mesurée{'s' if mesurées != 1 else ''}"
+    return chain.name
+
+
+def chain_is_measured(entries: Sequence[ListedQuest]) -> bool:
+    """Vrai si au moins une quête de cette chaîne a déjà été mesurée.
+
+    Le seuil est à **une** mesure, pas à trois comme le classement : la
+    question posée ici n'est pas « ce temps fait-il référence » mais
+    « quelqu'un est-il déjà passé par là ». Une chaîne où une seule quête a
+    été chronométrée n'est plus vierge, et c'est ce qu'un joueur cherche à
+    repérer en filtrant.
+    """
+    return any(entrée.samples > 0 for entrée in entries)
+
+
+def filter_chains(
+    sections: Sequence[tuple[Chain, tuple[ListedQuest, ...]]],
+    show_measured: bool,
+    show_unmeasured: bool,
+) -> tuple[tuple[Chain, tuple[ListedQuest, ...]], ...]:
+    """Ne garde que les chaînes demandées, sans rien réordonner.
+
+    Les deux cases sont cochées par défaut, ce qui rend la liste entière :
+    un filtre doit partir de « tout », sinon il cache des choses avant qu'on
+    ait demandé quoi que ce soit.
+
+    Les deux décochées rendent une liste vide, et c'est volontairement
+    possible : c'est un état que le joueur a explicitement demandé, et le dire
+    (voir `filter_summary`) vaut mieux que de lui réafficher tout en douce,
+    ce qui lui ferait croire que ses cases ne servent à rien.
+    """
+    return tuple(
+        (chaîne, entrées)
+        for chaîne, entrées in sections
+        if (chain_is_measured(entrées) and show_measured)
+        or (not chain_is_measured(entrées) and show_unmeasured)
+    )
+
+
+def filter_summary(shown: int, total: int) -> str | None:
+    """Ce qu'il faut dire quand le filtre cache des chaînes, sinon `None`.
+
+    ⚠️ **Une liste filtrée qui ne le dit pas est une liste fausse.** C'est la
+    même règle que le plafond du classement (`quest_list_cap_warning`) : un
+    joueur qui cherche une chaîne absente doit pouvoir distinguer « elle
+    n'existe pas » de « je l'ai masquée moi-même il y a dix minutes ».
+
+    Le cas « aucune » a son propre message, parce qu'un arbre vide est
+    exactement ce qui se lit comme une panne.
+    """
+    if shown == total:
+        return None
+    if shown == 0:
+        return (
+            "aucune chaîne affichée : les deux cases sont décochées. "
+            "Recochez-en une pour revoir la liste."
+        )
+    chaîne = "chaîne" if shown == 1 else "chaînes"
+    return f"{shown} {chaîne} sur {total}, le reste est masqué par le filtre"
 
 
 def format_category_header(
