@@ -463,17 +463,15 @@ class RubinApp:
         )
         self._lien.pack(anchor="w", pady=(4, 0))
 
-        # L'adresse elle-même n'est plus écrite en toutes lettres dans
-        # `_lien` (demandé par Maxime le 06/08/2026). Ce lien-ci n'ouvre plus
-        # une page à lire, mais l'onglet Envois : montrer les paquets réels,
-        # poids et contenu, plutôt qu'une description de ce qu'ils
-        # contiennent. Revu le 06/08/2026, voir `_build_envois`.
-        self._voir_envois = ttk.Label(
-            cadre, text="voir ce qui est envoyé", foreground=COLORS["accent"],
-            background=COLORS["fond"], font=(FAMILY, 9), cursor="hand2",
-        )
-        self._voir_envois.pack(anchor="w")
-        self._voir_envois.bind("<Button-1>", self._show_envois_tab)
+        # ⛔ Le lien « voir ce qui est envoyé » a été retiré de l'en-tête le
+        # 07/08/2026, sur demande de Maxime.
+        #
+        # ⚠️ **L'onglet Envois, lui, reste** : c'est le raccourci qui part, pas
+        # la transparence. Les paquets réellement postés au serveur, poids et
+        # contenu, restent visibles en un clic sur l'onglet, et c'est ce que
+        # Maxime avait demandé le 06/08 en refusant un simple lien externe.
+        # Retirer l'onglet serait un tout autre changement, et il faudrait le
+        # lui demander.
 
         # Le Discord du projet. Un vrai bouton depuis le 06/08/2026, et non
         # plus une ligne de texte rouge parmi trois autres : Maxime ne le
@@ -1142,9 +1140,6 @@ class RubinApp:
             self._zone_readings[clé] = lecture
 
         self.refresh_zones()
-
-    def _show_envois_tab(self, _event: object = None) -> None:
-        self._carnet.select(self._envois)  # type: ignore[no-untyped-call]
 
     def _build_envois(self) -> None:
         """L'onglet Envois : les paquets réellement envoyés au serveur, en clair.

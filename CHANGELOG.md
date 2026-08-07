@@ -7,6 +7,33 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+## [0.6.6.1] - 2026-08-07
+
+### Retiré
+
+- **Le lien « voir ce qui est envoyé » quitte l'en-tête.** Demandé par Maxime
+  le 07/08/2026.
+
+  ⚠️ **L'onglet Envois, lui, reste.** C'est le raccourci qui part, pas la
+  transparence : les paquets réellement postés au serveur, poids et contenu,
+  restent visibles en un clic sur l'onglet. C'est ce que Maxime avait demandé
+  le 06/08 en refusant un simple lien externe, et le retirer serait un tout
+  autre changement.
+
+  `_show_envois_tab` disparaît avec le lien : plus personne ne l'appelait, et
+  une méthode morte qui a l'air de faire quelque chose est pire que pas de
+  méthode.
+
+### Confirmé
+
+- ⭐ **La relance après mise à jour marche, vérifiée par Maxime en cliquant
+  pour de vrai** sur la v0.6.6.0 : « ça marche la maj se relance bien ».
+
+  C'est la preuve qu'aucun test ne pouvait produire, et elle clôt trois
+  tentatives : retirer le `self.close` (06/08), enregistrer l'application
+  auprès du Gestionnaire de redémarrage (07/08 matin), et enfin ne plus
+  dépendre de lui du tout, solution reprise de Butin.
+
 ## [0.6.6.0] - 2026-08-07
 
 ### Corrigé
