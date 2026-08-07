@@ -1,134 +1,128 @@
-"""La relance automatique après une mise à jour.
+"""La relance après une mise à jour en un clic.
 
-⚠️ **Signalé par Maxime le 07/08/2026 : « la mise à jour ferme l'app mais ne
+⚠️ **Signalé par Maxime le 07/08/2026 : « la mise a jour ferme l'app mais ne
 le relance pas ».** Le CHANGELOG de la v0.5.9 annonçait pourtant ce défaut
-corrigé.
+corrigé, et la v0.6.4.0 a cru le corriger une seconde fois.
 
-Il ne l'était qu'à moitié. Le correctif du 06/08 avait retiré le `self.close`
-de Rubin, ce qui était nécessaire : le Gestionnaire de redémarrage ne relance
-que les applications **qu'il a lui-même fermées**, et un Rubin déjà éteint
-n'est plus rien à relancer. Mais il manquait l'autre moitié, écrite noir sur
-blanc dans la documentation d'Inno Setup à propos de `RestartApplications` :
+Deux tentatives, deux fois insuffisantes :
 
-    « for restart to work, the application needs to be using the Windows
-      RegisterApplicationRestart API function »
+1. le 06/08, retirer le `self.close` de Rubin. Nécessaire, le Gestionnaire de
+   redémarrage ne relançant que ce qu'il a lui-même fermé, mais pas suffisant ;
+2. le 07/08 au matin, appeler `RegisterApplicationRestart`, que la
+   documentation d'Inno Setup exige pour `RestartApplications`. L'appel
+   réussissait, vérifié sur le binaire distribué, et **rien ne prouvait que le
+   Gestionnaire de redémarrage relancerait pour autant**.
 
-Rubin ne l'appelait nulle part. Windows le fermait, et n'avait aucune commande
-de relance à jouer ensuite.
+La troisième est la bonne, et elle vient de `butin-bdo` : **ne plus dépendre
+du Gestionnaire de redémarrage pour rouvrir**. Il ferme, une ligne explicite
+de la section `[Run]` rouvre. « Un mécanisme qu'on peut lire, tester et voir
+échouer, au lieu d'un comportement du système qu'on espère. »
 
-**La leçon : la moitié visible d'un défaut peut se corriger sans que l'autre
-moitié bouge**, et le CHANGELOG déclarait la chose réglée sur la foi de la
-moitié corrigée.
-
-Aucun de ces tests n'appelle la vraie fonction Windows : elle a été éprouvée à
-part, en enregistrant puis en RELISANT ce que Windows avait retenu
-(`GetApplicationRestartSettings` rend « introuvable » avant, `S_OK` avec la
-ligne « fenetre » et les drapeaux 11 après).
+Butin a rencontré le même défaut le même jour et l'a tranché le premier. Ces
+tests gardent l'alignement des deux logiciels, et surtout l'invariant qui
+compte : **les deux mécanismes ne doivent jamais être actifs ensemble**, sinon
+deux Rubin s'ouvrent, donc deux fils de capture sur la même session, donc la
+même quête envoyée deux fois au serveur.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from pathlib import Path
 
 import pytest
 
 from rubin import autoupdate
 
-
-class _NoyauFactice:
-    """Le `kernel32` réduit à la fonction qu'on appelle."""
-
-    def __init__(self, resultat: int = 0) -> None:
-        self.appels: list[tuple[str, int]] = []
-        self._resultat = resultat
-        self.argtypes: Any = None
-        self.restype: Any = None
-
-    @property
-    def RegisterApplicationRestart(self) -> _NoyauFactice:
-        return self
-
-    def __call__(self, ligne: str, drapeaux: int) -> int:
-        self.appels.append((ligne, drapeaux))
-        return self._resultat
+RECETTE = Path(__file__).resolve().parents[1] / "empaquetage" / "rubin.iss"
 
 
-@pytest.fixture
-def noyau(monkeypatch: pytest.MonkeyPatch) -> _NoyauFactice:
-    import ctypes
-
-    faux = _NoyauFactice()
-    # `raising=False` : `ctypes.windll` n'existe pas sous Linux, où tourne
-    # la CI, et `setattr` refuserait de poser un attribut absent.
-    monkeypatch.setattr(ctypes, "windll", type("W", (), {"kernel32": faux})(), raising=False)
-    monkeypatch.setattr(autoupdate.sys, "frozen", True, raising=False)
-    return faux
+def recette() -> str:
+    return RECETTE.read_text(encoding="utf-8")
 
 
-class TestEnregistrementPourRelance:
-    def test_ne_fait_rien_hors_dun_executable_empaquete(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """En développement, `sys.executable` est `python.exe` : faire relancer
-        l'interpréteur nu par Windows n'aurait aucun sens."""
-        monkeypatch.delattr(autoupdate.sys, "frozen", raising=False)
-        assert autoupdate.register_for_restart([]) is False
+def directives() -> str:
+    """La recette privée de ses commentaires.
 
-    def test_enregistre_la_fenetre_quand_il_ny_a_pas_darguments(
-        self, noyau: _NoyauFactice
-    ) -> None:
-        """Régression : « fenetre » est écrit EXPLICITEMENT plutôt que laissé
-        au défaut de l'analyseur d'arguments. Ce défaut a déjà été faux une
-        fois, jusqu'à #78 : un exécutable lancé sans sous-commande ouvrait
-        `referentiel`, donc un double-clic n'atteignait jamais la fenêtre.
+    Même précaution que `test_empaquetage.py`, et pour la même raison : un
+    commentaire qui cite une directive ferait passer un test qui la cherche,
+    alors qu'elle n'est plus posée. Ce piège a déjà mordu une fois aujourd'hui.
+    """
+    return "\n".join(
+        ligne
+        for ligne in recette().splitlines()
+        if not ligne.lstrip().startswith((";", "{", "}"))
+    )
 
-        Une relance qui rouvrirait autre chose que la fenêtre serait pire que
-        pas de relance : le joueur croirait Rubin reparti."""
-        assert autoupdate.register_for_restart([]) is True
-        assert noyau.appels[0][0] == "fenetre"
 
-    def test_conserve_les_arguments_du_lancement(self, noyau: _NoyauFactice) -> None:
-        # Un joueur lancé avec une option doit la retrouver après la mise à
-        # jour, sinon Rubin repart autrement configuré sans le dire.
-        autoupdate.register_for_restart(["fenetre", "--langue", "en"])
-        assert noyau.appels[0][0] == "fenetre --langue en"
+class TestUnSeulMecanismeDeRelance:
+    def test_le_gestionnaire_de_redemarrage_ne_relance_plus(self) -> None:
+        """Régression : il valait `yes`, et la relance reposait entièrement sur
+        lui. Constaté par Maxime, Rubin ne revenait pas."""
+        assert "RestartApplications=no" in directives()
 
-    def test_ne_remet_jamais_lexecutable_dans_la_ligne(self, noyau: _NoyauFactice) -> None:
-        """⚠️ Windows préfixe lui-même le chemin de l'exécutable. L'y remettre
-        ferait relancer `rubin.exe rubin.exe`, que l'analyseur prendrait pour
-        une sous-commande inconnue."""
-        autoupdate.register_for_restart(["fenetre"])
-        assert ".exe" not in noyau.appels[0][0]
+    def test_la_section_run_rouvre_explicitement(self) -> None:
+        assert "Check: RelancementDemande" in directives()
 
-    def test_demande_la_relance_apres_une_mise_a_jour(self, noyau: _NoyauFactice) -> None:
-        """C'est le seul cas qu'on veut, et il se dit EN CREUX : le drapeau
-        `RESTART_NO_PATCH` (4) doit être absent."""
-        autoupdate.register_for_restart([])
-        _ligne, drapeaux = noyau.appels[0]
-        assert drapeaux & 4 == 0, "RESTART_NO_PATCH est posé : aucune relance après mise à jour"
+    def test_les_deux_ne_sont_jamais_actifs_ensemble(self) -> None:
+        """⚠️ L'invariant qui compte. Le Gestionnaire de redémarrage et la
+        section `[Run]` rouvriraient chacun leur exemplaire, et deux Rubin en
+        parallèle voudraient dire deux fils de capture sur la même session,
+        donc la même quête envoyée deux fois au serveur.
 
-    def test_refuse_la_relance_apres_un_plantage(self, noyau: _NoyauFactice) -> None:
-        """Une fenêtre qui revient toute seule après une panne cache la panne,
-        et Rubin garde justement ses pannes dans `echecs/erreurs.log` pour
-        qu'elles se voient. Un plantage en boucle relancerait en boucle."""
-        autoupdate.register_for_restart([])
-        _ligne, drapeaux = noyau.appels[0]
-        assert drapeaux & 1, "RESTART_NO_CRASH manque"
-        assert drapeaux & 2, "RESTART_NO_HANG manque"
-        assert drapeaux & 8, "RESTART_NO_REBOOT manque"
-
-    def test_un_refus_de_windows_est_rendu_sans_lever(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Une relance automatique est un confort : elle ne doit jamais
-        empêcher Rubin de démarrer, puisque cet appel a lieu dans le
-        constructeur de la fenêtre."""
-        import ctypes
-
-        faux = _NoyauFactice(resultat=-2147024809)
-        monkeypatch.setattr(
-            ctypes, "windll", type("W", (), {"kernel32": faux})(), raising=False
+        C'est le seul test de ce fichier dont l'échec produirait des données
+        FAUSSES et pas seulement une gêne."""
+        texte = directives()
+        gestionnaire = "RestartApplications=yes" in texte
+        section_run = "Check: RelancementDemande" in texte
+        assert not (gestionnaire and section_run), (
+            "les deux mécanismes de relance sont actifs : deux Rubin "
+            "s'ouvriraient, donc deux fils de capture sur la même session"
         )
-        monkeypatch.setattr(autoupdate.sys, "frozen", True, raising=False)
 
-        assert autoupdate.register_for_restart([]) is False
+    def test_la_fermeture_reste_au_gestionnaire_de_redemarrage(self) -> None:
+        """Il ferme toujours, lui : sans quoi l'installateur ne pourrait pas
+        écrire par-dessus un exécutable en cours d'exécution."""
+        assert "CloseApplications=force" in directives()
+
+    def test_le_code_de_verification_du_commutateur_existe(self) -> None:
+        """⚠️ Inno Setup n'a PAS de `CmdLineParamExists` : la session butin-bdo
+        s'y est cassé les dents, ISCC refusant net « Unknown identifier ». Le
+        parcours de `ParamStr` est l'idiome, et il faut l'écrire soi-même."""
+        texte = recette()
+        assert "function RelancementDemande" in texte
+        assert "ParamStr" in texte
+        # Cherché dans les DIRECTIVES et non dans le fichier entier : le
+        # commentaire au-dessus cite ce nom exprès, pour mettre en garde.
+        assert "CmdLineParamExists" not in directives()
+
+
+class TestCommutateursDeLancement:
+    def _arguments(self, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+        vus: list[list[str]] = []
+        monkeypatch.setattr(
+            autoupdate.subprocess, "Popen", lambda args, **_k: vus.append(args) or None
+        )
+        autoupdate.launch_installer(Path("C:/faux/installateur.exe"))
+        return vus[0]
+
+    def test_demande_la_relance(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        assert "/RELANCER" in self._arguments(monkeypatch)
+
+    def test_ne_demande_plus_le_gestionnaire_de_redemarrage(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Régression : `/RESTARTAPPLICATIONS` avec `RestartApplications=no`
+        serait sans effet, mais laisserait croire en lisant le code que la
+        relance est gérée là."""
+        assert "/RESTARTAPPLICATIONS" not in self._arguments(monkeypatch)
+
+    def test_reste_silencieux(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Le « un clic » demandé par Maxime : aucune fenêtre d'installateur,
+        # aucune invite.
+        arguments = self._arguments(monkeypatch)
+        assert "/VERYSILENT" in arguments
+        assert "/SUPPRESSMSGBOXES" in arguments
+
+    def test_ne_redemarre_jamais_lordinateur(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """`/NORESTART` porte sur Windows, jamais sur Rubin."""
+        assert "/NORESTART" in self._arguments(monkeypatch)

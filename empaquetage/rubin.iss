@@ -40,7 +40,22 @@ WizardStyle=modern
 ; jour silencieuse. Utilise le Gestionnaire de redémarrage de Windows, pas
 ; besoin d'AppMutex côté application.
 CloseApplications=force
-RestartApplications=yes
+; ⛔ **`no`, et ce n'est pas un renoncement, c'est le contraire.**
+; Il valait `yes`, et la relance reposait donc entièrement sur le
+; Gestionnaire de redémarrage de Windows. Constaté par Maxime en cliquant
+; pour de vrai le 07/08/2026 : Rubin ne revenait pas. Butin, le logiciel
+; jumeau, a rencontré le MÊME défaut le MÊME jour et l'a tranché ainsi ;
+; Rubin s'aligne sur lui plutôt que d'entretenir deux mécanismes.
+;
+; La relance est désormais une ligne explicite de la section [Run],
+; conditionnée à `/RELANCER`. Un mécanisme qu'on peut lire, tester et voir
+; échouer, au lieu d'un comportement du système qu'on espère.
+;
+; ⚠️ **Les deux ne doivent JAMAIS être actifs ensemble** : le Gestionnaire
+; de redémarrage et la section [Run] rouvriraient chacun leur exemplaire,
+; et deux Rubin en parallèle voudraient dire deux fils de capture sur la
+; même session, donc deux fois la même quête envoyée au serveur.
+RestartApplications=no
 UninstallDisplayIcon={app}\rubin.exe
 ; L'icône de l'installateur lui-même, celle que le testeur voit dans ses
 ; téléchargements avant d'avoir rien installé. Sans elle, Inno Setup pose la
@@ -63,8 +78,41 @@ Name: "{group}\Désinstaller Rubin"; Filename: "{uninstallexe}"
 Name: "{userdesktop}\Rubin"; Filename: "{app}\rubin.exe"; Tasks: desktopicon
 
 [Run]
-; Coché par défaut : après une installation manuelle, ouvrir Rubin est le
-; geste attendu. `/RESTARTAPPLICATIONS`, lui, gère la relance après une mise
-; à jour silencieuse : les deux ne se recouvrent pas, une mise à jour
-; silencieuse ne passe jamais par cette section.
+; Installation manuelle : la case « Lancer Rubin » de la dernière page.
+; `skipifsilent` la retire en mode silencieux, ce qui est correct ICI, mais
+; c'était la SEULE chose qui rouvrait Rubin, et la mise à jour en un clic
+; passe justement en `/VERYSILENT`. Voir la ligne suivante.
 Filename: "{app}\rubin.exe"; Description: "Lancer Rubin"; Flags: nowait postinstall skipifsilent
+
+; ⛔ La relance après une mise à jour en un clic, EXPLICITE.
+;
+; ⚠️ `/RELANCER` et non « toujours en silencieux » : une construction pourrait
+; un jour installer en silencieux pour vérifier le paquet, et elle n'aurait
+; aucune raison d'ouvrir une fenêtre au milieu. Seule la mise à jour le demande.
+Filename: "{app}\rubin.exe"; Flags: nowait; Check: RelancementDemande
+
+[Code]
+{ ⚠️ Inno Setup n'a PAS de `CmdLineParamExists`. La session butin-bdo s'y est
+  cassé les dents le 07/08/2026, ISCC refusant net « Unknown identifier » : le
+  parcours de `ParamStr` est l'idiome, et il faut l'écrire soi-même. Repris de
+  `butin-bdo/installeur/butin.iss` pour que les deux logiciels se relancent de
+  la même façon.
+
+  `CompareText` ignore la casse, donc `/relancer` marche aussi. }
+function ParametrePresent(const Valeur: string): Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  for I := 1 to ParamCount do
+    if CompareText(ParamStr(I), Valeur) = 0 then
+    begin
+      Result := True;
+      Exit;
+    end;
+end;
+
+function RelancementDemande(): Boolean;
+begin
+  Result := ParametrePresent('/RELANCER');
+end;
