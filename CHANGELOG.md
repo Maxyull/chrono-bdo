@@ -7,6 +7,8 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+## [0.6.1] - 2026-08-07
+
 ### Ajouté
 
 - **Rubin porte enfin son icône**, dans l'explorateur, la barre des tâches, la
