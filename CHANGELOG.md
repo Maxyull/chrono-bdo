@@ -7,6 +7,23 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+### Corrigé
+
+- **Le serveur annonçait « 0.6.3 » pour la v0.6.3.0.** Mesuré en production
+  quelques minutes après le déploiement : `deployer.sh` extrait le numéro des
+  sources avec une expression qui exigeait **exactement deux points**, et le
+  numéro venait d'en gagner un troisième.
+
+  Anodin ce jour-là, puisque les chiffres manquants valent zéro et que les
+  deux numéros se comparent égaux. **Fatal le lendemain** : une v0.6.3.1 se
+  serait annoncée « 0.6.3 » elle aussi, donc identique à ce que les joueurs
+  ont déjà, donc invisible. Tout le quatrième rang serait resté muet,
+  c'est-à-dire exactement la fonctionnalité qu'il sert.
+
+  `serveur/tests/test_deploiement.py` lit désormais l'expression **dans le
+  script** et vérifie qu'elle rend le numéro entier, y compris le vrai numéro
+  du projet à l'instant du test.
+
 ## [0.6.3.0] - 2026-08-07
 
 ### Ajouté
