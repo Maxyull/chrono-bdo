@@ -7,6 +7,8 @@ notamment les trois versions qui évoluent séparément, sont expliquées dans
 
 ## [Non publié]
 
+## [0.6.2] - 2026-08-07
+
 ### Ajouté
 
 - **Un filtre « mesurées / non mesurées » au-dessus de la liste par chaîne.**
