@@ -50,9 +50,29 @@ class _RacineFactice:
 class _EtiquetteFactice:
     def __init__(self) -> None:
         self.textes: list[str] = []
+        self.affichee = False
 
     def config(self, text: str, foreground: str) -> None:
         self.textes.append(text)
+
+    def pack(self, **_options: object) -> None:
+        self.affichee = True
+
+    def pack_forget(self) -> None:
+        self.affichee = False
+
+
+class _BoutonFactice:
+    """Un bouton dont on regarde s'il est posé dans la fenêtre ou retiré."""
+
+    def __init__(self) -> None:
+        self.affiche = True
+
+    def pack(self, **_options: object) -> None:
+        self.affiche = True
+
+    def pack_forget(self) -> None:
+        self.affiche = False
 
 
 class _Porteur:
@@ -63,6 +83,8 @@ class _Porteur:
         self._stop = threading.Event()
         self._discord_attente = True
         self._discord_etat = _EtiquetteFactice()
+        self._discord_nom = _EtiquetteFactice()
+        self._discord_connexion = _BoutonFactice()
         self.demandes = 0
 
     def _ask_discord_account(self) -> None:
@@ -134,7 +156,7 @@ class TestEtiquetteDuCompte:
 
         porteur._show_discord_account(DiscordAccount(linked=True, name="maxyull"))
 
-        assert porteur._discord_etat.textes == ["connecté comme maxyull"]
+        assert porteur._discord_etat.textes == ["connecté en tant que maxyull"]
 
     def test_un_serveur_muet_nefface_pas_ce_qui_est_affiche(self) -> None:
         """Régression, le cœur du correctif : « on ne sait pas » ne doit pas
@@ -165,3 +187,57 @@ class TestEtiquetteDuCompte:
         porteur._show_discord_account(DiscordAccount(linked=False, name=None))
 
         assert porteur._discord_etat.textes == ["pas encore connecté"]
+
+
+class TestEnTeteEtReglagesDaccord:
+    """Le nom du compte s'affiche à DEUX endroits depuis le 07/08/2026.
+
+    Demandé par Maxime : « à côté rejoindre le discord ajoute se connecter à
+    discord et met connecté en tant que ». Le rattachement vivait au fond de
+    l'onglet Réglages, où il fallait aller le chercher.
+
+    Deux affichages du même état, c'est deux occasions de se contredire. Ils
+    sont donc commandés par la même méthode, et ces tests le vérifient : ce
+    qui est écrit dans l'en-tête est ce qui est écrit dans les Réglages, et le
+    bouton de connexion n'est jamais visible en même temps que le nom.
+    """
+
+    def test_le_bouton_cede_la_place_au_nom_une_fois_rattache(self) -> None:
+        """Un bouton « se connecter » à côté de « connecté en tant que
+        Maxyull » se lirait comme un échec du rattachement."""
+        porteur = _Porteur()
+
+        porteur._show_discord_account(DiscordAccount(linked=True, name="maxyull"))
+
+        assert porteur._discord_connexion.affiche is False
+        assert porteur._discord_nom.affichee is True
+        assert porteur._discord_nom.textes == ["connecté en tant que maxyull"]
+
+    def test_les_deux_endroits_disent_la_meme_chose(self) -> None:
+        porteur = _Porteur()
+
+        porteur._show_discord_account(DiscordAccount(linked=True, name="maxyull"))
+
+        assert porteur._discord_nom.textes == porteur._discord_etat.textes
+
+    def test_le_bouton_revient_quand_le_compte_nest_pas_rattache(self) -> None:
+        porteur = _Porteur()
+        porteur._discord_attente = False
+
+        porteur._show_discord_account(DiscordAccount(linked=False, name=None))
+
+        assert porteur._discord_connexion.affiche is True
+        assert porteur._discord_nom.affichee is False
+
+    def test_un_serveur_muet_ne_touche_a_aucun_des_deux(self) -> None:
+        """Régression, la même règle que pour l'étiquette des Réglages, portée
+        à l'en-tête : un en-tête qui repasserait au bouton sur une panne de
+        réseau dirait à un joueur rattaché qu'il ne l'est plus."""
+        porteur = _Porteur()
+        porteur._show_discord_account(DiscordAccount(linked=True, name="maxyull"))
+        assert porteur._discord_connexion.affiche is False
+
+        porteur._show_discord_account(None)
+
+        assert porteur._discord_connexion.affiche is False
+        assert porteur._discord_nom.affichee is True
