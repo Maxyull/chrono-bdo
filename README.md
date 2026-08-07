@@ -271,6 +271,16 @@ Pearl Abyss, ni approuvé par eux.
 | [serveur/README.md](serveur/README.md) | le serveur de classement, son interface et son déploiement |
 | [bot/README.md](bot/README.md) | le robot Discord de consultation, et ce qu'il reste à créer à la main |
 
+## Soutenir
+
+Rubin est gratuit et le restera. Pas de version payante, pas de publicité, et
+rien n'est envoyé sans qu'on le demande (voir [Confidentialité](#confidentialité)).
+
+Si le chronomètre vous fait gagner du temps et que vous voulez donner un coup
+de pouce, c'est ici, et c'est entièrement facultatif :
+
+[![Soutenir Rubin sur PayPal](ressources/bouton-don-rubin.png)](https://paypal.me/maxyull)
+
 ## Licence
 
 MIT, voir [LICENSE](LICENSE).

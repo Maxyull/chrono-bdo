@@ -21,6 +21,13 @@ donnees/cache/
 # aucun joueur. Voir `src/rubin/interface/data/LISEZ-MOI.md` pour ce qu'elle
 # est et ce qu'elle n'est pas.
 !src/rubin/interface/data/discord-logo.png
+# La bannière de don servie par le README. Ce n'est pas une capture non plus :
+# c'est la marque de Rubin, produite par le générateur du kit.
+# ⚠️ Sans cette ligne, le `*.png` ci-dessus l'écarte SANS RIEN DIRE. `git add`
+# reste muet, le fichier est là sur la machine qui l'a fabriqué, donc les tests
+# passent, et GitHub affiche un carré vide à sa place. Repéré sur butin-bdo,
+# où le même piège s'était déjà produit une fois avant.
+!ressources/*.png
 
 .venv/
 __pycache__/
