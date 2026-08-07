@@ -13,22 +13,97 @@ Trois choses versionnent donc séparément, et les confondre serait une erreur.
 
 ## 1. La version du logiciel
 
-Le numéro classique, `MAJEUR.MINEUR.CORRECTIF`, dans `pyproject.toml` et
-`chrono.__version__`.
+Quatre nombres depuis le 07/08/2026, `0.IMPORTANTE.SECONDAIRE.NÉGLIGEABLE`,
+dans `pyproject.toml` et `rubin.__version__`.
 
-| Incrément | Quand | Exemple concret |
-|---|---|---|
-| **CORRECTIF** | une mesure était fausse, elle devient juste | un bandeau sur deux lignes n'était pas recollé |
-| **MINEUR** | le logiciel sait faire quelque chose de plus | il reconnaît les quêtes du Esprit Noir |
-| **MAJEUR** | ce qui était mesuré avant ne se compare plus à ce qui est mesuré après | on cesse de compter le temps de trajet dans la durée |
+Le quatrième a été demandé par Maxime, avec sa raison : « pour ajouter le
+dernier chiffre maj vraiment pas importante ». Les trois nombres de SemVer ne
+distinguaient pas une correction qui change les mesures d'un mot corrigé dans
+une infobulle, et les deux arrivaient au joueur sur le même ton.
 
-Ce dernier point mérite l'attention. Pour une bibliothèque, un changement majeur
-casse le code des autres. Ici, il casse la **comparabilité des mesures**, ce qui
-est bien pire : personne ne voit d'erreur, les chiffres continuent de s'afficher,
-et un classement mélange deux définitions du même mot.
+| Rang | Nom | Ce qui bouge | Ce que le joueur doit faire |
+|---|---|---|---|
+| 1er | — | le passage en 1.0 | mettre à jour |
+| 2e | **IMPORTANTE** | la reconnaissance, ou tout ce qui change une mesure | **mettre à jour**, sinon ses mesures peuvent être fausses |
+| 3e | **SECONDAIRE** | affichage, placement, confort | recommandé, pas indispensable |
+| 4e | **NÉGLIGEABLE** | texte, couleur, détail sans conséquence | rien ne presse |
+
+### Le niveau se lit dans le numéro, et nulle part ailleurs
+
+⚠️ **Aucun champ « importance » n'est servi par le serveur, et c'est un
+choix.** Un champ posé à côté du numéro pourrait annoncer « mineure » sur une
+version qui change la reconnaissance, et rien ne rattraperait la
+contradiction. Ici, publier une version dont le deuxième chiffre bouge **est**
+l'annonce : les deux ne peuvent pas se contredire parce qu'ils sont la même
+chose.
+
+Le calcul est dans `rubin/updates.py`, `update_importance` : le rang du
+**premier chiffre qui diffère** donne le niveau. Les numéros de longueurs
+différentes sont comparés en complétant par des zéros, parce que toutes les
+versions publiées avant le 07/08/2026 n'ont que trois chiffres : `0.6.2` et
+`0.6.2.1` ne diffèrent qu'au quatrième rang, donc négligeable, ce qui est
+exact.
+
+### Ce que le joueur voit
+
+L'en-tête de la fenêtre et le bouton changent de texte **et de couleur** selon
+le niveau (`format_update_offer`, `interface/presentation.py`) :
+
+| Niveau | En-tête | Bouton | Couleur |
+|---|---|---|---|
+| importante | ⚠ Mise à jour IMPORTANTE, la reconnaissance a changé : sans elle vos mesures peuvent être fausses | Mettre à jour, important | alerte |
+| secondaire | Mise à jour secondaire, affichage et confort : recommandée, pas indispensable | Mettre à jour | moyen |
+| négligeable | Mise à jour mineure : rien qui presse | Mettre à jour, sans urgence | faible |
+
+⚠️ **Chaque phrase dit ce qu'il faut FAIRE**, jamais seulement ce qui a
+changé. Un joueur ne sait pas ce qu'« OCR » veut dire pour lui ; il sait ce
+que « vos mesures peuvent être fausses » veut dire.
+
+Le but est qu'un avertissement garde sa valeur. Répéter « une version est
+disponible » du même ton pour un changement de reconnaissance et pour un mot
+corrigé use l'alerte : le jour où elle compte, plus personne ne la lit.
+
+### Ce qu'un changement MAJEUR veut dire ici
+
+Pour une bibliothèque, il casse le code des autres. Ici, il casse la
+**comparabilité des mesures**, ce qui est bien pire : personne ne voit
+d'erreur, les chiffres continuent de s'afficher, et un classement mélange deux
+définitions du même mot.
 
 **Toute redéfinition de ce que « le temps d'une quête » signifie est un
-changement majeur**, même si aucune ligne d'interface ne bouge.
+changement important**, même si aucune ligne d'interface ne bouge.
+
+### À dire à chaque publication, partout
+
+Le niveau doit être annoncé **au même endroit que la version**, sur les deux
+canaux, sans quoi le barème ne sert à rien pour ceux qui lisent l'annonce
+plutôt que la fenêtre.
+
+**Sur la release GitHub**, en toute première ligne des notes :
+
+```markdown
+> **Mise à jour secondaire.** Affichage et confort : recommandée, pas
+> indispensable.
+```
+
+**Sur Discord**, dans le salon d'annonces, la même phrase et rien de plus
+technique :
+
+```
+🔴 **Rubin v0.7.0.0 — mise à jour IMPORTANTE**
+La reconnaissance a changé. Sans cette version, vos mesures peuvent être
+fausses. Un bouton de mise à jour apparaît dans la fenêtre.
+
+🟠 **Rubin v0.6.3.0 — mise à jour secondaire**
+Affichage et confort. Recommandée, rien d'indispensable.
+
+⚪ **Rubin v0.6.2.1 — mise à jour mineure**
+Un détail corrigé. Rien qui presse, mettez à jour quand ça vous arrange.
+```
+
+Une pastille de couleur par niveau, la même que dans la fenêtre : rouge pour
+importante, orange pour secondaire, blanche pour négligeable. Un lecteur qui
+ne lit que l'emoji doit déjà savoir s'il doit agir.
 
 ## 2. La version du protocole d'envoi
 

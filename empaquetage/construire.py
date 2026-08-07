@@ -21,6 +21,28 @@ sys.path.insert(0, str(RACINE / "src"))
 from rubin import __version__  # noqa: E402
 
 
+def version_windows(version: str) -> tuple[int, int, int, int]:
+    """Le numéro de version au format que Windows exige : EXACTEMENT quatre.
+
+    `VS_FIXEDFILEINFO` porte quatre entiers de seize bits, ni plus ni moins.
+
+    ⚠️ **Ce n'était pas le cas, et rien ne le disait.** L'ancienne écriture
+    complétait par un zéro, `(*decoupe, 0)`, ce qui convenait aux versions à
+    trois nombres. Le 07/08/2026, le passage à quatre nombres
+    (`0.IMPORTANTE.SECONDAIRE.NÉGLIGEABLE`) lui en a fait produire **cinq** :
+    `(0, 6, 3, 0, 0)`. La construction n'a pas bronché, PyInstaller non plus,
+    et Windows a affiché « 0.6.3.0 » — juste, mais par chance, le cinquième
+    nombre étant tronqué en silence.
+
+    Compter sur une troncature silencieuse pour obtenir le bon résultat, c'est
+    exactement ce que ce projet refuse ailleurs. Ici, le compte est fait
+    explicitement : on complète par des zéros, et on coupe à quatre.
+    """
+    nombres = tuple(int(n) for n in version.split(".") if n.isdigit())
+    complete = (*nombres, 0, 0, 0, 0)[:4]
+    return (complete[0], complete[1], complete[2], complete[3])
+
+
 def _ecrire_metadonnees() -> None:
     """Régénère `metadonnees.txt` avec le vrai numéro de version.
 
@@ -31,7 +53,7 @@ def _ecrire_metadonnees() -> None:
     que le nom de l'archive, ferme cette source d'oubli pour de bon plutôt
     que de la corriger une fois de plus.
     """
-    quadruplet = (*(int(n) for n in __version__.split(".")), 0)
+    quadruplet = version_windows(__version__)
     contenu = f"""# Métadonnées Windows de l'exécutable.
 #
 # Régénéré par construire.py à partir de rubin.__version__ : ne pas modifier
