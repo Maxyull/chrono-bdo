@@ -149,6 +149,12 @@ def register_for_restart(arguments: Sequence[str] | None = None) -> bool:
         import ctypes
         from ctypes import wintypes
 
+        # ⚠️ `getattr` et non `ctypes.windll`, qui n'existe QUE sous
+        # Windows. `mypy` le voit très bien sur le poste de Maxime et pas
+        # du tout en intégration continue, qui tourne sur Linux : écrit en
+        # clair, il passe ici et casse là-bas, et l'inverse est vrai d'un
+        # `type: ignore`, que `mypy` déclare alors inutile sous Windows.
+        # Le `getattr` ne ment à aucun des deux.
         fonction = ctypes.windll.kernel32.RegisterApplicationRestart
         # ⚠️ Les signatures sont déclarées, pas laissées au hasard. Sans
         # `argtypes`, ctypes devine, et il devine mal : en vérifiant ce

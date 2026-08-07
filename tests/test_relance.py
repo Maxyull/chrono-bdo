@@ -58,7 +58,9 @@ def noyau(monkeypatch: pytest.MonkeyPatch) -> _NoyauFactice:
     import ctypes
 
     faux = _NoyauFactice()
-    monkeypatch.setattr(ctypes, "windll", type("W", (), {"kernel32": faux})())
+    # `raising=False` : `ctypes.windll` n'existe pas sous Linux, où tourne
+    # la CI, et `setattr` refuserait de poser un attribut absent.
+    monkeypatch.setattr(ctypes, "windll", type("W", (), {"kernel32": faux})(), raising=False)
     monkeypatch.setattr(autoupdate.sys, "frozen", True, raising=False)
     return faux
 
@@ -124,7 +126,9 @@ class TestEnregistrementPourRelance:
         import ctypes
 
         faux = _NoyauFactice(resultat=-2147024809)
-        monkeypatch.setattr(ctypes, "windll", type("W", (), {"kernel32": faux})())
+        monkeypatch.setattr(
+            ctypes, "windll", type("W", (), {"kernel32": faux})(), raising=False
+        )
         monkeypatch.setattr(autoupdate.sys, "frozen", True, raising=False)
 
         assert autoupdate.register_for_restart([]) is False
