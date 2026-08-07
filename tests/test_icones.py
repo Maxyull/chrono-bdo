@@ -148,3 +148,60 @@ class TestPoseDeLIcone:
         RubinApp._load_icons(porteur)  # type: ignore[arg-type]
 
         assert porteur._discord_logo == "logo"
+
+
+class TestLisibiliteDuIco:
+    """Le `.ico` livré doit rester lisible aux petites tailles.
+
+    ⚠️ Régression datée. La première icône posée dans ce dépôt était un seul
+    dessin de 256 px que Pillow redimensionnait vers les six autres tailles.
+    Le trait de la marque est un filaire fin : le redimensionnement le
+    moyenne avec le fond sombre, et la marque s'éteint à mesure qu'elle
+    rétrécit. Mesuré sur le fichier d'alors, pic de luminance par taille :
+
+        256 → 255    64 → 255    32 → 211    16 → **131**
+
+    Soit exactement là où Windows la montre le plus, barre des tâches et vue
+    en liste de l'explorateur, un pâté sombre. Le générateur rend désormais
+    chaque taille séparément, en épaississant le trait avant de réduire.
+
+    Ce test échoue sur l'ancien fichier à 16, 24 et 32 px. Il ne juge pas le
+    dessin, seulement qu'il reste visible.
+    """
+
+    CHEMIN = Path(__file__).resolve().parents[1] / "src/rubin/interface/data/rubin.ico"
+    PIC_MINIMAL = 230
+
+    def test_chaque_taille_du_ico_reste_visible(self) -> None:
+        Image = pytest.importorskip("PIL.Image", reason="Pillow arrive avec l'extra capture")
+
+        with Image.open(self.CHEMIN) as ico:
+            tailles = sorted(ico.ico.sizes())
+
+        assert tailles, "le .ico ne déclare aucune taille"
+
+        pics: dict[int, int] = {}
+        for largeur, _ in tailles:
+            with Image.open(self.CHEMIN) as image:
+                image.size = (largeur, largeur)
+                image.load()
+                pics[largeur] = max(
+                    max(pixel) for pixel in image.convert("RGB").get_flattened_data()
+                )
+
+        eteintes = {t: p for t, p in pics.items() if p < self.PIC_MINIMAL}
+        assert not eteintes, (
+            f"tailles trop sombres pour être lues : {eteintes} "
+            f"(pic minimal exigé {self.PIC_MINIMAL}, mesures complètes {pics})"
+        )
+
+    def test_le_ico_porte_les_sept_tailles_attendues(self) -> None:
+        """Windows en choisit une différente selon l'endroit : en manquer une
+        le renvoie à un redimensionnement à la volée, ce que ce dépôt a déjà
+        payé une fois."""
+        Image = pytest.importorskip("PIL.Image", reason="Pillow arrive avec l'extra capture")
+
+        with Image.open(self.CHEMIN) as ico:
+            tailles = {largeur for largeur, _ in ico.ico.sizes()}
+
+        assert tailles == {16, 24, 32, 48, 64, 128, 256}
